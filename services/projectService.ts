@@ -1,6 +1,6 @@
 import type { DesignProject, Scene, SceneObject } from "@/scene/types";
 import { SceneEngine, createId, createSceneObject } from "@/scene/engine/SceneEngine";
-import { createEmptyScene, createVersion, sceneContextForAI } from "@/scene/serialization";
+import { createEmptyScene, createVersion, normalizeScene, sceneContextForAI } from "@/scene/serialization";
 import { getProjectRepository } from "@/lib/db";
 import { getQueue, type Job } from "@/lib/queue";
 import { getStorage } from "@/lib/storage";
@@ -54,7 +54,8 @@ export async function loadProject(
   const project = await getProjectRepository().get(id, ownerId);
   if (!project) return null;
 
-  const engine = new SceneEngine(project.scene, {
+  // 예전 형식으로 저장된 프로젝트도 현재 모델(벽·개구부)로 맞춰 연다.
+  const engine = new SceneEngine(normalizeScene(project.scene), {
     operations: project.operations,
     redo: project.redoStack,
   });

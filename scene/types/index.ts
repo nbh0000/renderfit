@@ -110,10 +110,43 @@ export interface SceneObject {
   metadata: Record<string, unknown>;
 }
 
+/** 문·창 등 벽에 뚫리는 개구부 */
+export interface WallOpening {
+  id: string;
+  name: string;
+  type: "door" | "window";
+  /** 벽 시작점에서 개구부 좌측까지의 거리 (mm) */
+  offset: number;
+  /** mm */
+  width: number;
+  height: number;
+  /** 바닥에서 개구부 하단까지 (문은 0, 창은 보통 900) */
+  sillHeight: number;
+}
+
+/** 벽 한 장 — 평면상의 선분 + 두께/높이 + 개구부 */
+export interface WallSegment {
+  id: string;
+  name: string;
+  /** 평면 좌표 (mm), 방 좌측 하단이 원점 */
+  start: [number, number];
+  end: [number, number];
+  /** mm */
+  thickness: number;
+  height: number;
+  openings: WallOpening[];
+}
+
 export interface RoomSpec {
   type: string;
   /** mm */
   dimensions: { width: number; length: number; height: number };
+  /** 벽 배치. 없으면 dimensions로부터 직사각형을 만든다 */
+  walls?: WallSegment[];
+  /** 사용자가 실측값으로 확정했는지 — 도면 고지 문구가 달라진다 */
+  measured?: boolean;
+  /** 실측 메모 (측정일·측정자 등) */
+  measuredNote?: string;
 }
 
 export interface CameraSpec {
@@ -204,6 +237,10 @@ export type OperationType =
   | "RENAME_OBJECT"
   | "REORDER_OBJECT"
   | "CHANGE_CAMERA"
+  | "CHANGE_ROOM"
+  /** 방 치수 변경 + 밖으로 밀려난 객체 보정을 한 번에 (undo 한 번으로 되돌아가도록) */
+  | "RESIZE_ROOM"
+  | "CHANGE_DIMENSIONS"
   | "AI_GENERATE"
   | "AI_INPAINT";
 

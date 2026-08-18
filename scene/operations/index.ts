@@ -10,7 +10,7 @@ import type { Scene, SceneLight, SceneObject, SceneOperation, OperationType } fr
 
 type Patch = Record<string, unknown> | null;
 
-export type OperationTarget = "object" | "light" | "camera" | "source" | "scene";
+export type OperationTarget = "object" | "light" | "camera" | "source" | "room" | "scene";
 
 const TARGET_BY_TYPE: Record<OperationType, OperationTarget> = {
   MOVE_OBJECT: "object",
@@ -28,6 +28,9 @@ const TARGET_BY_TYPE: Record<OperationType, OperationTarget> = {
   REORDER_OBJECT: "object",
   CHANGE_LIGHT: "light",
   CHANGE_CAMERA: "camera",
+  CHANGE_ROOM: "room",
+  RESIZE_ROOM: "scene",
+  CHANGE_DIMENSIONS: "object",
   AI_GENERATE: "source",
   AI_INPAINT: "source",
 };
@@ -81,6 +84,15 @@ export function applyOperation(
 
   if (target === "camera") {
     return stamped({ ...scene, camera: mergePatch(scene.camera, patch) });
+  }
+
+  if (target === "room") {
+    return stamped({ ...scene, room: mergePatch(scene.room, patch) });
+  }
+
+  // Scene 루트 패치 — 방과 객체를 한 operation으로 함께 바꾼다
+  if (target === "scene") {
+    return stamped(mergePatch(scene, patch));
   }
 
   if (target === "source") {
@@ -146,6 +158,9 @@ export const OPERATION_LABEL: Record<OperationType, string> = {
   RENAME_OBJECT: "이름 변경",
   REORDER_OBJECT: "순서 변경",
   CHANGE_CAMERA: "카메라 변경",
+  CHANGE_ROOM: "공간 변경",
+  RESIZE_ROOM: "치수 반영",
+  CHANGE_DIMENSIONS: "치수 변경",
   AI_GENERATE: "AI 생성",
   AI_INPAINT: "AI 인페인팅",
 };

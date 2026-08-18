@@ -1,13 +1,23 @@
 import type {
   Material,
+  RoomSpec,
   Scene,
   SceneLight,
   SceneObject,
   SceneOperation,
   OperationType,
   Vec3,
+  WallOpening,
+  WallSegment,
 } from "../types";
 import { OBJECT_GROUP_OF } from "../types";
+import {
+  DEFAULT_WALL_THICKNESS,
+  ensureRoom,
+  fitObjectsToRoom,
+  rectangleWalls,
+  validateOpening,
+} from "../geometry";
 import { applyOperation, OPERATION_LABEL } from "../operations";
 import { validateOperation, type ValidationResult } from "../validation";
 
@@ -365,6 +375,190 @@ export class SceneEngine {
     const object = this.getObject(id);
     if (!object) return { ok: false, error: "대상 객체를 찾을 수 없습니다." };
     return this.commit(this.makeOperation("REORDER_OBJECT", id, { order: object.order }, { order }));
+  }
+
+  /* ── 공간(실측 치수 · 벽 · 개구부) ── */
+
+  getWalls(): WallSegment[] {
+    return ensureRoom(this.scene.room).walls ?? [];
+  }
+
+  getWall(id: string): WallSegment | undefined {
+    return this.getWalls().find((wall) => wall.id === id);
+  }
+
+  private commitRoom(patch: Partial<RoomSpec>, label: string): CommitResult {
+    const room = ensureRoom(this.scene.room);
+    const before: Record<string, unknown> = {};
+    for (const key of Object.keys(patch) as (keyof RoomSpec)[]) {
+      before[key] = room[key];
+    }
+    // 예전 형식(벽 없음)에서 넘어온 경우 현재 벽도 함께 기록해 undo가 정확하도록 한다.
+    if (!this.scene.room.walls) before.walls = room.walls;
+
+    return this.commit(
+      this.makeOperation("CHANGE_ROOM", undefined, before, patch as Record<string, unknown>, label)
+    );
+  }
+
+  /** 실측 치수 입력 — 벽이 자동 생성된 직사각형이면 새 치수로 다시 만든다 */
+  setRoomDimensions(
+    dimensions: Partial<RoomSpec["dimensions"]>,
+    options: { measured?: boolean; note?: string; rebuildWalls?: boolean } = {}
+  ): CommitResult {
+    const room = ensureRoom(this.scene.room);
+    const next = { ...room.dimensions, ...dimensions };
+
+    if (next.width <= 0 || next.length <= 0 || next.height <= 0) {
+      return { ok: false, error: "치수는 0보다 커야 합니다." };
+    }
+    if (next.width > 50000 || next.length > 50000 || next.height > 10000) {
+      return { ok: false, error: "치수가 너무 큽니다. mm 단위로 입력해 주세요." };
+    }
+
+    const patch: Partial<RoomSpec> = { dimensions: next };
+    if (options.measured !== undefined) patch.measured = options.measured;
+    if (options.note !== undefined) patch.measuredNote = options.note;
+
+    // 사용자가 벽을 직접 편집하지 않았다면 새 치수에 맞춰 다시 만든다.
+    if (options.rebuildWalls !== false) {
+      const thickness = room.walls?.[0]?.thickness ?? DEFAULT_WALL_THICKNESS;
+      const rebuilt = rectangleWalls(next, thickness);
+      // 기존 개구부는 벽 순서를 유지해 그대로 옮긴다.
+      patch.walls = rebuilt.map((wall, index) => {
+        const previous = room.walls?.[index];
+        if (!previous) return wall;
+        const length = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
+        return {
+          ...wall,
+          id: previous.id,
+          name: previous.name,
+          openings: (previous.openings ?? []).filter(
+            (opening) => opening.offset + opening.width <= length
+          ),
+        };
+      });
+    }
+
+    // 방이 줄면서 벽 밖으로 나간 가구는 같은 operation 안에서 안으로 들여놓는다.
+    const fitted = fitObjectsToRoom(this.scene.objects, next);
+    if (fitted.changed === 0) return this.commitRoom(patch, "실측 치수 반영");
+
+    const before: Record<string, unknown> = {
+      room: Object.fromEntries(
+        (Object.keys(patch) as (keyof RoomSpec)[]).map((key) => [key, room[key]])
+      ),
+      objects: this.scene.objects,
+    };
+
+    return this.commit(
+      this.makeOperation(
+        "RESIZE_ROOM",
+        undefined,
+        before,
+        { room: patch, objects: fitted.objects },
+        `실측 치수 반영 (가구 ${fitted.changed}개 위치 보정)`
+      )
+    );
+  }
+
+  setWalls(walls: WallSegment[], label = "벽 편집"): CommitResult {
+    if (walls.some((wall) => wall.thickness <= 0 || wall.height <= 0)) {
+      return { ok: false, error: "벽 두께와 높이는 0보다 커야 합니다." };
+    }
+    return this.commitRoom({ walls }, label);
+  }
+
+  addWall(wall: WallSegment): CommitResult {
+    return this.setWalls([...this.getWalls(), wall], "벽 추가");
+  }
+
+  updateWall(id: string, patch: Partial<WallSegment>): CommitResult {
+    const walls = this.getWalls();
+    const target = walls.find((wall) => wall.id === id);
+    if (!target) return { ok: false, error: "벽을 찾을 수 없습니다." };
+
+    const next = { ...target, ...patch, id: target.id };
+
+    // 벽을 짧게 만들거나 낮추면 개구부가 벽을 벗어날 수 있다 — 그 경우는 막는다.
+    const invalid = (next.openings ?? []).find(
+      (opening) => !validateOpening({ ...next, openings: [] }, opening).ok
+    );
+    if (invalid) {
+      return {
+        ok: false,
+        error: `${invalid.name}이(가) 새 벽 크기를 벗어납니다. 개구부를 먼저 조정해 주세요.`,
+      };
+    }
+
+    return this.setWalls(
+      walls.map((wall) => (wall.id === id ? next : wall)),
+      "벽 수정"
+    );
+  }
+
+  deleteWall(id: string): CommitResult {
+    const walls = this.getWalls();
+    if (!walls.some((wall) => wall.id === id)) return { ok: false, error: "벽을 찾을 수 없습니다." };
+    return this.setWalls(
+      walls.filter((wall) => wall.id !== id),
+      "벽 삭제"
+    );
+  }
+
+  addOpening(wallId: string, opening: WallOpening): CommitResult {
+    const wall = this.getWall(wallId);
+    if (!wall) return { ok: false, error: "벽을 찾을 수 없습니다." };
+
+    const check = validateOpening(wall, opening);
+    if (!check.ok) return { ok: false, error: check.error };
+
+    return this.updateWall(wallId, { openings: [...(wall.openings ?? []), opening] });
+  }
+
+  updateOpening(wallId: string, openingId: string, patch: Partial<WallOpening>): CommitResult {
+    const wall = this.getWall(wallId);
+    if (!wall) return { ok: false, error: "벽을 찾을 수 없습니다." };
+
+    const current = (wall.openings ?? []).find((opening) => opening.id === openingId);
+    if (!current) return { ok: false, error: "개구부를 찾을 수 없습니다." };
+
+    const next = { ...current, ...patch, id: current.id };
+    const check = validateOpening(wall, next);
+    if (!check.ok) return { ok: false, error: check.error };
+
+    return this.updateWall(wallId, {
+      openings: (wall.openings ?? []).map((opening) => (opening.id === openingId ? next : opening)),
+    });
+  }
+
+  deleteOpening(wallId: string, openingId: string): CommitResult {
+    const wall = this.getWall(wallId);
+    if (!wall) return { ok: false, error: "벽을 찾을 수 없습니다." };
+
+    return this.updateWall(wallId, {
+      openings: (wall.openings ?? []).filter((opening) => opening.id !== openingId),
+    });
+  }
+
+  /** 가구 실측 치수 입력 */
+  setDimensions(id: string, dimensions: Partial<SceneObject["dimensions"]>): CommitResult {
+    const object = this.getObject(id);
+    if (!object) return { ok: false, error: "대상 객체를 찾을 수 없습니다." };
+
+    const next = { ...object.dimensions, ...dimensions };
+    if (next.width <= 0 || next.height <= 0 || next.depth <= 0) {
+      return { ok: false, error: "치수는 0보다 커야 합니다." };
+    }
+
+    return this.commit(
+      this.makeOperation(
+        "CHANGE_DIMENSIONS",
+        id,
+        { dimensions: object.dimensions },
+        { dimensions: next }
+      )
+    );
   }
 
   setCamera(patch: Partial<Scene["camera"]>): CommitResult {

@@ -1,5 +1,6 @@
-import type { Scene, SceneObject } from "@/scene/types";
+import type { Scene, SceneObject, WallOpening, WallSegment } from "@/scene/types";
 import { OBJECT_GROUP_OF } from "@/scene/types";
+import { ensureRoom, pointAlongWall, wallAngle, wallDirection, wallLength } from "@/scene/geometry";
 
 /**
  * CAD 산출물 생성.
@@ -14,6 +15,13 @@ import { OBJECT_GROUP_OF } from "@/scene/types";
 
 export const CAD_DISCLAIMER =
   "AI 추정 배치 도면 — 실측값이 아니며 시공 전 현장 실측으로 검증해야 합니다.";
+
+export const CAD_MEASURED_NOTE =
+  "사용자 입력 실측 치수 기준 도면 — 시공 전 최종 확인 필요.";
+
+export function disclaimerFor(measured: boolean): string {
+  return measured ? CAD_MEASURED_NOTE : CAD_DISCLAIMER;
+}
 
 /** 벽 두께 (mm) — 국내 공동주택 내벽 기준값 */
 const WALL_THICKNESS = 150;
@@ -34,6 +42,8 @@ export interface PlanObject {
 export interface PlanData {
   projectName: string;
   roomType: string;
+  walls: WallSegment[];
+  measured: boolean;
   /** mm */
   roomWidth: number;
   roomLength: number;
@@ -52,8 +62,9 @@ const LAYER_BY_GROUP: Record<string, string> = {
 
 /** Scene 좌표(정규화) → 도면 좌표(mm). 원점은 방의 좌측 하단. */
 export function toPlanData(scene: Scene, projectName: string): PlanData {
-  const roomWidth = scene.room.dimensions.width;
-  const roomLength = scene.room.dimensions.length;
+  const room = ensureRoom(scene.room);
+  const roomWidth = room.dimensions.width;
+  const roomLength = room.dimensions.length;
 
   const objects: PlanObject[] = scene.objects
     .filter((object) => object.visibility)
@@ -77,10 +88,12 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
 
   return {
     projectName,
-    roomType: scene.room.type,
+    roomType: room.type,
+    walls: room.walls ?? [],
+    measured: Boolean(room.measured),
     roomWidth,
     roomLength,
-    roomHeight: scene.room.dimensions.height,
+    roomHeight: room.dimensions.height,
     objects,
     createdAt: new Date().toISOString(),
   };
@@ -224,6 +237,117 @@ function dimension(
 }
 
 /**
+ * 벽 하나를 도면에 그린다.
+ *
+ * 벽 중심선을 기준으로 두께만큼 양쪽에 선을 긋고, 개구부 구간에서는 선을 끊는다.
+ * 문은 열림 방향 호(arc를 선분으로 근사)로, 창은 중앙 유리선으로 표기한다.
+ */
+function drawWallDxf(dxf: DxfWriter, wall: WallSegment) {
+  const [dx, dy] = wallDirection(wall);
+  const [nx, ny] = [-dy, dx]; // 법선
+  const half = wall.thickness / 2;
+  const length = wallLength(wall);
+
+  const openings = [...(wall.openings ?? [])].sort((a, b) => a.offset - b.offset);
+
+  /** 벽 중심선 좌표 → 양쪽 면 좌표 */
+  const face = (distance: number, side: 1 | -1): [number, number] => {
+    const [px, py] = pointAlongWall(wall, distance);
+    return [px + nx * half * side, py + ny * half * side];
+  };
+
+  // 개구부로 끊긴 구간별 면 선
+  let cursor = 0;
+  const spans: [number, number][] = [];
+  for (const opening of openings) {
+    const start = Math.max(0, Math.min(length, opening.offset));
+    if (start > cursor) spans.push([cursor, start]);
+    cursor = Math.max(cursor, Math.min(length, opening.offset + opening.width));
+  }
+  if (cursor < length) spans.push([cursor, length]);
+
+  for (const [from, to] of spans) {
+    for (const side of [1, -1] as const) {
+      const [x1, y1] = face(from, side);
+      const [x2, y2] = face(to, side);
+      dxf.line(x1, y1, x2, y2, "A-WALL");
+    }
+    // 마구리(끝면)
+    const [ax, ay] = face(from, 1);
+    const [bx, by] = face(from, -1);
+    dxf.line(ax, ay, bx, by, "A-WALL");
+    const [cx2, cy2] = face(to, 1);
+    const [dx2, dy2] = face(to, -1);
+    dxf.line(cx2, cy2, dx2, dy2, "A-WALL");
+  }
+
+  // 개구부 기호
+  for (const opening of openings) {
+    drawOpeningDxf(dxf, wall, opening, face);
+  }
+}
+
+function drawOpeningDxf(
+  dxf: DxfWriter,
+  wall: WallSegment,
+  opening: WallOpening,
+  face: (distance: number, side: 1 | -1) => [number, number]
+) {
+  const layer = opening.type === "door" ? "A-DOOR" : "A-GLAZ";
+  const start = opening.offset;
+  const end = opening.offset + opening.width;
+
+  if (opening.type === "window") {
+    // 창: 개구부 폭만큼 유리선 3줄
+    for (const side of [1, -1] as const) {
+      const [x1, y1] = face(start, side);
+      const [x2, y2] = face(end, side);
+      dxf.line(x1, y1, x2, y2, layer);
+    }
+    const [mx1, my1] = pointAlongWall(wall, start);
+    const [mx2, my2] = pointAlongWall(wall, end);
+    dxf.line(mx1, my1, mx2, my2, layer);
+  } else {
+    // 문: 문틀 + 열림 호(선분 근사) + 문짝
+    const [hx, hy] = face(start, 1);
+    const [hx2, hy2] = face(start, -1);
+    dxf.line(hx, hy, hx2, hy2, layer);
+
+    const [tx, ty] = face(end, 1);
+    const [tx2, ty2] = face(end, -1);
+    dxf.line(tx, ty, tx2, ty2, layer);
+
+    const [px, py] = pointAlongWall(wall, start);
+    const [ex, ey] = pointAlongWall(wall, end);
+    dxf.line(px, py, ex, ey, layer);
+
+    // 90도 열림 호를 8분할 선분으로
+    const [dirX, dirY] = wallDirection(wall);
+    const [nx, ny] = [-dirY, dirX];
+    const radius = opening.width;
+    let prev: [number, number] = [ex, ey];
+    for (let step = 1; step <= 8; step++) {
+      const angle = (Math.PI / 2) * (step / 8);
+      const point: [number, number] = [
+        px + dirX * radius * Math.cos(angle) + nx * radius * Math.sin(angle),
+        py + dirY * radius * Math.cos(angle) + ny * radius * Math.sin(angle),
+      ];
+      dxf.line(prev[0], prev[1], point[0], point[1], layer);
+      prev = point;
+    }
+    dxf.line(px, py, prev[0], prev[1], layer);
+  }
+
+  // 개구부 치수 표기 (W×H, 창은 하부 높이도)
+  const [lx, ly] = pointAlongWall(wall, start + opening.width / 2);
+  const label =
+    opening.type === "window"
+      ? `${opening.name} ${Math.round(opening.width)}x${Math.round(opening.height)} (SH ${Math.round(opening.sillHeight)})`
+      : `${opening.name} ${Math.round(opening.width)}x${Math.round(opening.height)}`;
+  dxf.text(lx - label.length * 28, ly + 120, 70, label, "A-NOTE", wallAngle(wall));
+}
+
+/**
  * DXF 평면도 생성 (R12 호환, 단위 mm, 1:1).
  * 레이어: A-WALL / A-DIMS / I-FURN / I-APPL / I-DECO / E-LITE / A-NOTE
  */
@@ -241,29 +365,38 @@ export function buildDxf(plan: PlanData): string {
     { name: "I-APPL", color: 4 },
     { name: "I-DECO", color: 6 },
     { name: "E-LITE", color: 1 },
+    { name: "A-DOOR", color: 30 },
+    { name: "A-GLAZ", color: 4 },
   ]);
 
   dxf.section("ENTITIES");
 
-  // 벽 (내측·외측 이중선)
-  dxf.polygon(
-    [
-      [0, 0],
-      [W, 0],
-      [W, L],
-      [0, L],
-    ],
-    "A-WALL"
-  );
-  dxf.polygon(
-    [
-      [-t, -t],
-      [W + t, -t],
-      [W + t, L + t],
-      [-t, L + t],
-    ],
-    "A-WALL"
-  );
+  // 벽체 — 각 벽을 두께만큼 이중선으로 그리고, 개구부 자리는 비운다
+  for (const wall of plan.walls) {
+    drawWallDxf(dxf, wall);
+  }
+
+  // 벽 데이터가 없으면(예전 저장본) 외곽만 그린다
+  if (plan.walls.length === 0) {
+    dxf.polygon(
+      [
+        [0, 0],
+        [W, 0],
+        [W, L],
+        [0, L],
+      ],
+      "A-WALL"
+    );
+    dxf.polygon(
+      [
+        [-t, -t],
+        [W + t, -t],
+        [W + t, L + t],
+        [-t, L + t],
+      ],
+      "A-WALL"
+    );
+  }
 
   // 가구·설비 footprint + 라벨
   for (const object of plan.objects) {
@@ -306,10 +439,10 @@ export function buildDxf(plan: PlanData): string {
     120,
     titleY - 480,
     90,
-    `ROOM: ${plan.roomType}  /  ${Math.round(W)} x ${Math.round(L)} x ${Math.round(plan.roomHeight)} mm  /  SCALE 1:1 (mm)`,
+    `ROOM: ${plan.roomType}  /  ${Math.round(W)} x ${Math.round(L)} x ${Math.round(plan.roomHeight)} mm  /  SCALE 1:1 (mm)  /  ${plan.measured ? "MEASURED" : "AI ESTIMATE"}`,
     "A-NOTE"
   );
-  dxf.text(120, titleY - 640, 80, CAD_DISCLAIMER, "A-NOTE");
+  dxf.text(120, titleY - 640, 80, disclaimerFor(plan.measured), "A-NOTE");
   dxf.text(120, titleY - 800, 70, `DATE ${plan.createdAt.slice(0, 10)}`, "A-NOTE");
 
   dxf.endSection();
@@ -332,6 +465,47 @@ export function buildPlanSvg(plan: PlanData): string {
   // SVG는 y축이 아래로 증가하므로 방 좌표를 뒤집어 그린다.
   const fy = (y: number) => L - y;
 
+  // 벽체: 개구부로 끊긴 구간만 그리고, 문·창은 별도 색으로 표기한다
+  const wallsSvg = plan.walls.length
+    ? plan.walls
+        .map((wall) => {
+          const length = wallLength(wall);
+          const openings = [...(wall.openings ?? [])].sort((a, b) => a.offset - b.offset);
+          const pieces: string[] = [];
+
+          let cursor = 0;
+          const spans: [number, number][] = [];
+          for (const opening of openings) {
+            const start = Math.max(0, Math.min(length, opening.offset));
+            if (start > cursor) spans.push([cursor, start]);
+            cursor = Math.max(cursor, Math.min(length, opening.offset + opening.width));
+          }
+          if (cursor < length) spans.push([cursor, length]);
+
+          for (const [from, to] of spans) {
+            const [x1, y1] = pointAlongWall(wall, from);
+            const [x2, y2] = pointAlongWall(wall, to);
+            pieces.push(
+              `  <line x1="${x1.toFixed(1)}" y1="${fy(y1).toFixed(1)}" x2="${x2.toFixed(1)}" y2="${fy(y2).toFixed(1)}" stroke="#26231f" stroke-width="${wall.thickness}" stroke-linecap="butt"/>`
+            );
+          }
+
+          for (const opening of openings) {
+            const [x1, y1] = pointAlongWall(wall, opening.offset);
+            const [x2, y2] = pointAlongWall(wall, opening.offset + opening.width);
+            const color = opening.type === "door" ? "#bf6242" : "#4a7fb5";
+            const label = `${opening.name} ${Math.round(opening.width)}×${Math.round(opening.height)}`;
+            pieces.push(
+              `  <line x1="${x1.toFixed(1)}" y1="${fy(y1).toFixed(1)}" x2="${x2.toFixed(1)}" y2="${fy(y2).toFixed(1)}" stroke="${color}" stroke-width="${Math.max(60, wall.thickness * 0.5)}"/>`,
+              `  <text x="${((x1 + x2) / 2).toFixed(1)}" y="${(fy((y1 + y2) / 2) - 120).toFixed(1)}" font-size="96" text-anchor="middle" fill="${color}">${esc(label)}</text>`
+            );
+          }
+
+          return pieces.join("\n");
+        })
+        .join("\n")
+    : `  <rect x="0" y="0" width="${W}" height="${L}" fill="none" stroke="#26231f" stroke-width="24"/>`;
+
   const objects = plan.objects
     .map((object) => {
       const corners = rectCorners(object)
@@ -346,9 +520,8 @@ export function buildPlanSvg(plan: PlanData): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-margin} ${-margin} ${vbW} ${vbH}" width="1400">
   <rect x="${-margin}" y="${-margin}" width="${vbW}" height="${vbH}" fill="#ffffff"/>
 
-  <!-- 벽 -->
-  <rect x="${-WALL_THICKNESS}" y="${-WALL_THICKNESS}" width="${W + WALL_THICKNESS * 2}" height="${L + WALL_THICKNESS * 2}" fill="none" stroke="#26231f" stroke-width="40"/>
-  <rect x="0" y="0" width="${W}" height="${L}" fill="none" stroke="#26231f" stroke-width="24"/>
+  <!-- 벽 · 개구부 -->
+${wallsSvg}
 
   <!-- 가구 -->
 ${objects}
@@ -371,7 +544,7 @@ ${objects}
     <rect x="${-margin + 100}" y="${L + 800}" width="${vbW - 200}" height="520" fill="none" stroke="#26231f" stroke-width="16"/>
     <text x="${-margin + 200}" y="${L + 980}" font-size="170" fill="#26231f">${esc(plan.projectName)}</text>
     <text x="${-margin + 200}" y="${L + 1120}" font-size="100" fill="#5c5751">${esc(plan.roomType)} · ${Math.round(W)}×${Math.round(L)}×${Math.round(plan.roomHeight)} mm · SCALE 1:1 (mm) · ${plan.createdAt.slice(0, 10)}</text>
-    <text x="${-margin + 200}" y="${L + 1250}" font-size="92" fill="#b4453a">${esc(CAD_DISCLAIMER)}</text>
+    <text x="${-margin + 200}" y="${L + 1250}" font-size="92" fill="${plan.measured ? "#4f7a55" : "#b4453a"}">${esc(disclaimerFor(plan.measured))}</text>
   </g>
 </svg>`;
 }

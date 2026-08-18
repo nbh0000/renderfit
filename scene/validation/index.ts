@@ -25,6 +25,26 @@ export const screenRectSchema = z.object({
   rotation: z.number(),
 });
 
+export const wallOpeningSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  type: z.enum(["door", "window"]),
+  offset: z.number().min(0),
+  width: z.number().positive(),
+  height: z.number().positive(),
+  sillHeight: z.number().min(0),
+});
+
+export const wallSegmentSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  start: z.tuple([z.number(), z.number()]),
+  end: z.tuple([z.number(), z.number()]),
+  thickness: z.number().positive(),
+  height: z.number().positive(),
+  openings: z.array(wallOpeningSchema),
+});
+
 export const sceneObjectSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -73,6 +93,9 @@ export const sceneSchema = z.object({
       length: z.number().positive(),
       height: z.number().positive(),
     }),
+    walls: z.array(wallSegmentSchema).optional(),
+    measured: z.boolean().optional(),
+    measuredNote: z.string().optional(),
   }),
   camera: z.object({
     position: vec3,
@@ -140,6 +163,7 @@ const OBJECT_TARGET_OPS = new Set([
   "CHANGE_LOCK",
   "RENAME_OBJECT",
   "REORDER_OBJECT",
+  "CHANGE_DIMENSIONS",
 ]);
 
 /**
@@ -189,6 +213,34 @@ export function validateOperation(scene: Scene, op: SceneOperation): ValidationR
   if (op.type === "REPLACE_OBJECT") {
     const parsed = sceneObjectSchema.safeParse(op.after);
     if (!parsed.success) return { ok: false, error: "교체할 객체 데이터가 올바르지 않습니다." };
+  }
+
+  if (op.type === "CHANGE_DIMENSIONS") {
+    const dimensions = (op.after as { dimensions?: Record<string, number> })?.dimensions;
+    if (dimensions && Object.values(dimensions).some((value) => !Number.isFinite(value) || value <= 0)) {
+      return { ok: false, error: "치수는 0보다 커야 합니다." };
+    }
+  }
+
+  if (op.type === "RESIZE_ROOM") {
+    const after = op.after as { room?: { dimensions?: Record<string, number> }; objects?: unknown[] };
+    const dimensions = after?.room?.dimensions;
+    if (dimensions && Object.values(dimensions).some((v) => !Number.isFinite(v) || v <= 0)) {
+      return { ok: false, error: "방 치수는 0보다 커야 합니다." };
+    }
+    if (after?.objects && !Array.isArray(after.objects)) {
+      return { ok: false, error: "객체 데이터가 올바르지 않습니다." };
+    }
+  }
+
+  if (op.type === "CHANGE_ROOM") {
+    const room = op.after as { dimensions?: Record<string, number>; walls?: unknown[] };
+    if (room?.dimensions && Object.values(room.dimensions).some((v) => !Number.isFinite(v) || v <= 0)) {
+      return { ok: false, error: "방 치수는 0보다 커야 합니다." };
+    }
+    if (room?.walls && !z.array(wallSegmentSchema).safeParse(room.walls).success) {
+      return { ok: false, error: "벽 데이터가 올바르지 않습니다." };
+    }
   }
 
   if (op.type === "CHANGE_LIGHT") {

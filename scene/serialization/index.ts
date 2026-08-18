@@ -2,6 +2,7 @@ import type { Scene, SceneLight, SceneObject, SceneVersion } from "../types";
 import { createId } from "../engine/SceneEngine";
 import { DEFAULT_MATERIALS } from "@/models/materials";
 import { parseScene } from "../validation";
+import { ensureRoom, rectangleWalls, wallLength } from "../geometry";
 
 /** 새 프로젝트의 기본 조명 세트 */
 export function defaultLights(): SceneLight[] {
@@ -49,6 +50,8 @@ export function createEmptyScene(roomType = "living_room"): Scene {
     room: {
       type: roomType,
       dimensions: { width: 5000, length: 6000, height: 2700 },
+      walls: rectangleWalls({ width: 5000, length: 6000, height: 2700 }),
+      measured: false,
     },
     camera: {
       position: [0, 1.5, 4.5],
@@ -73,6 +76,11 @@ export function createEmptyScene(roomType = "living_room"): Scene {
     styleId: null,
     updatedAt: new Date().toISOString(),
   };
+}
+
+/** 예전 형식(벽 없음)으로 저장된 Scene을 현재 모델로 맞춘다 */
+export function normalizeScene(scene: Scene): Scene {
+  return { ...scene, room: ensureRoom(scene.room) };
 }
 
 export function sceneToJSON(scene: Scene): string {
@@ -110,13 +118,43 @@ export function summarizeScene(scene: Scene): string {
 export function sceneContextForAI(scene: Scene): {
   roomType: string;
   styleId: string | null;
+  room: {
+    dimensions: { width: number; length: number; height: number };
+    measured: boolean;
+    walls: {
+      id: string;
+      name: string;
+      length: number;
+      thickness: number;
+      openings: { id: string; name: string; type: string; width: number; height: number }[];
+    }[];
+  };
   objects: { id: string; name: string; type: string; materialId: string | null }[];
   materials: { id: string; name: string; baseColor: string }[];
   lights: { id: string; name: string; type: string }[];
 } {
+  const room = ensureRoom(scene.room);
+
   return {
     roomType: scene.room.type,
     styleId: scene.styleId,
+    room: {
+      dimensions: room.dimensions,
+      measured: room.measured ?? false,
+      walls: (room.walls ?? []).map((wall) => ({
+        id: wall.id,
+        name: wall.name,
+        length: Math.round(wallLength(wall)),
+        thickness: wall.thickness,
+        openings: (wall.openings ?? []).map((opening) => ({
+          id: opening.id,
+          name: opening.name,
+          type: opening.type,
+          width: opening.width,
+          height: opening.height,
+        })),
+      })),
+    },
     objects: scene.objects.map((o: SceneObject) => ({
       id: o.id,
       name: o.name,
