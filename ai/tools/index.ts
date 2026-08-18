@@ -4,6 +4,7 @@ import { SceneEngine, createSceneObject } from "@/scene/engine/SceneEngine";
 import { ASSET_MAP, searchAssets } from "@/models/assets";
 import { STYLE_PRESET_MAP } from "@/models/styles";
 import { MATERIAL_MAP } from "@/models/materials";
+import { createOpening, createWall, findFreeOffset } from "@/scene/geometry";
 
 /**
  * AI Agent Tools.
@@ -94,6 +95,42 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "inpaint_region",
     description: "선택 영역만 AI로 다시 그린다.",
     parameters: { objectId: "string", prompt: "string" },
+  },
+  {
+    name: "set_room",
+    description: "방의 실측 치수를 입력한다 (mm).",
+    parameters: { width: "number", length: "number", height: "number", measured: "boolean" },
+  },
+  {
+    name: "set_dimensions",
+    description: "객체의 실측 치수를 입력한다 (mm).",
+    parameters: { objectId: "string", width: "number", height: "number", depth: "number" },
+  },
+  {
+    name: "add_wall",
+    description: "벽을 추가한다. 좌표는 평면 mm.",
+    parameters: { x1: "number", y1: "number", x2: "number", y2: "number", thickness: "number" },
+  },
+  {
+    name: "update_wall",
+    description: "벽의 두께·높이·이름·좌표를 수정한다.",
+    parameters: { wallId: "string", thickness: "number", height: "number", name: "string" },
+  },
+  { name: "delete_wall", description: "벽을 삭제한다.", parameters: { wallId: "string" } },
+  {
+    name: "add_opening",
+    description: "벽에 문 또는 창을 낸다.",
+    parameters: { wallId: "string", type: "door|window", offset: "number", width: "number", height: "number" },
+  },
+  {
+    name: "update_opening",
+    description: "개구부의 위치·크기를 수정한다.",
+    parameters: { wallId: "string", openingId: "string", offset: "number", width: "number", height: "number", sillHeight: "number" },
+  },
+  {
+    name: "delete_opening",
+    description: "개구부를 제거한다.",
+    parameters: { wallId: "string", openingId: "string" },
   },
   { name: "search_asset", description: "가구 에셋을 검색한다.", parameters: { query: "string" } },
   { name: "render_preview", description: "미리보기 렌더를 실행한다.", parameters: {} },
@@ -392,6 +429,116 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
         message: "선택 영역을 다시 그립니다.",
         job: { type: "INPAINT", params: { objectId, prompt: (args.prompt as string) ?? "" } },
       };
+    }
+
+    case "set_room": {
+      const result = engine.setRoomDimensions(
+        {
+          ...(typeof args.width === "number" ? { width: args.width as number } : {}),
+          ...(typeof args.length === "number" ? { length: args.length as number } : {}),
+          ...(typeof args.height === "number" ? { height: args.height as number } : {}),
+        },
+        {
+          ...(typeof args.measured === "boolean" ? { measured: args.measured as boolean } : {}),
+          ...(typeof args.note === "string" ? { note: args.note as string } : {}),
+        }
+      );
+      return toResult(command, result, "방 치수를 반영했습니다.");
+    }
+
+    case "set_dimensions": {
+      if (!objectId) return fail("대상 객체가 없습니다.");
+      const result = engine.setDimensions(objectId, {
+        ...(typeof args.width === "number" ? { width: args.width as number } : {}),
+        ...(typeof args.height === "number" ? { height: args.height as number } : {}),
+        ...(typeof args.depth === "number" ? { depth: args.depth as number } : {}),
+      });
+      return toResult(command, result, "치수를 반영했습니다.", objectId);
+    }
+
+    case "add_wall": {
+      const wall = createWall({
+        start: [Number(args.x1 ?? 0), Number(args.y1 ?? 0)],
+        end: [Number(args.x2 ?? 0), Number(args.y2 ?? 0)],
+        thickness: typeof args.thickness === "number" ? (args.thickness as number) : undefined,
+        height: scene.room.dimensions.height,
+        name: (args.name as string) ?? "벽",
+      });
+      const result = engine.addWall(wall);
+      return toResult(command, result, "벽을 추가했습니다.");
+    }
+
+    case "update_wall": {
+      const wallId = args.wallId as string;
+      if (!wallId) return fail("대상 벽이 없습니다.");
+      const patch: Record<string, unknown> = {};
+      if (typeof args.thickness === "number") patch.thickness = args.thickness;
+      if (typeof args.height === "number") patch.height = args.height;
+      if (typeof args.name === "string") patch.name = args.name;
+      if (Array.isArray(args.start)) patch.start = args.start;
+      if (Array.isArray(args.end)) patch.end = args.end;
+      const result = engine.updateWall(wallId, patch);
+      return toResult(command, result, "벽을 수정했습니다.");
+    }
+
+    case "delete_wall": {
+      const wallId = args.wallId as string;
+      if (!wallId) return fail("대상 벽이 없습니다.");
+      const result = engine.deleteWall(wallId);
+      return toResult(command, result, "벽을 삭제했습니다.");
+    }
+
+    case "add_opening": {
+      const wallId = args.wallId as string;
+      if (!wallId) return fail("대상 벽이 없습니다.");
+
+      // 위치를 안 주면(주로 AI 명령) 기존 문·창과 겹치지 않는 자리를 찾아 놓는다.
+      const targetWall = engine.getWall(wallId);
+      if (!targetWall) return fail("대상 벽을 찾을 수 없습니다.");
+
+      const openingType = (args.type as "door" | "window") ?? "window";
+      let offset = typeof args.offset === "number" ? (args.offset as number) : undefined;
+      const openingWidth =
+        typeof args.width === "number" ? (args.width as number) : openingType === "door" ? 900 : 1500;
+
+      if (offset === undefined) {
+        const free = findFreeOffset(targetWall, openingWidth);
+        if (free === null) {
+          return fail(`${targetWall.name}에는 더 놓을 자리가 없습니다.`);
+        }
+        offset = free;
+      }
+
+      const opening = createOpening(openingType, {
+        offset,
+        width: openingWidth,
+        ...(typeof args.height === "number" ? { height: args.height as number } : {}),
+        ...(typeof args.sillHeight === "number" ? { sillHeight: args.sillHeight as number } : {}),
+        ...(typeof args.name === "string" ? { name: args.name as string } : {}),
+      });
+      const result = engine.addOpening(wallId, opening);
+      return toResult(command, result, "개구부를 추가했습니다.");
+    }
+
+    case "update_opening": {
+      const wallId = args.wallId as string;
+      const openingId = args.openingId as string;
+      if (!wallId || !openingId) return fail("대상 개구부가 없습니다.");
+      const patch: Record<string, unknown> = {};
+      for (const key of ["offset", "width", "height", "sillHeight"]) {
+        if (typeof args[key as never] === "number") patch[key] = args[key as never];
+      }
+      if (typeof args.name === "string") patch.name = args.name;
+      const result = engine.updateOpening(wallId, openingId, patch);
+      return toResult(command, result, "개구부를 수정했습니다.");
+    }
+
+    case "delete_opening": {
+      const wallId = args.wallId as string;
+      const openingId = args.openingId as string;
+      if (!wallId || !openingId) return fail("대상 개구부가 없습니다.");
+      const result = engine.deleteOpening(wallId, openingId);
+      return toResult(command, result, "개구부를 제거했습니다.");
     }
 
     case "search_asset":

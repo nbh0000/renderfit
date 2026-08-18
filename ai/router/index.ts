@@ -22,6 +22,8 @@ export type Intent =
   | "ADD_OBJECT"
   | "STYLE_TRANSFER"
   | "LIGHTING_CHANGE"
+  | "ROOM_CHANGE"
+  | "OPENING_CHANGE"
   | "RENDER"
   | "MULTI_EDIT"
   | "UNKNOWN";
@@ -33,9 +35,24 @@ export interface RouterObject {
   materialId: string | null;
 }
 
+export interface RouterWall {
+  id: string;
+  name: string;
+  length: number;
+  thickness: number;
+  openings: { id: string; name: string; type: string; width: number; height: number }[];
+}
+
+export interface RouterRoom {
+  dimensions: { width: number; length: number; height: number };
+  measured?: boolean;
+  walls: RouterWall[];
+}
+
 export interface RouterContext {
   objects: RouterObject[];
   lights?: { id: string; name: string; type: string }[];
+  room?: RouterRoom;
   selectedObjectId?: string | null;
 }
 
@@ -76,7 +93,18 @@ const LIGHT_ADJUST_WORDS = [
   "따뜻하게",
   "차갑게",
 ];
-const MATERIAL_WORDS = ["재질", "마감", "소재", "material", "가죽", "패브릭", "우드", "대리석", "타일", "콘크리트"];
+const MATERIAL_WORDS = [
+  "재질",
+  "마감",
+  "소재",
+  "material",
+  "가죽",
+  "패브릭",
+  "우드",
+  "대리석",
+  "타일",
+  "콘크리트",
+];
 const COLOR_WORDS = ["색", "컬러", "color", "색상"];
 
 const DIRECTIONS: { keywords: string[]; dx: number; dy: number; label: string }[] = [
@@ -89,7 +117,15 @@ const DIRECTIONS: { keywords: string[]; dx: number; dy: number; label: string }[
 ];
 
 const NUMBER_WORDS: Record<string, number> = {
-  한: 1, 하나: 1, 두: 2, 둘: 2, 세: 3, 셋: 3, 네: 4, 넷: 4, 다섯: 5,
+  한: 1,
+  하나: 1,
+  두: 2,
+  둘: 2,
+  세: 3,
+  셋: 3,
+  네: 4,
+  넷: 4,
+  다섯: 5,
 };
 
 function includesAny(text: string, words: string[]): boolean {
@@ -144,6 +180,254 @@ function resolveTarget(text: string, context: RouterContext): RouterObject | nul
   return null;
 }
 
+/* ─────────────────── 방 치수 · 벽 · 개구부 ─────────────────── */
+
+const DOOR_WORDS = ["문", "도어", "출입문", "현관문", "door"];
+const WINDOW_WORDS = ["창문", "창", "window"];
+const OPENING_ADD_WORDS = ["내줘", "내고", "만들", "추가", "달아", "넣어", "뚫어", "설치"];
+
+/**
+ * 문·창을 가리키는지 판별한다.
+ * '창문'에는 '문'이 들어 있으므로 창을 먼저 걷어 내고 문을 찾는다.
+ */
+function detectOpeningType(text: string): "door" | "window" | null {
+  const withoutWindow = text.replace(/창문/g, "창");
+  if (includesAny(withoutWindow, DOOR_WORDS)) return "door";
+  if (includesAny(withoutWindow, WINDOW_WORDS)) return "window";
+  return null;
+}
+
+/** 방 치수 필드 — 키워드가 먼저 나오고 뒤에 숫자가 오는 형태를 본다 */
+const ROOM_FIELDS: { key: "width" | "length" | "height"; keywords: string[]; label: string }[] = [
+  { key: "height", keywords: ["천장 높이", "층고", "천고", "천장", "높이"], label: "높이" },
+  { key: "width", keywords: ["가로", "폭", "너비"], label: "가로" },
+  { key: "length", keywords: ["세로", "길이", "깊이"], label: "세로" },
+];
+
+/** 숫자 + 단위를 mm로 환산한다 (단위가 없으면 m 단위 소수만 m로 본다) */
+function toMillimeters(value: number, unit?: string): number | null {
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const normalized = (unit ?? "").toLowerCase();
+  if (normalized === "mm" || normalized === "밀리") return value;
+  if (normalized === "cm" || normalized === "센티") return value * 10;
+  if (normalized === "m" || normalized === "미터") return value * 1000;
+
+  // 단위가 없으면 "2.4" 같은 소수는 미터, "2400"은 밀리미터로 해석한다.
+  return value < 100 ? value * 1000 : value;
+}
+
+/** 키워드 뒤에 오는 첫 숫자를 mm로 뽑는다 */
+function lengthAfter(text: string, keyword: string): number | null {
+  const index = text.indexOf(keyword);
+  if (index < 0) return null;
+
+  const rest = text.slice(index + keyword.length, index + keyword.length + 24);
+  const match = /(\d+(?:\.\d+)?)\s*(mm|cm|m|밀리|센티|미터)?/.exec(rest);
+  if (!match) return null;
+
+  return toMillimeters(Number(match[1]), match[2]);
+}
+
+/** "3600x4200" 처럼 가로·세로를 한 번에 말한 경우 */
+function parseDimensionPair(text: string): { width: number; length: number } | null {
+  const match =
+    /(\d+(?:\.\d+)?)\s*(mm|cm|m|미터)?\s*[x×*]\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|미터)?/.exec(text);
+  if (!match) return null;
+
+  const width = toMillimeters(Number(match[1]), match[2] ?? match[4]);
+  const length = toMillimeters(Number(match[3]), match[4] ?? match[2]);
+  if (width === null || length === null) return null;
+
+  return { width, length };
+}
+
+/** 문장에서 대상 벽을 찾는다. 못 찾으면 첫 번째 벽(보통 남측 벽)을 쓴다. */
+function resolveWall(text: string, room: RouterRoom): RouterWall | null {
+  if (room.walls.length === 0) return null;
+
+  const byName = room.walls.find((wall) => wall.name && text.includes(wall.name));
+  if (byName) return byName;
+
+  const bearings: [string[], string][] = [
+    [["남측", "남쪽", "남"], "남"],
+    [["동측", "동쪽", "동"], "동"],
+    [["북측", "북쪽", "북"], "북"],
+    [["서측", "서쪽", "서"], "서"],
+  ];
+  for (const [keywords, bearing] of bearings) {
+    if (includesAny(text, keywords)) {
+      const wall = room.walls.find((candidate) => candidate.name.startsWith(bearing));
+      if (wall) return wall;
+    }
+  }
+
+  return room.walls[0];
+}
+
+/** 문장에서 대상 개구부를 찾는다 */
+function resolveOpening(
+  text: string,
+  room: RouterRoom,
+  type?: "door" | "window"
+): { wall: RouterWall; opening: RouterWall["openings"][number] } | null {
+  for (const wall of room.walls) {
+    for (const opening of wall.openings) {
+      if (opening.name && text.includes(opening.name)) return { wall, opening };
+    }
+  }
+
+  if (!type) return null;
+
+  for (const wall of room.walls) {
+    const opening = wall.openings.find((candidate) => candidate.type === type);
+    if (opening) return { wall, opening };
+  }
+  return null;
+}
+
+/** 방 치수 명령: "천장 높이 2400으로", "가로 3.6m", "방 3600x4200" */
+function routeRoomDimensions(text: string): StructuredCommand[] | null {
+  // "문 폭 1000" 처럼 개구부 치수를 말한 경우는 방 치수가 아니다.
+  if (detectOpeningType(text)) return null;
+
+  const args: Record<string, number | boolean> = {};
+  const labels: string[] = [];
+
+  const pair = parseDimensionPair(text);
+  if (pair && includesAny(text, ["방", "공간", "크기", "치수", "실측", "가로", "면적"])) {
+    args.width = pair.width;
+    args.length = pair.length;
+    labels.push(`가로 ${Math.round(pair.width)}mm`, `세로 ${Math.round(pair.length)}mm`);
+  }
+
+  for (const field of ROOM_FIELDS) {
+    if (args[field.key] !== undefined) continue;
+    for (const keyword of field.keywords) {
+      const value = lengthAfter(text, keyword);
+      if (value === null) continue;
+      // 방 치수로 보기 어려운 값은 무시한다 (문·창 치수와 섞이지 않게)
+      if (value < 500 || value > 50000) continue;
+      args[field.key] = value;
+      labels.push(`${field.label} ${Math.round(value)}mm`);
+      break;
+    }
+  }
+
+  if (labels.length === 0) return null;
+
+  if (includesAny(text, ["실측", "실제 치수", "재서", "측정"])) args.measured = true;
+
+  return [
+    {
+      tool: "set_room",
+      arguments: args,
+      explanation: `방 치수를 ${labels.join(", ")}로 바꿉니다.`,
+      confidence: 0.88,
+    },
+  ];
+}
+
+/** 벽·개구부 명령 */
+function routeWallAndOpening(text: string, room: RouterRoom): StructuredCommand[] | null {
+  const type = detectOpeningType(text);
+
+  // 벽 두께 — "벽 두께 200으로"
+  if (text.includes("벽") && includesAny(text, ["두께", "두껍", "얇"])) {
+    const thickness = lengthAfter(text, "두께");
+    const wall = resolveWall(text, room);
+    if (thickness !== null && wall) {
+      return [
+        {
+          tool: "update_wall",
+          arguments: { wallId: wall.id, thickness },
+          explanation: `${wall.name} 두께를 ${Math.round(thickness)}mm로 바꿉니다.`,
+          confidence: 0.85,
+        },
+      ];
+    }
+  }
+
+  if (!type) return null;
+
+  // 삭제 — "문 없애줘"
+  if (includesAny(text, DELETE_WORDS)) {
+    const found = resolveOpening(text, room, type);
+    if (!found) {
+      return [unknownCommand(`지울 ${type === "door" ? "문" : "창문"}을 찾지 못했습니다.`)];
+    }
+    return [
+      {
+        tool: "delete_opening",
+        arguments: { wallId: found.wall.id, openingId: found.opening.id },
+        explanation: `${found.wall.name}의 ${found.opening.name}을(를) 없앱니다.`,
+        confidence: 0.9,
+      },
+    ];
+  }
+
+  // 크기 변경 — "창문 폭 1800으로", "문 높이 2200"
+  const widthValue = lengthAfter(text, "폭") ?? lengthAfter(text, "너비");
+  const heightValue = lengthAfter(text, "높이");
+  const sillValue = lengthAfter(text, "하부") ?? lengthAfter(text, "창대");
+
+  if (widthValue !== null || heightValue !== null || sillValue !== null) {
+    const found = resolveOpening(text, room, type);
+    if (found) {
+      const args: Record<string, unknown> = {
+        wallId: found.wall.id,
+        openingId: found.opening.id,
+      };
+      const labels: string[] = [];
+      if (widthValue !== null) {
+        args.width = widthValue;
+        labels.push(`폭 ${Math.round(widthValue)}mm`);
+      }
+      if (heightValue !== null) {
+        args.height = heightValue;
+        labels.push(`높이 ${Math.round(heightValue)}mm`);
+      }
+      if (sillValue !== null) {
+        args.sillHeight = sillValue;
+        labels.push(`하부 ${Math.round(sillValue)}mm`);
+      }
+
+      return [
+        {
+          tool: "update_opening",
+          arguments: args,
+          explanation: `${found.opening.name}을(를) ${labels.join(", ")}로 바꿉니다.`,
+          confidence: 0.87,
+        },
+      ];
+    }
+  }
+
+  // 추가 — "이 벽에 문 내줘", "창문 하나 달아줘"
+  if (includesAny(text, OPENING_ADD_WORDS) || includesAny(text, ADD_WORDS)) {
+    const wall = resolveWall(text, room);
+    if (!wall) return [unknownCommand("벽 정보를 찾지 못했습니다.")];
+
+    const args: Record<string, unknown> = { wallId: wall.id, type };
+    if (widthValue !== null) args.width = widthValue;
+    if (heightValue !== null) args.height = heightValue;
+
+    const named = room.walls.some((candidate) => text.includes(candidate.name));
+    return [
+      {
+        tool: "add_opening",
+        arguments: args,
+        explanation: `${wall.name}에 ${type === "door" ? "문" : "창문"}을 냅니다.${
+          named ? "" : " (다른 벽이면 '동측 벽에 문 내줘'처럼 벽 이름을 말해 주세요.)"
+        }`,
+        confidence: named ? 0.88 : 0.7,
+      },
+    ];
+  }
+
+  return null;
+}
+
 /**
  * 절 구분 규칙.
  *  - 접속어: 그리고 / 쉼표 / 후에
@@ -169,7 +453,11 @@ function routeClause(clause: string, context: RouterContext): StructuredCommand[
 
   // 1) 스타일 트랜스퍼 — 전체 공간 대상
   const style = findStyleByText(normalized);
-  if (style && (includesAny(normalized, ["스타일", "느낌", "분위기", "전체", "공간", "style"]) || !detectType(normalized))) {
+  if (
+    style &&
+    (includesAny(normalized, ["스타일", "느낌", "분위기", "전체", "공간", "style"]) ||
+      !detectType(normalized))
+  ) {
     if (!includesAny(normalized, [...DELETE_WORDS, ...ADD_WORDS])) {
       return [
         {
@@ -226,12 +514,24 @@ function routeClause(clause: string, context: RouterContext): StructuredCommand[
     }
   }
 
+  // 4) 방 실측 치수 · 벽 · 개구부 — 객체 편집보다 먼저 본다
+  //    ("창문 넓혀줘"가 창문 객체 스케일 명령으로 새지 않도록)
+  if (context.room) {
+    const roomCommands = routeRoomDimensions(normalized);
+    if (roomCommands) return roomCommands;
+
+    const wallCommands = routeWallAndOpening(normalized, context.room);
+    if (wallCommands) return wallCommands;
+  }
+
   const target = resolveTarget(text, context);
 
-  // 4) 삭제
+  // 5) 삭제
   if (includesAny(normalized, DELETE_WORDS)) {
     if (!target) {
-      return [unknownCommand("어떤 객체를 삭제할지 찾지 못했습니다. 캔버스에서 객체를 선택해 주세요.")];
+      return [
+        unknownCommand("어떤 객체를 삭제할지 찾지 못했습니다. 캔버스에서 객체를 선택해 주세요."),
+      ];
     }
     return [
       {
@@ -243,7 +543,7 @@ function routeClause(clause: string, context: RouterContext): StructuredCommand[
     ];
   }
 
-  // 5) 추가
+  // 6) 추가
   if (includesAny(normalized, ADD_WORDS)) {
     const type = detectType(normalized) ?? "decoration";
     const count = detectCount(normalized);
@@ -333,7 +633,10 @@ function routeClause(clause: string, context: RouterContext): StructuredCommand[
   }
 
   // 11) 재질
-  if (material && (includesAny(normalized, MATERIAL_WORDS) || includesAny(normalized, ["으로", "로"]))) {
+  if (
+    material &&
+    (includesAny(normalized, MATERIAL_WORDS) || includesAny(normalized, ["으로", "로"]))
+  ) {
     if (target) {
       return [
         {
@@ -397,6 +700,11 @@ export function intentOf(commands: StructuredCommand[]): Intent {
     add_object: "ADD_OBJECT",
     change_style: "STYLE_TRANSFER",
     change_lighting: "LIGHTING_CHANGE",
+    set_room: "ROOM_CHANGE",
+    update_wall: "ROOM_CHANGE",
+    add_opening: "OPENING_CHANGE",
+    update_opening: "OPENING_CHANGE",
+    delete_opening: "OPENING_CHANGE",
     render_preview: "RENDER",
     render_final: "RENDER",
   };
