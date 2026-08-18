@@ -123,3 +123,34 @@ curl https://<도메인>/api/health
 - Scene 파일은 비공개 버킷에 있고 `/api/files/*`가 로그인 사용자에게만 중계합니다.
   프로젝트 소유자 단위 검사는 아직 TODO입니다.
 - 무료 플랜 워터마크·배치도 고지는 클라이언트 canvas에서 굽습니다(다운로드 파일에 포함).
+
+---
+
+## 부록 — Railway 빌드가 실패할 때
+
+### 1) 로그부터 확인
+Railway 배포 화면 → **View logs** → *Build* 탭. 아래는 자주 나오는 원인입니다.
+
+| 로그에 보이는 문구 | 원인 | 조치 |
+| --- | --- | --- |
+| `Unsupported engine` / `node: not found` / nix 설치 실패 | 빌더가 요구한 Node 버전을 못 맞춤 | `.nvmrc`·`package.json engines`가 **22**인지 확인 |
+| `npm ci` ... `EUSAGE` / lock file mismatch | 락파일과 package.json 불일치 | 로컬에서 `npm install` 후 `package-lock.json` 커밋 |
+| `Cannot find module` | 빌드 캐시 꼬임 | Railway → Deployments → **Redeploy without cache** |
+| `Killed` / exit 137 | 빌드 메모리 부족 | 서비스 플랜 상향 또는 Dockerfile 경로 사용 |
+
+### 2) 그래도 안 되면 Dockerfile로 전환 (결정적 빌드)
+
+레포에 `deploy/Dockerfile`이 들어 있습니다. Railway에서:
+
+**Settings → Build**
+- Builder: **Dockerfile**
+- Dockerfile Path: `deploy/Dockerfile`
+
+이 경로는 Node 22 이미지를 고정해서 쓰기 때문에 빌더 환경 차이를 없앱니다.
+
+> `NEXT_PUBLIC_*` 값은 빌드 시점에 번들에 박힙니다. Dockerfile 빌드에서는 build arg로 전달되므로,
+> Variables에 값이 **먼저** 들어 있어야 하고 값을 바꾸면 반드시 재배포해야 합니다.
+
+### 3) 배포 후 클라이언트 확인
+`/api/health`는 서버 환경변수만 봅니다. 브라우저 번들에 값이 들어갔는지는 **로그인 버튼**으로 확인하세요.
+"Supabase 설정이 없어 로그인할 수 없습니다" 토스트가 뜨면 `NEXT_PUBLIC_*`이 빌드에 안 들어간 것입니다.
