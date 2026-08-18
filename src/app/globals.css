@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  /* 라이트 테마 고정: 웜 화이트 배경 + 딥 차콜 텍스트 + 테라코타 포인트 1개 */
+  --color-canvas: #faf9f7;
+  --color-surface: #ffffff;
+  --color-sunken: #f2efea;
+  --color-ink: #26231f;
+  --color-ink-soft: #5c5751;
+  --color-muted: #8b857d;
+  --color-line: #e6e1d9;
+  --color-line-strong: #d6cfc4;
+  --color-accent: #bf6242;
+  --color-accent-hover: #a85234;
+  --color-accent-soft: #f6e9e3;
+  --color-danger: #b4453a;
+  --color-success: #4f7a55;
+
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    "Apple SD Gothic Neo", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-serif: var(--font-noto-serif-kr), "Noto Serif KR", serif;
+
+  --radius-card: 14px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
+  }
+
+  /* 한국어 본문 가독성 */
+  p,
+  li {
+    word-break: keep-all;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+@utility serif-display {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+/* 스크롤바를 UI 크롬처럼 눈에 띄지 않게 */
+@layer utilities {
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+}
