@@ -144,13 +144,19 @@ function resolveTarget(text: string, context: RouterContext): RouterObject | nul
   return null;
 }
 
+/**
+ * 절 구분 규칙.
+ *  - 접속어: 그리고 / 쉼표 / 후에
+ *  - 연결어미 '-고': "옮기고", "삭제하고" 처럼 동사 어간 뒤에 올 때만 쪼갠다.
+ *    ('냉장고', '창고' 같은 명사가 잘리지 않도록 어간 목록으로 제한한다)
+ */
+const CLAUSE_SPLIT =
+  /\s*(?:그리고|,|、|\.\s|후에)\s*|(?<=(?:옮기|지우|바꾸|바꿔|넣|빼|키우|줄이|돌리|놓|만들|추가하|삭제하|제거하|배치하|교체하|변경하)고)\s+/;
+
 /** 여러 동작이 한 문장에 들어 있으면 절 단위로 쪼갠다 */
 export function splitClauses(instruction: string): string[] {
   return instruction
-    .split(
-      // "…삭제하고 …추가해줘" 처럼 뒤 절에 동사가 있는 경우에만 '하고'로 쪼갠다.
-      /\s*(?:그리고|,|、|\.\s|하고\s*(?=.*(?:추가|삭제|제거|배치|교체|바꿔|놓아|넣어))|후에)\s*/
-    )
+    .split(CLAUSE_SPLIT)
     .map((clause) => clause.trim())
     .filter(Boolean);
 }

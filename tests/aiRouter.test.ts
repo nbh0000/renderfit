@@ -146,3 +146,24 @@ describe("Tool 실행", () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe("복합 명령 절 분리", () => {
+  it("'-고' 연결어미로 이어진 두 동작을 모두 실행한다", () => {
+    const { context } = setup();
+    const clauses = splitClauses("소파를 왼쪽으로 옮기고 벽을 베이지색으로 바꿔줘");
+    expect(clauses).toHaveLength(2);
+
+    const commands = routeCommand("소파를 왼쪽으로 옮기고 벽을 베이지색으로 바꿔줘", context);
+    expect(commands.map((c) => c.tool)).toEqual(["move_object", "change_color"]);
+  });
+
+  it("명사에 들어 있는 '고'는 자르지 않는다 (냉장고·창고)", () => {
+    expect(splitClauses("냉장고를 오른쪽으로 옮겨줘")).toHaveLength(1);
+    expect(splitClauses("창고 문을 없애줘")).toHaveLength(1);
+  });
+
+  it("'그리고'로 이어진 문장도 분리한다", () => {
+    const clauses = splitClauses("식물을 추가하고 그리고 조명을 밝게");
+    expect(clauses.length).toBeGreaterThanOrEqual(2);
+  });
+});
