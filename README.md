@@ -100,6 +100,18 @@ Mock을 실제 모델로 바꾸려면 `ai/providers/index.ts`의 팩토리에서
 `V` 선택 · `M` 이동 · `R` 회전 · `S` 크기 · `G` 그리드 · `1/2/3` 뷰 전환 ·
 `Delete` 삭제 · `D` 복제 · `Esc` 선택 해제 · `Ctrl+Z` / `Ctrl+Shift+Z` 실행 취소·재실행 · `Ctrl+C/V` 복사·붙여넣기
 
+## 배포
+
+| 항목 | 값 |
+| --- | --- |
+| 레포 | https://github.com/nbh0000/renderfit (private) |
+| 서버 | Railway (main 브랜치 push → 자동 배포) |
+| DB · 인증 · 스토리지 | Supabase |
+| 이미지 생성 | Gemini |
+| CI | GitHub Actions — typecheck · lint · test · build |
+
+배포 절차와 환경변수는 **[DEPLOY.md](./DEPLOY.md)** 를 따르세요. 배포 후 `/api/health`로 연결 상태를 확인할 수 있습니다.
+
 ## 실환경 연결
 
 1. `.env.example` → `.env.local` 복사 후 값 입력
