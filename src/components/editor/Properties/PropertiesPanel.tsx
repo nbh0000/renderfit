@@ -2,6 +2,7 @@
 
 import { useEditorStore, useSelectedObject } from "@/lib/editor/store";
 import { DEFAULT_MATERIALS } from "@/models/materials";
+import { NumberField } from "../shared/NumberField";
 
 /** 선택한 객체의 속성 · 변형 · 재질 · AI 편집 */
 export function PropertiesPanel() {
@@ -56,9 +57,26 @@ export function PropertiesPanel() {
       </Section>
 
       <Section title="치수 (mm)">
-        <Row label="가로">{object.dimensions.width}</Row>
-        <Row label="높이">{object.dimensions.height}</Row>
-        <Row label="깊이">{object.dimensions.depth}</Row>
+        <div className="space-y-1">
+          {(
+            [
+              ["가로", object.dimensions.width, "width"],
+              ["높이", object.dimensions.height, "height"],
+              ["깊이", object.dimensions.depth, "depth"],
+            ] as [string, number, string][]
+          ).map(([label, value, key]) => (
+            <NumberField
+              key={key}
+              label={label}
+              value={value}
+              unit="mm"
+              onCommit={(next) => runTool("set_dimensions", { objectId: object.id, [key]: next })}
+            />
+          ))}
+        </div>
+        <p className="mt-1 text-[10.5px] leading-relaxed text-muted">
+          도면(DXF·평면도)에 이 치수가 그대로 들어갑니다. 실제 제품 치수를 넣어 두세요.
+        </p>
       </Section>
 
       <Section title="재질">

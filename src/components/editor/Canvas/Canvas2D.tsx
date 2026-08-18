@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useEditorStore } from "@/lib/editor/store";
 import type { SceneObject } from "@/scene/types";
+import { PlanMinimap } from "./PlanMinimap";
 
 /**
  * 2.5D 캔버스.
@@ -286,6 +287,9 @@ export function Canvas2D() {
         </span>
         <span className="rounded bg-black/40 px-2 py-1">Ctrl+휠 확대 · 빈 곳 드래그로 이동</span>
       </div>
+
+      {/* 사진 위에서는 벽·개구부가 보이지 않으므로 평면 미니맵으로 함께 보여 준다 */}
+      {viewMode !== "image" && <PlanMinimap />}
     </div>
   );
 }

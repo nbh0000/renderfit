@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useEditorStore } from "@/lib/editor/store";
 import type { Scene, SceneObject } from "@/scene/types";
 import { FurnitureMesh } from "./FurnitureMesh";
 import { woodTexture, paintTexture } from "./textures";
+import { ensureRoom, pointAlongWall, wallAngle, wallLength, wallSpans } from "@/scene/geometry";
 
 /**
  * 3D 뷰.
@@ -149,17 +150,24 @@ function GeneratedBackdrop({ scene, url }: { scene: Scene; url: string }) {
   );
 }
 
-function RoomShell({ scene }: { scene: Scene }) {
-  const width = scene.room.dimensions.width * MM;
-  const length = scene.room.dimensions.length * MM;
-  const height = scene.room.dimensions.height * MM;
+/** 평면 좌표(mm, 좌하단 원점) → 3D 월드 좌표(m, 방 중심 원점) */
+function worldFromPlan([x, y]: [number, number], room: Scene["room"]): [number, number] {
+  return [(x - room.dimensions.width / 2) * MM, (room.dimensions.length / 2 - y) * MM];
+}
 
-  const floorColor =
-    scene.materials.find((m) => m.tags?.includes("floor"))?.baseColor ?? "#c9a173";
+function RoomShell({ scene }: { scene: Scene }) {
+  const room = useMemo(() => ensureRoom(scene.room), [scene.room]);
+  const width = room.dimensions.width * MM;
+  const length = room.dimensions.length * MM;
+  const height = room.dimensions.height * MM;
+
+  const floorColor = scene.materials.find((m) => m.tags?.includes("floor"))?.baseColor ?? "#c9a173";
   const wallColor = scene.materials.find((m) => m.tags?.includes("wall"))?.baseColor ?? "#efe9e0";
 
   const floorMap = useMemo(() => woodTexture(floorColor, 4), [floorColor]);
   const wallMap = useMemo(() => paintTexture(wallColor, 2), [wallColor]);
+
+  const walls = room.walls ?? [];
 
   return (
     <group>
@@ -168,39 +176,145 @@ function RoomShell({ scene }: { scene: Scene }) {
         <meshStandardMaterial map={floorMap} color={floorColor} roughness={0.55} metalness={0.02} />
       </mesh>
 
-      {/* 뒷벽 — 생성 이미지는 이 벽 앞에 겹쳐 그린다 */}
-      <mesh position={[0, height / 2, -length / 2]} receiveShadow>
+      {/* 뒷벽 — 생성 이미지 배경이 붙는 면. 벽 편집과 무관하게 항상 둔다. */}
+      <mesh position={[0, height / 2, -length / 2 - 0.02]} receiveShadow>
         <planeGeometry args={[width, height]} />
         <meshStandardMaterial map={wallMap} color={wallColor} roughness={0.95} />
       </mesh>
 
-      <mesh position={[-width / 2, height / 2, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
-        <planeGeometry args={[length, height]} />
-        <meshStandardMaterial map={wallMap} color={wallColor} roughness={0.95} />
-      </mesh>
-      <mesh position={[width / 2, height / 2, 0]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
-        <planeGeometry args={[length, height]} />
-        <meshStandardMaterial map={wallMap} color={wallColor} roughness={0.95} />
-      </mesh>
+      {/* 실측 벽체 — 개구부(문·창)로 끊긴 구간만 실제로 세운다 */}
+      {walls.map((wall) => (
+        <WallMesh key={wall.id} wall={wall} room={room} color={wallColor} map={wallMap} />
+      ))}
 
       <mesh position={[0, height, 0]} rotation={[Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[width, length]} />
         <meshStandardMaterial color="#f6f3ee" roughness={1} />
       </mesh>
+    </group>
+  );
+}
 
-      {/* 걸레받이 */}
-      {(
-        [
-          [0, 0.05, -length / 2 + 0.01, width, 0],
-          [-width / 2 + 0.01, 0.05, 0, length, Math.PI / 2],
-          [width / 2 - 0.01, 0.05, 0, length, Math.PI / 2],
-        ] as [number, number, number, number, number][]
-      ).map(([x, y, z, len, rot], i) => (
-        <mesh key={i} position={[x, y, z]} rotation={[0, rot, 0]} castShadow>
-          <boxGeometry args={[len, 0.1, 0.02]} />
-          <meshStandardMaterial color="#f2ede4" roughness={0.7} />
-        </mesh>
-      ))}
+/** 벽 하나 — 개구부를 제외한 조각들 + 문틀/창틀/유리 */
+function WallMesh({
+  wall,
+  room,
+  color,
+  map,
+}: {
+  wall: import("@/scene/types").WallSegment;
+  room: Scene["room"];
+  color: string;
+  map: THREE.Texture;
+}) {
+  const spans = useMemo(() => wallSpans(wall), [wall]);
+  const length = wallLength(wall);
+  const thickness = wall.thickness * MM;
+  const angle = (wallAngle(wall) * Math.PI) / 180;
+  const groupRef = useRef<THREE.Group>(null);
+
+  /** 벽 시작점 기준 거리 → 월드 XZ */
+  const at = (distance: number): [number, number] =>
+    worldFromPlan(pointAlongWall(wall, distance), room);
+
+  const midpoint = useMemo(
+    () => worldFromPlan(pointAlongWall(wall, wallLength(wall) / 2), room),
+    [wall, room]
+  );
+
+  /**
+   * 카메라와 방 사이를 가로막는 벽은 숨긴다.
+   * (방 밖에서 볼 때 앞벽이 시야를 막지 않도록 — 인테리어 3D 뷰의 일반적인 동작)
+   */
+  useFrame(({ camera }) => {
+    const group = groupRef.current;
+    if (!group) return;
+
+    const [mx, mz] = midpoint;
+    const scale = Math.hypot(mx, mz) || 1;
+    const outward = ((camera.position.x - mx) * mx + (camera.position.z - mz) * mz) / scale;
+    group.visible = outward < 0.05;
+  });
+
+  return (
+    <group ref={groupRef}>
+      {spans.map((span, index) => {
+        const [x, z] = at((span.from + span.to) / 2);
+        const spanLength = (span.to - span.from) * MM;
+        const spanHeight = (span.top - span.bottom) * MM;
+        return (
+          <mesh
+            key={`${wall.id}_${index}`}
+            position={[x, span.bottom * MM + spanHeight / 2, z]}
+            rotation={[0, angle, 0]}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[spanLength, spanHeight, thickness]} />
+            <meshStandardMaterial map={map} color={color} roughness={0.95} />
+          </mesh>
+        );
+      })}
+
+      {/* 걸레받이 — 개구부가 없는 구간에만 */}
+      {spans
+        .filter((span) => span.bottom === 0)
+        .map((span, index) => {
+          const [x, z] = at((span.from + span.to) / 2);
+          return (
+            <mesh key={`${wall.id}_base_${index}`} position={[x, 0.05, z]} rotation={[0, angle, 0]}>
+              <boxGeometry args={[(span.to - span.from) * MM, 0.1, thickness + 0.02]} />
+              <meshStandardMaterial color="#f2ede4" roughness={0.7} />
+            </mesh>
+          );
+        })}
+
+      {(wall.openings ?? []).map((opening) => {
+        const center = Math.min(length, opening.offset + opening.width / 2);
+        const [x, z] = at(center);
+        const openWidth = opening.width * MM;
+        const openHeight = opening.height * MM;
+        const y = (opening.sillHeight + opening.height / 2) * MM;
+
+        const frameColor = opening.type === "door" ? "#8a6a4d" : "#f4f1ec";
+        const jamb = 0.05; // 문선·창틀 폭 50mm
+        const depth = thickness * 0.7;
+
+        return (
+          <group key={opening.id} position={[x, y, z]} rotation={[0, angle, 0]}>
+            {/* 좌·우 선틀 */}
+            {[-1, 1].map((side) => (
+              <mesh key={side} position={[side * (openWidth / 2 + jamb / 2), 0, 0]}>
+                <boxGeometry args={[jamb, openHeight + jamb * 2, depth]} />
+                <meshStandardMaterial color={frameColor} roughness={0.6} />
+              </mesh>
+            ))}
+            {/* 상인방(문틀 위) — 창은 하부 틀도 함께 */}
+            {(opening.type === "window" ? [1, -1] : [1]).map((side) => (
+              <mesh key={`h${side}`} position={[0, side * (openHeight / 2 + jamb / 2), 0]}>
+                <boxGeometry args={[openWidth + jamb * 2, jamb, depth]} />
+                <meshStandardMaterial color={frameColor} roughness={0.6} />
+              </mesh>
+            ))}
+            {/* 창유리 — 문은 열린 개구부로 둔다 */}
+            {opening.type === "window" && (
+              <mesh>
+                <planeGeometry args={[openWidth, openHeight]} />
+                <meshPhysicalMaterial
+                  color="#dceaf2"
+                  transparent
+                  opacity={0.3}
+                  roughness={0.05}
+                  metalness={0}
+                  transmission={0.85}
+                  thickness={0.02}
+                  side={THREE.DoubleSide}
+                />
+              </mesh>
+            )}
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -328,7 +442,11 @@ function PlacementController({
 
       const object = scene.objects.find((o) => o.id === current.id);
       const halfWidth = object ? object.screen.width / 2 : 0;
-      setDraft({ id: current.id, x: clamp01(hit.x - halfWidth), depth: hit.depth });
+      setDraft({
+        id: current.id,
+        x: clamp01(hit.x - halfWidth),
+        depth: hit.depth,
+      });
     };
 
     const onUp = async () => {
@@ -365,9 +483,10 @@ function PlacementController({
 /** 카메라 초기 정렬 — OrbitControls가 첫 프레임에 엉뚱한 방향을 보는 문제 보정 */
 function CameraRig({ target }: { target: [number, number, number] }) {
   const camera = useThree((state) => state.camera);
-  const controls = useThree((state) => state.controls) as
-    | { target?: { set: (x: number, y: number, z: number) => void }; update?: () => void }
-    | null;
+  const controls = useThree((state) => state.controls) as {
+    target?: { set: (x: number, y: number, z: number) => void };
+    update?: () => void;
+  } | null;
 
   useEffect(() => {
     camera.lookAt(target[0], target[1], target[2]);
@@ -396,7 +515,10 @@ function CanvasBridge() {
     setExport(async () => {
       const { GLTFExporter } = await import("three/examples/jsm/exporters/GLTFExporter.js");
       const exporter = new GLTFExporter();
-      const result = await exporter.parseAsync(scene, { binary: true, onlyVisible: true });
+      const result = await exporter.parseAsync(scene, {
+        binary: true,
+        onlyVisible: true,
+      });
       return new Blob([result as ArrayBuffer], { type: "model/gltf-binary" });
     });
 
@@ -522,7 +644,11 @@ export function Canvas3D() {
             backdropOn ? "bg-accent text-white" : "bg-black/45 text-white/70 hover:bg-black/60",
           ].join(" ")}
         >
-          {backdropUrl ? (backdropOn ? "생성 이미지 켜짐" : "생성 이미지 꺼짐") : "생성 이미지 없음"}
+          {backdropUrl
+            ? backdropOn
+              ? "생성 이미지 켜짐"
+              : "생성 이미지 꺼짐"
+            : "생성 이미지 없음"}
         </button>
       </div>
     </div>

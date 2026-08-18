@@ -9,6 +9,7 @@ import { Canvas2D } from "./Canvas/Canvas2D";
 import { Canvas3D } from "./Canvas/Canvas3D";
 import { LayersPanel } from "./Layers/LayersPanel";
 import { PropertiesPanel } from "./Properties/PropertiesPanel";
+import { RoomPanel } from "./Room/RoomPanel";
 import { AssetsPanel } from "./Assets/AssetsPanel";
 import { AICommandBar } from "./AICommand/AICommandBar";
 import { useShortcuts } from "./useShortcuts";
@@ -20,7 +21,7 @@ export function EditorShell({ project }: { project: DesignProject }) {
   const renderUrl = useEditorStore((state) => state.renderUrl);
   const setRenderUrl = useEditorStore((state) => state.setRenderUrl);
   const placeAsset = useEditorStore((state) => state.placeAsset);
-  const [rightTab, setRightTab] = useState<"layers" | "properties">("properties");
+  const [rightTab, setRightTab] = useState<"layers" | "properties" | "room">("properties");
 
   useEffect(() => {
     init(project);
@@ -97,6 +98,7 @@ export function EditorShell({ project }: { project: DesignProject }) {
             {(
               [
                 { id: "properties", label: "속성" },
+                { id: "room", label: "공간·치수" },
                 { id: "layers", label: "레이어" },
               ] as const
             ).map((tab) => (
@@ -114,7 +116,13 @@ export function EditorShell({ project }: { project: DesignProject }) {
             ))}
           </div>
           <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto">
-            {rightTab === "layers" ? <LayersPanel /> : <PropertiesPanel />}
+            {rightTab === "layers" ? (
+              <LayersPanel />
+            ) : rightTab === "room" ? (
+              <RoomPanel />
+            ) : (
+              <PropertiesPanel />
+            )}
           </div>
         </aside>
       </div>
