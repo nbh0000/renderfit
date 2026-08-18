@@ -39,6 +39,12 @@ interface EditorState {
   renderUrl: string | null;
   /** 3D 캔버스 캡처 함수 (Canvas3D가 등록) */
   viewportCapture: (() => string) | null;
+  /** 3D 씬을 GLB로 내보내는 함수 (Canvas3D가 등록) */
+  viewportExport: (() => Promise<Blob>) | null;
+  /** 화면 좌표 → 바닥 위 Scene 좌표 (드래그 배치용) */
+  viewportRaycast: ((clientX: number, clientY: number) => { x: number; depth: number } | null) | null;
+  /** 3D 뷰에 생성 이미지를 배경으로 띄울지 */
+  showBackdrop: boolean;
 
   init: (project: DesignProject) => void;
   setScene: (scene: Scene) => void;
@@ -51,6 +57,12 @@ interface EditorState {
   toggleGrid: () => void;
   setRenderUrl: (url: string | null) => void;
   setViewportCapture: (capture: (() => string) | null) => void;
+  setViewportExport: (exporter: (() => Promise<Blob>) | null) => void;
+  setViewportRaycast: (
+    raycast: ((clientX: number, clientY: number) => { x: number; depth: number } | null) | null
+  ) => void;
+  toggleBackdrop: () => void;
+  placeAsset: (assetId: string, clientX: number, clientY: number) => Promise<void>;
 
   runTool: (tool: string, args?: Record<string, unknown>) => Promise<ToolCallResult>;
   undo: () => Promise<void>;
@@ -87,6 +99,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   showGrid: true,
   renderUrl: null,
   viewportCapture: null,
+  viewportExport: null,
+  viewportRaycast: null,
+  showBackdrop: true,
 
   init: (project) =>
     set({
@@ -114,6 +129,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
   setRenderUrl: (renderUrl) => set({ renderUrl }),
   setViewportCapture: (viewportCapture) => set({ viewportCapture }),
+  setViewportExport: (viewportExport) => set({ viewportExport }),
+  setViewportRaycast: (viewportRaycast) => set({ viewportRaycast }),
+  toggleBackdrop: () => set((state) => ({ showBackdrop: !state.showBackdrop })),
+
+  /** 좌측 패널에서 3D 뷰로 끌어다 놓은 위치에 에셋을 추가한다 */
+  placeAsset: async (assetId, clientX, clientY) => {
+    const { viewportRaycast, runTool } = get();
+    const hit = viewportRaycast?.(clientX, clientY) ?? null;
+
+    const result = await runTool("add_object", { assetId });
+    if (!result.ok || !hit || !result.selectObjectId) return;
+
+    await runTool("move_object", {
+      objectId: result.selectObjectId,
+      x: hit.x,
+      depth: hit.depth,
+    });
+  },
 
   /** Scene operation 실행 — 모든 편집은 이 경로를 지난다 */
   runTool: async (tool, args = {}) => {

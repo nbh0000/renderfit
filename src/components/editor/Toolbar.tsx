@@ -108,14 +108,28 @@ export function Toolbar() {
             className="absolute right-0 top-9 z-30 w-44 rounded-lg border border-line bg-surface p-1 shadow-lg"
             onMouseLeave={() => setExportOpen(false)}
           >
+            <p className="px-2 pb-1 pt-1.5 text-[10.5px] font-medium tracking-tight text-muted">
+              도면 · CAD
+            </p>
+            <ExportItem href={`/api/projects/${projectId}/export?format=dxf`}>
+              평면도 (DXF · mm)
+            </ExportItem>
+            <ExportItem href={`/api/projects/${projectId}/export?format=plan`} newTab>
+              치수 평면도 (SVG)
+            </ExportItem>
+            <ExportGlb />
+
+            <p className="px-2 pb-1 pt-2 text-[10.5px] font-medium tracking-tight text-muted">
+              이미지 · 데이터
+            </p>
+            <ExportPng />
+            <ExportItem href={`/api/projects/${projectId}/export?format=image`} newTab>
+              장면 이미지 (SVG)
+            </ExportItem>
             <ExportItem href={`/api/projects/${projectId}/export?format=scene`}>Scene JSON</ExportItem>
             <ExportItem href={`/api/projects/${projectId}/export?format=project`}>
               Project JSON
             </ExportItem>
-            <ExportItem href={`/api/projects/${projectId}/export?format=image`} newTab>
-              이미지 (SVG)
-            </ExportItem>
-            <ExportPng />
           </div>
         )}
       </div>
@@ -172,6 +186,43 @@ function ExportItem({
     >
       {children}
     </a>
+  );
+}
+
+/** 3D 씬을 GLB로 내보낸다 (SketchUp·Blender·3ds Max에서 열 수 있다) */
+function ExportGlb() {
+  const viewportExport = useEditorStore((state) => state.viewportExport);
+  const viewMode = useEditorStore((state) => state.viewMode);
+  const projectName = useEditorStore((state) => state.projectName);
+  const setMessage = useEditorStore((state) => state.setMessage);
+
+  const download = async () => {
+    if (!viewportExport) {
+      setMessage("3D 뷰를 먼저 연 뒤 내보내 주세요.");
+      return;
+    }
+    try {
+      const blob = await viewportExport();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${projectName || "scene"}.glb`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    } catch {
+      setMessage("GLB로 내보내지 못했습니다.");
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void download()}
+      title={viewMode === "3d" ? "" : "3D 뷰에서 사용할 수 있습니다"}
+      className="block w-full rounded px-2 py-1.5 text-left text-[12px] text-ink-soft hover:bg-sunken disabled:opacity-40"
+      disabled={!viewportExport}
+    >
+      3D 모델 (GLB)
+    </button>
   );
 }
 

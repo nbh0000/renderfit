@@ -2,6 +2,7 @@ import { getViewer } from "@/lib/auth";
 import { loadProject } from "@/services/projectService";
 import { sceneToJSON } from "@/scene/serialization";
 import { renderSceneToSvg } from "@/ai/providers/mock/sceneRaster";
+import { buildDxf, buildPlanSvg, toPlanData } from "@/services/cadExport";
 
 /**
  * Export.
@@ -36,6 +37,23 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
         "Content-Type": "application/json; charset=utf-8",
         "Content-Disposition": `attachment; filename="${encodeURIComponent(filenameBase)}_project.json"`,
       },
+    });
+  }
+
+  if (format === "dxf") {
+    const plan = toPlanData(scene, loaded.project.name);
+    return new Response(buildDxf(plan), {
+      headers: {
+        "Content-Type": "application/dxf",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(filenameBase)}_plan.dxf"`,
+      },
+    });
+  }
+
+  if (format === "plan") {
+    const plan = toPlanData(scene, loaded.project.name);
+    return new Response(buildPlanSvg(plan), {
+      headers: { "Content-Type": "image/svg+xml; charset=utf-8" },
     });
   }
 

@@ -13,6 +13,10 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     body = {};
   }
 
+  if (body.prompt && body.prompt.length > 500) {
+    return Response.json({ error: "추가 요청은 500자 이하로 입력해 주세요." }, { status: 400 });
+  }
+
   const loaded = await loadProject(id, viewer.userId);
   if (!loaded) return Response.json({ error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
 

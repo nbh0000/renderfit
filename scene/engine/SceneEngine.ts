@@ -140,7 +140,7 @@ export class SceneEngine {
 
   moveObject(
     id: string,
-    delta: { screen?: { x?: number; y?: number }; position?: Vec3 }
+    delta: { screen?: { x?: number; y?: number }; position?: Vec3; depth?: number }
   ): CommitResult {
     const object = this.getObject(id);
     if (!object) return { ok: false, error: "대상 객체를 찾을 수 없습니다." };
@@ -158,6 +158,11 @@ export class SceneEngine {
     if (delta.position) {
       before.transform = { position: object.transform.position };
       after.transform = { position: delta.position };
+    }
+    // 3D 뷰에서 안쪽/바깥쪽으로 옮기면 depth가 바뀐다 (2.5D의 앞뒤 순서와 같은 값)
+    if (delta.depth !== undefined) {
+      before.depth = object.depth;
+      after.depth = clamp01(delta.depth);
     }
 
     return this.commit(this.makeOperation("MOVE_OBJECT", id, before, after));

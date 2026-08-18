@@ -58,6 +58,7 @@ export function StudioClient({ local, initialAccount, user }: StudioClientProps)
   const [materials, setMaterials] = useState<MaterialSpec>(EMPTY_MATERIALS);
   const [resolution, setResolution] = useState<ResolutionId>("standard");
   const [mask, setMask] = useState<File | null>(null);
+  const [customPrompt, setCustomPrompt] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [simulateFailure, setSimulateFailure] = useState(false);
 
@@ -149,6 +150,7 @@ export function StudioClient({ local, initialAccount, user }: StudioClientProps)
       styleId,
       resolution,
       materials,
+      customPrompt: customPrompt.trim() || undefined,
       projectId,
       ...overrides,
       // 마스크는 파일이 함께 전송되므로 현재 캔버스 상태를 따른다.
@@ -185,6 +187,7 @@ export function StudioClient({ local, initialAccount, user }: StudioClientProps)
   },
   [
     account.plan,
+    customPrompt,
     imageCount,
     local,
     mask,
@@ -308,6 +311,20 @@ export function StudioClient({ local, initialAccount, user }: StudioClientProps)
               onReferenceChange={setReference}
               onError={(m) => toast(m, "error")}
             />
+          </Panel>
+
+          <Panel title="직접 지시 (선택)">
+            <textarea
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value.slice(0, 500))}
+              rows={3}
+              placeholder="예: 소파는 3인용 라운드 형태로, 러그는 깔지 말고, 창가에 큰 화분 하나"
+              className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-[13px] leading-relaxed placeholder:text-muted/70"
+            />
+            <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
+              <span>스타일·모드 지시에 이어서 반영됩니다.</span>
+              <span>{customPrompt.length}/500</span>
+            </div>
           </Panel>
 
           <ProControls

@@ -19,6 +19,7 @@ export function EditorShell({ project }: { project: DesignProject }) {
   const viewMode = useEditorStore((state) => state.viewMode);
   const renderUrl = useEditorStore((state) => state.renderUrl);
   const setRenderUrl = useEditorStore((state) => state.setRenderUrl);
+  const placeAsset = useEditorStore((state) => state.placeAsset);
   const [rightTab, setRightTab] = useState<"layers" | "properties">("properties");
 
   useEffect(() => {
@@ -41,7 +42,18 @@ export function EditorShell({ project }: { project: DesignProject }) {
         </aside>
 
         {/* 중앙 캔버스 */}
-        <main className="relative min-w-0 flex-1">
+        <main
+          className="relative min-w-0 flex-1"
+          onDragOver={(event) => {
+            if (event.dataTransfer.types.includes("text/asset-id")) event.preventDefault();
+          }}
+          onDrop={(event) => {
+            const assetId = event.dataTransfer.getData("text/asset-id");
+            if (!assetId) return;
+            event.preventDefault();
+            void placeAsset(assetId, event.clientX, event.clientY);
+          }}
+        >
           {ready && viewMode === "3d" ? <Canvas3D /> : ready ? <Canvas2D /> : null}
 
           {!hasImage && ready && <OnboardingOverlay />}

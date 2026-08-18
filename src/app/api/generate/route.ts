@@ -111,6 +111,11 @@ export async function POST(request: Request) {
     Math.max(1, Number.isFinite(requestedCount) ? Math.floor(requestedCount) : IMAGES_PER_JOB)
   );
 
+  // 직접 입력 지시는 길이를 제한한다 (프롬프트 주입·비용 폭주 방지)
+  if (settings.customPrompt && settings.customPrompt.length > 500) {
+    return bad("추가 요청은 500자 이하로 입력해 주세요.");
+  }
+
   const prompt = buildPrompt(settings);
   const credits = creditCost(resolution.id, count);
   const watermark = !plan.features.noWatermark;

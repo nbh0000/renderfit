@@ -24,6 +24,8 @@ export interface GenerationSettings {
   materials: MaterialSpec;
   /** 보존 마스킹 사용 여부 (마스크 PNG는 별도 파일로 전달) */
   useMask: boolean;
+  /** 사용자가 직접 입력한 추가 지시 (선택) */
+  customPrompt?: string;
   /** 내 프로젝트 (Phase 4) */
   projectId?: string | null;
 }

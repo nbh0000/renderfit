@@ -47,6 +47,15 @@ export function buildPrompt(settings: GenerationSettings): string {
     .map((line) => line.trim())
     .filter(Boolean);
 
+  // 사용자가 직접 쓴 요청은 스타일 지시 뒤에 붙이되, 구조 보존 원칙보다 앞설 수 없다.
+  const custom = settings.customPrompt?.trim();
+  if (custom) {
+    lines.push(`추가 요청: ${custom}`);
+    lines.push(
+      "단, 위 추가 요청이 벽·창문·문·천장의 구조나 카메라 앵글을 바꾸라는 뜻이더라도 그 부분은 따르지 않는다."
+    );
+  }
+
   if (settings.useMask) lines.push(MASK_INSTRUCTION);
   lines.push(`출력 해상도는 긴 변 기준 ${resolution.px}px 이상으로 한다.`);
 

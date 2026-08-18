@@ -184,11 +184,18 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       if (!objectId) return fail("이동할 객체가 없습니다.");
       const object = engine.getObject(objectId);
       if (!object) return fail("대상 객체를 찾을 수 없습니다.");
+      // dx/dy = 상대 이동(2.5D 드래그·AI 명령), x/depth = 절대 위치(3D 배치)
+      const hasAbsolute = typeof args.x === "number" || typeof args.depth === "number";
       const result = engine.moveObject(objectId, {
         screen: {
-          x: object.screen.x + ((args.dx as number) ?? 0),
-          y: object.screen.y + ((args.dy as number) ?? 0),
+          x: hasAbsolute
+            ? ((args.x as number) ?? object.screen.x)
+            : object.screen.x + ((args.dx as number) ?? 0),
+          y: hasAbsolute
+            ? ((args.y as number) ?? object.screen.y)
+            : object.screen.y + ((args.dy as number) ?? 0),
         },
+        ...(typeof args.depth === "number" ? { depth: args.depth as number } : {}),
       });
       return toResult(command, result, "객체를 이동했습니다.", objectId);
     }

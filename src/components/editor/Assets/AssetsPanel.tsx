@@ -79,6 +79,9 @@ function AssetsTab() {
 
   return (
     <div className="p-2">
+      <p className="mb-1.5 text-[10.5px] leading-relaxed text-muted">
+        클릭하면 장면에 추가되고, 3D 뷰로 끌어다 놓으면 그 자리에 배치됩니다.
+      </p>
       <input
         type="search"
         value={query}
@@ -97,9 +100,14 @@ function AssetsTab() {
             <li key={asset.id}>
               <button
                 type="button"
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData("text/asset-id", asset.id);
+                  event.dataTransfer.effectAllowed = "copy";
+                }}
                 onClick={() => runTool("add_object", { assetId: asset.id, type: asset.type, name: asset.name })}
-                className="group w-full rounded-md border border-line p-1 text-left transition-colors hover:border-line-strong hover:bg-sunken"
-                title={`${asset.name} 추가`}
+                className="group w-full cursor-grab rounded-md border border-line p-1 text-left transition-colors hover:border-line-strong hover:bg-sunken active:cursor-grabbing"
+                title={`${asset.name} — 클릭해서 추가하거나 3D 뷰로 끌어다 놓으세요`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -158,10 +166,34 @@ function StylesTab() {
   const scene = useEditorStore((state) => state.scene);
   const startJob = useEditorStore((state) => state.startJob);
   const runTool = useEditorStore((state) => state.runTool);
+  const [prompt, setPrompt] = useState("");
 
   return (
     <div className="p-2">
       <p className="mb-2 text-[11px] text-muted">스타일을 고르면 재질을 맞추고 AI 생성을 실행합니다.</p>
+
+      <div className="mb-3 rounded-md border border-line p-2">
+        <p className="text-[11.5px] font-medium">직접 지시 (선택)</p>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value.slice(0, 500))}
+          rows={3}
+          placeholder="예: 벽은 라임 워시 마감, 조명은 노을빛으로 따뜻하게"
+          className="mt-1.5 w-full resize-none rounded border border-line bg-canvas px-2 py-1.5 text-[12px] leading-relaxed"
+        />
+        <div className="mt-1 flex items-center justify-between">
+          <span className="text-[10.5px] text-muted">{prompt.length}/500</span>
+          <button
+            type="button"
+            disabled={!prompt.trim()}
+            onClick={() => void startJob("/generate", { prompt: prompt.trim() })}
+            className="rounded border border-line px-2 py-1 text-[11px] text-ink-soft hover:bg-sunken disabled:opacity-40"
+          >
+            이 지시로 생성
+          </button>
+        </div>
+      </div>
+
       <ul className="space-y-1.5">
         {STYLE_PRESETS.map((style) => (
           <li key={style.id}>
@@ -169,7 +201,10 @@ function StylesTab() {
               type="button"
               onClick={async () => {
                 await runTool("change_style", { styleId: style.id });
-                await startJob("/generate", { styleId: style.id });
+                await startJob("/generate", {
+                  styleId: style.id,
+                  prompt: prompt.trim() || undefined,
+                });
               }}
               className={[
                 "flex w-full items-center gap-2 rounded-md border p-2 text-left transition-colors",
