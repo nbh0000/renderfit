@@ -23,6 +23,7 @@ import {
 import { getStorage } from "@/lib/storage";
 import { generateImages, isMockMode } from "@/lib/image-api";
 import { TOOL_DEFINITIONS } from "@/ai/tools";
+import { GeminiRenderingProvider } from "./rendering";
 import { routeCommand } from "@/ai/router";
 
 /**
@@ -222,6 +223,12 @@ export function createProviders(context: ProviderContext = {}): AIProviders {
     ? new AnthropicLLMProvider(process.env.ANTHROPIC_API_KEY)
     : new MockLLMProvider();
 
+  const mockRendering = new MockRenderingProvider();
+  // 생성 모델이 붙어 있으면 3D 뷰포트 캡처를 실사 사진으로 변환한다.
+  const rendering = generation.name === "mock-generation"
+    ? mockRendering
+    : new GeminiRenderingProvider(generation, mockRendering);
+
   return {
     // TODO: 실제 vision/segmentation/depth 모델 연결 시 이 자리만 교체한다.
     vision: new MockVisionProvider(),
@@ -230,7 +237,7 @@ export function createProviders(context: ProviderContext = {}): AIProviders {
     generation,
     embedding: new MockEmbeddingProvider(),
     llm,
-    rendering: new MockRenderingProvider(),
+    rendering,
   };
 }
 

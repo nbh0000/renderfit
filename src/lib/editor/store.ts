@@ -37,6 +37,8 @@ interface EditorState {
   showGrid: boolean;
   /** 렌더 결과 미리보기 URL */
   renderUrl: string | null;
+  /** 3D 캔버스 캡처 함수 (Canvas3D가 등록) */
+  viewportCapture: (() => string) | null;
 
   init: (project: DesignProject) => void;
   setScene: (scene: Scene) => void;
@@ -48,6 +50,7 @@ interface EditorState {
   setMessage: (message: string | null) => void;
   toggleGrid: () => void;
   setRenderUrl: (url: string | null) => void;
+  setViewportCapture: (capture: (() => string) | null) => void;
 
   runTool: (tool: string, args?: Record<string, unknown>) => Promise<ToolCallResult>;
   undo: () => Promise<void>;
@@ -83,6 +86,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   clipboard: null,
   showGrid: true,
   renderUrl: null,
+  viewportCapture: null,
 
   init: (project) =>
     set({
@@ -109,6 +113,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setMessage: (lastMessage) => set({ lastMessage }),
   toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
   setRenderUrl: (renderUrl) => set({ renderUrl }),
+  setViewportCapture: (viewportCapture) => set({ viewportCapture }),
 
   /** Scene operation 실행 — 모든 편집은 이 경로를 지난다 */
   runTool: async (tool, args = {}) => {
@@ -193,8 +198,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   /** analyze / generate / render 처럼 background job을 만드는 호출 */
   startJob: async (path, body) => {
-    const { projectId } = get();
-    const { ok, data } = await postJSON(`/api/projects/${projectId}${path}`, body);
+    const { projectId, viewMode, viewportCapture } = get();
+
+    // 렌더는 지금 보고 있는 3D 화면을 캡처해 실사 변환의 기준으로 넘긴다.
+    let payload = body;
+    if (path.startsWith("/render") && viewMode === "3d" && viewportCapture) {
+      try {
+        payload = { ...(body as object), viewport: viewportCapture() };
+      } catch {
+        // 캡처가 실패해도 렌더 자체는 진행한다.
+      }
+    }
+
+    const { ok, data } = await postJSON(`/api/projects/${projectId}${path}`, payload);
 
     if (!ok) {
       set({ lastMessage: (data.error as string) ?? "작업을 시작하지 못했습니다.", busy: null });

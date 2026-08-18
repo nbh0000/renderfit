@@ -155,10 +155,16 @@ export interface RenderResult {
   provider: string;
 }
 
+/** 3D/2.5D 뷰포트를 캡처한 이미지 — 있으면 이걸 기준으로 실사 변환한다 */
+export interface RenderOptions {
+  viewportImage?: ImageRef;
+  prompt?: string;
+}
+
 export interface RenderingProvider {
   readonly name: string;
-  preview(scene: Scene): Promise<RenderResult>;
-  finalRender(scene: Scene): Promise<RenderResult>;
+  preview(scene: Scene, options?: RenderOptions): Promise<RenderResult>;
+  finalRender(scene: Scene, options?: RenderOptions): Promise<RenderResult>;
 }
 
 /* ── Registry ── */

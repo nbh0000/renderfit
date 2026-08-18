@@ -333,7 +333,11 @@ export function enqueueInpaint(
 }
 
 /** 렌더 (preview/final) */
-export function enqueueRender(loaded: LoadedProject, quality: "preview" | "final"): Job {
+export function enqueueRender(
+  loaded: LoadedProject,
+  quality: "preview" | "final",
+  options: { viewportImage?: string } = {}
+): Job {
   const projectId = loaded.project.id;
   const ownerId = loaded.project.ownerId;
 
@@ -348,10 +352,13 @@ export function enqueueRender(loaded: LoadedProject, quality: "preview" | "final
       update(40, quality === "final" ? "최종 렌더링 중입니다..." : "미리보기 렌더링 중입니다...");
 
       const scene = reloaded.engine.getScene();
+      const renderOptions = options.viewportImage
+        ? { viewportImage: { url: options.viewportImage } }
+        : undefined;
       const result =
         quality === "final"
-          ? await providers.rendering.finalRender(scene)
-          : await providers.rendering.preview(scene);
+          ? await providers.rendering.finalRender(scene, renderOptions)
+          : await providers.rendering.preview(scene, renderOptions);
 
       if (quality === "final") {
         await persist(reloaded, { thumbnailUrl: result.imageUrl });
