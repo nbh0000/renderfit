@@ -33,7 +33,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-dvh">
-      <AppHeader active="dashboard" />
+      <AppHeader active="dashboard" authed={Boolean(viewer.userId)} />
       <main className="mx-auto max-w-[1200px] px-4 py-8 sm:px-6">
         <DashboardClient projects={summaries} providers={providerStatus()} />
       </main>

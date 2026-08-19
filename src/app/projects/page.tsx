@@ -34,7 +34,7 @@ export default async function ProjectsPage() {
 
   return (
     <div className="min-h-dvh">
-      <AppHeader active="projects" />
+      <AppHeader active="projects" authed={Boolean(viewer.userId)} />
 
       <main className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">

@@ -5,6 +5,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { listPublicResults, memoryListGallery, type GalleryItem } from "@/lib/gallery";
 import { BRAND } from "@/config/brand";
+import { getViewer } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "인테리어 시안 갤러리",
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function GalleryPage() {
+  const viewer = await getViewer();
   let items: GalleryItem[] = [];
 
   if (isSupabaseConfigured()) {
@@ -31,7 +33,7 @@ export default async function GalleryPage() {
 
   return (
     <div className="min-h-dvh">
-      <AppHeader active="gallery" />
+      <AppHeader active="gallery" authed={Boolean(viewer.userId)} />
 
       <main className="mx-auto max-w-[1100px] px-4 py-10 sm:px-6">
         <h1 className="serif-display text-[26px] leading-tight sm:text-[30px]">

@@ -41,9 +41,11 @@ export interface StudioClientProps {
   local: boolean;
   initialAccount: AccountState;
   user: { name: string; avatarUrl: string | null } | null;
+  /** 메인 시작 모달에서 고른 모드 (?mode=) */
+  initialModeId?: ModeId;
 }
 
-export function StudioClient({ local, initialAccount, user }: StudioClientProps) {
+export function StudioClient({ local, initialAccount, user, initialModeId }: StudioClientProps) {
   const { toast } = useToast();
   const { account, loaded, spend, refund, switchPlan, refresh } = useAccount({
     local,
@@ -52,7 +54,7 @@ export function StudioClient({ local, initialAccount, user }: StudioClientProps)
 
   const [source, setSource] = useState<UploadValue | null>(null);
   const [reference, setReference] = useState<UploadValue | null>(null);
-  const [modeId, setModeId] = useState<ModeId>(MODES[0].id);
+  const [modeId, setModeId] = useState<ModeId>(initialModeId ?? MODES[0].id);
   const [roomId, setRoomId] = useState<RoomId>(ROOMS[0].id);
   const [styleId, setStyleId] = useState<StyleId>(STYLES[0].id);
   const [materials, setMaterials] = useState<MaterialSpec>(EMPTY_MATERIALS);

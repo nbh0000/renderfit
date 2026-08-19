@@ -8,6 +8,7 @@ import { getPublicResult, memoryGetGallery, type GalleryItem } from "@/lib/galle
 import { ROOM_MAP } from "@/config/rooms";
 import { STYLE_MAP } from "@/config/styles";
 import { BRAND } from "@/config/brand";
+import { getViewer } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -63,12 +64,14 @@ export default async function GalleryDetailPage({
   const item = await loadItem(slug);
   if (!item) notFound();
 
+  const viewer = await getViewer();
+
   const roomLabel = item.roomLabel || ROOM_MAP[item.roomId]?.label || "공간";
   const styleLabel = item.styleLabel || STYLE_MAP[item.styleId]?.label || "스타일";
 
   return (
     <div className="min-h-dvh">
-      <AppHeader active="gallery" />
+      <AppHeader active="gallery" authed={Boolean(viewer.userId)} />
 
       <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-6">
         <Link href="/gallery" className="text-[12.5px] text-muted hover:text-ink">
