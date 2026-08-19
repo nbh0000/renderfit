@@ -22,18 +22,34 @@ const LINKS = [
 ];
 
 /**
+ * 배경 — 순검정 대신 짙은 차콜에 포인트 색을 아주 옅게 번지게 한다.
+ * 색을 넓게 칠하지 않고 빛처럼만 얹어 첫인상만 만들고 물러난다.
+ */
+function GlowBackdrop() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute -top-56 left-1/2 h-[680px] w-[1100px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(63,122,102,0.5),transparent)]" />
+      <div className="absolute -bottom-56 left-[-140px] h-[480px] w-[720px] rounded-full bg-[radial-gradient(closest-side,rgba(150,160,150,0.14),transparent)]" />
+      <div className="absolute inset-x-0 bottom-0 h-px bg-white/10" />
+    </div>
+  );
+}
+
+/**
  * 시작 화면.
  *
- * 메인만 검정으로 간다 — 첫인상은 대비로 잡고, 실제 작업 화면(스튜디오·편집기)은
- * 시안 색이 정확히 보여야 하므로 흰 배경을 유지한다.
+ * 메인만 짙은 배경으로 간다 — 첫인상은 대비로 잡고, 실제 작업 화면(스튜디오·편집기)은
+ * 시안 색이 정확히 보여야 하므로 밝은 배경을 유지한다.
  */
 export default async function HomePage() {
   const viewer = await getViewer();
   const authed = Boolean(viewer.userId);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-black text-white">
-      <header className="flex h-16 shrink-0 items-center justify-between px-5 sm:px-8">
+    <div className="relative flex min-h-dvh flex-col overflow-hidden bg-night text-white">
+      <GlowBackdrop />
+
+      <header className="relative z-10 flex h-16 shrink-0 items-center justify-between px-5 sm:px-8">
         <Link
           href="/"
           className="text-[15px] font-semibold tracking-[0.18em] text-white hover:opacity-70"
@@ -64,7 +80,7 @@ export default async function HomePage() {
           ) : (
             <Link
               href="/login"
-              className="ml-1 rounded-md bg-white px-3 py-1.5 text-[12.5px] font-medium text-black hover:bg-white/85"
+              className="ml-1 rounded-md bg-accent px-3 py-1.5 text-[12.5px] font-medium text-white transition-colors hover:bg-accent-hover"
             >
               로그인
             </Link>
@@ -72,7 +88,7 @@ export default async function HomePage() {
         </nav>
       </header>
 
-      <main className="flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
+      <main className="relative z-10 flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
         <div className="w-full max-w-[720px]">
           <StartChat />
 
@@ -82,7 +98,7 @@ export default async function HomePage() {
         </div>
       </main>
 
-      <footer className="shrink-0 px-5 py-4 text-center text-[11.5px] text-white/30 sm:px-8">
+      <footer className="relative z-10 shrink-0 px-5 py-4 text-center text-[11.5px] text-white/30 sm:px-8">
         생성물은 참고용 시안이며 시공용 도면이 아닙니다.
       </footer>
     </div>

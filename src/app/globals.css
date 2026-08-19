@@ -1,22 +1,29 @@
 @import "tailwindcss";
 
 @theme {
-  /* 블랙 & 화이트: 색상 없이 검정·흰색·중성 회색만 쓴다. 강조는 전부 명도 대비로 만든다 */
-  --color-canvas: #ffffff;
+  /*
+   * 중성 베이스 + 포인트 하나.
+   * 배경·글자·선은 색 기운이 거의 없는 중성으로 두고, 눌러야 할 것에만 딥 그린을 쓴다.
+   * (인테리어 시안의 색이 UI 색에 방해받지 않아야 한다)
+   */
+  --color-canvas: #fbfbfa;
   --color-surface: #ffffff;
-  --color-sunken: #f5f5f5;
-  --color-ink: #000000;
-  --color-ink-soft: #333333;
-  --color-muted: #767676;
-  --color-line: #e5e5e5;
-  --color-line-strong: #c9c9c9;
-  /* 주요 동작(버튼·선택 상태)은 검정 그대로 */
-  --color-accent: #000000;
-  --color-accent-hover: #262626;
-  --color-accent-soft: #f0f0f0;
-  /* 오류만 예외로 아주 어두운 적색을 남긴다 — 흑백 안에서도 경고로 읽혀야 한다 */
-  --color-danger: #7a1f1a;
-  --color-success: #1a1a1a;
+  --color-sunken: #f2f2f0;
+  --color-ink: #1b1c1d;
+  --color-ink-soft: #45474a;
+  --color-muted: #7b7d80;
+  --color-line: #e6e5e2;
+  --color-line-strong: #cfcec9;
+  /* 포인트 — 차분한 딥 그린 */
+  --color-accent: #2f5d4e;
+  --color-accent-hover: #264c40;
+  --color-accent-soft: #e9f0ec;
+  --color-danger: #a3372c;
+  --color-success: #2f5d4e;
+
+  /* 어두운 화면(메인 히어로)에서 쓰는 짙은 배경 */
+  --color-night: #16181a;
+  --color-night-soft: #1e2124;
 
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
     "Apple SD Gothic Neo", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;

@@ -69,7 +69,10 @@ export function StartChat() {
 
   return (
     <div className="w-full max-w-[680px] text-white">
-      <h1 className="serif-display text-center text-[32px] leading-tight text-white sm:text-[42px]">
+      <p className="text-center text-[12.5px] tracking-[0.14em] text-white/45">
+        사진 한 장으로 시작하는 인테리어
+      </p>
+      <h1 className="serif-display mt-3 text-center text-[32px] leading-tight text-white sm:text-[44px]">
         어떤 공간을 만들어 볼까요?
       </h1>
 
@@ -89,7 +92,9 @@ export function StartChat() {
               title={hint}
               className={[
                 "rounded-full px-4 py-1.5 text-[13px] transition-colors",
-                track === id ? "bg-white font-medium text-black" : "text-white/60 hover:text-white",
+                track === id
+                  ? "bg-accent font-medium text-white"
+                  : "text-white/60 hover:text-white",
               ].join(" ")}
             >
               {label}
@@ -111,7 +116,7 @@ export function StartChat() {
               <p
                 className={[
                   "max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
-                  message.role === "user" ? "bg-white text-black" : "bg-white/10 text-white/85",
+                  message.role === "user" ? "bg-accent text-white" : "bg-white/10 text-white/85",
                 ].join(" ")}
               >
                 {message.content}
@@ -128,7 +133,7 @@ export function StartChat() {
           event.preventDefault();
           void send(input);
         }}
-        className="mt-5 rounded-[var(--radius-card)] border border-white/20 bg-white/[0.06] p-3 backdrop-blur"
+        className="mt-6 rounded-2xl border border-white/20 bg-white/[0.07] p-3.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur"
       >
         <input
           value={input}
@@ -153,7 +158,7 @@ export function StartChat() {
           <button
             type="submit"
             disabled={pending || (track === "quick" && !input.trim())}
-            className="h-9 rounded-lg bg-white px-4 text-[13px] font-medium text-black transition-colors hover:bg-white/85 disabled:opacity-40"
+            className="h-9 rounded-lg bg-accent px-4 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
           >
             {track === "pro" ? "시작하기" : "보내기"}
           </button>
@@ -167,7 +172,7 @@ export function StartChat() {
               key={prompt}
               type="button"
               onClick={() => void send(prompt)}
-              className="rounded-full border border-white/20 px-3 py-1.5 text-[12.5px] text-white/70 transition-colors hover:border-white/40 hover:bg-white/10 hover:text-white"
+              className="rounded-full border border-white/25 bg-white/[0.04] px-3.5 py-1.5 text-[12.5px] text-white/75 transition-colors hover:border-white/50 hover:bg-white/10 hover:text-white"
             >
               {prompt}
             </button>
