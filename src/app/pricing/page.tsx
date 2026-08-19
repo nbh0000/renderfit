@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AppHeader } from "@/components/AppHeader";
+import { AppShell } from "@/components/AppShell";
 import { PlanCards } from "@/components/pricing/PlanCards";
 import { getViewer } from "@/lib/auth";
 
@@ -33,8 +33,7 @@ export default async function PricingPage() {
   const viewer = await getViewer();
 
   return (
-    <div className="min-h-dvh">
-      <AppHeader active="pricing" authed={Boolean(viewer.userId)} />
+    <AppShell active="pricing" authed={Boolean(viewer.userId)}>
 
       <main className="mx-auto max-w-[1000px] px-4 py-10 sm:px-6">
         <h1 className="serif-display text-[26px] leading-tight sm:text-[30px]">요금제</h1>
@@ -79,6 +78,6 @@ export default async function PricingPage() {
           아닙니다.
         </p>
       </main>
-    </div>
+    </AppShell>
   );
 }

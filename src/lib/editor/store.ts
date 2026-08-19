@@ -47,6 +47,8 @@ interface EditorState {
   showBackdrop: boolean;
   /** 2.5D 캔버스 확대 배율 (하단 바에서 조작) */
   zoom: number;
+  /** 2안 비교 결과 — 고르기 전까지 장면에는 반영하지 않는다 */
+  variants: { label: string; imageUrl: string }[] | null;
 
   init: (project: DesignProject) => void;
   setScene: (scene: Scene) => void;
@@ -65,6 +67,8 @@ interface EditorState {
   ) => void;
   toggleBackdrop: () => void;
   setZoom: (zoom: number) => void;
+  setVariants: (variants: { label: string; imageUrl: string }[] | null) => void;
+  applyVariant: (variant: { label: string; imageUrl: string }) => Promise<void>;
   placeAsset: (assetId: string, clientX: number, clientY: number) => Promise<void>;
 
   runTool: (tool: string, args?: Record<string, unknown>) => Promise<ToolCallResult>;
@@ -108,6 +112,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   viewportRaycast: null,
   showBackdrop: true,
   zoom: 1,
+  variants: null,
 
   init: (project) =>
     set({
@@ -139,6 +144,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setViewportRaycast: (viewportRaycast) => set({ viewportRaycast }),
   toggleBackdrop: () => set((state) => ({ showBackdrop: !state.showBackdrop })),
   setZoom: (zoom) => set({ zoom: Math.min(3, Math.max(0.4, zoom)) }),
+  setVariants: (variants) => set({ variants }),
+
+  /** 고른 시안을 장면에 반영한다 */
+  applyVariant: async (variant) => {
+    const { projectId } = get();
+    set({ busy: "고른 시안을 반영하고 있습니다..." });
+
+    const { ok, data } = await postJSON(`/api/projects/${projectId}/apply-generation`, {
+      imageUrl: variant.imageUrl,
+      label: `${variant.label} 적용`,
+    });
+
+    if (!ok) {
+      set({ busy: null, lastMessage: (data.error as string) ?? "반영하지 못했습니다." });
+      return;
+    }
+
+    set({
+      scene: data.scene as Scene,
+      canUndo: Boolean(data.canUndo),
+      canRedo: Boolean(data.canRedo),
+      variants: null,
+      busy: null,
+      lastMessage: `${variant.label} 시안을 반영했습니다.`,
+    });
+  },
 
   /** 좌측 패널에서 3D 뷰로 끌어다 놓은 위치에 에셋을 추가한다 */
   placeAsset: async (assetId, clientX, clientY) => {
@@ -310,10 +341,22 @@ async function trackJob(
   }
 
   if (current.state === "completed") {
-    const result = current.result as { imageUrl?: string; quality?: string } | null;
+    const result = current.result as {
+      imageUrl?: string;
+      quality?: string;
+      variants?: { label: string; imageUrl: string }[];
+    } | null;
+
     if (result?.imageUrl && (current.type === "RENDER_PREVIEW" || current.type === "RENDER_FINAL")) {
       set({ renderUrl: result.imageUrl });
     }
+
+    // 2안 생성은 고르기 전까지 장면을 바꾸지 않는다.
+    if (result?.variants?.length) {
+      set({ variants: result.variants, busy: null, lastMessage: "시안 두 개가 준비됐습니다." });
+      return;
+    }
+
     await get().reload();
     set({ busy: null, lastMessage: "완료되었습니다." });
   } else if (current.state === "failed") {

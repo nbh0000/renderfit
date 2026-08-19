@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AppHeader } from "@/components/AppHeader";
+import { AppShell } from "@/components/AppShell";
 import { NewProjectForm } from "@/components/projects/NewProjectForm";
 import { getViewer } from "@/lib/auth";
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -33,8 +33,7 @@ export default async function ProjectsPage() {
   }
 
   return (
-    <div className="min-h-dvh">
-      <AppHeader active="projects" authed={Boolean(viewer.userId)} />
+    <AppShell active="projects" authed={Boolean(viewer.userId)}>
 
       <main className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -76,6 +75,6 @@ export default async function ProjectsPage() {
           </ul>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }

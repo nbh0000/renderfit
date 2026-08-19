@@ -1,6 +1,11 @@
 import type { DesignProject, Scene, SceneObject } from "@/scene/types";
 import { SceneEngine, createId, createSceneObject } from "@/scene/engine/SceneEngine";
-import { createEmptyScene, createVersion, normalizeScene, sceneContextForAI } from "@/scene/serialization";
+import {
+  createEmptyScene,
+  createVersion,
+  normalizeScene,
+  sceneContextForAI,
+} from "@/scene/serialization";
 import { getProjectRepository } from "@/lib/db";
 import { getQueue, type Job } from "@/lib/queue";
 import { getStorage } from "@/lib/storage";
@@ -63,7 +68,10 @@ export async function loadProject(
   return { project, engine };
 }
 
-export async function persist(loaded: LoadedProject, patch: Partial<DesignProject> = {}): Promise<DesignProject> {
+export async function persist(
+  loaded: LoadedProject,
+  patch: Partial<DesignProject> = {}
+): Promise<DesignProject> {
   const next: DesignProject = {
     ...loaded.project,
     ...patch,
@@ -223,6 +231,29 @@ export function enqueueAnalyze(loaded: LoadedProject): Job {
   });
 }
 
+/**
+ * 생성 프롬프트.
+ * 편집기는 방 치수를 이미 알고 있으므로 가구 규모를 그 면적에 맞추도록 함께 알려 준다.
+ */
+function buildGeneratePrompt(scene: Scene, styleFragment?: string, extra?: string): string {
+  const { width, length, height } = scene.room.dimensions;
+  const areaM2 = ((width / 1000) * (length / 1000)).toFixed(1);
+
+  return [
+    "Redesign this interior space.",
+    "Keep the position and structure of walls, windows, doors and ceiling exactly as in the original.",
+    "Keep the original camera angle and perspective.",
+    `The room measures ${Math.round(width)} x ${Math.round(length)} mm ` +
+      `(${areaM2} m2) with a ceiling height of ${Math.round(height)} mm ` +
+      `(${scene.room.measured ? "measured on site" : "estimated"}). ` +
+      "Use furniture sizes, counts and circulation widths that actually fit this area.",
+    styleFragment ?? "",
+    extra ?? "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 /** Scene + 스타일 → 이미지 생성 (background job) */
 export function enqueueGenerate(
   loaded: LoadedProject,
@@ -250,25 +281,7 @@ export function enqueueGenerate(
 
       update(30, "디자인을 생성하고 있습니다...");
 
-      // 편집기는 방 치수를 이미 알고 있으므로 가구 규모를 그 면적에 맞추도록 알려 준다.
-      const { width, length, height } = scene.room.dimensions;
-      const areaM2 = ((width / 1000) * (length / 1000)).toFixed(1);
-      const sizeLine =
-        `The room measures ${Math.round(width)} x ${Math.round(length)} mm ` +
-        `(${areaM2} m2) with a ceiling height of ${Math.round(height)} mm ` +
-        `(${scene.room.measured ? "measured on site" : "estimated"}). ` +
-        "Use furniture sizes, counts and circulation widths that actually fit this area.";
-
-      const prompt = [
-        "Redesign this interior space.",
-        "Keep the position and structure of walls, windows, doors and ceiling exactly as in the original.",
-        "Keep the original camera angle and perspective.",
-        sizeLine,
-        style ? style.promptFragment : "",
-        options.prompt ?? "",
-      ]
-        .filter(Boolean)
-        .join("\n");
+      const prompt = buildGeneratePrompt(scene, style?.promptFragment, options.prompt);
 
       const result = await providers.generation.generate({
         image: { url: imageUrl },
@@ -282,7 +295,10 @@ export function enqueueGenerate(
       update(80, "장면에 반영하고 있습니다...");
       reloaded.engine.applyGeneration({ generatedImageUrl: result.imageUrl });
 
-      const version = createVersion(reloaded.engine.getScene(), style ? `${style.label} 생성` : "AI 생성");
+      const version = createVersion(
+        reloaded.engine.getScene(),
+        style ? `${style.label} 생성` : "AI 생성"
+      );
 
       const saved = await persist(reloaded, {
         status: "ready",
@@ -292,6 +308,86 @@ export function enqueueGenerate(
 
       return { imageUrl: result.imageUrl, cached: result.cached, version: saved.versions.length };
     },
+  });
+}
+
+/**
+ * 시안 두 개를 만들어 고르게 한다.
+ *
+ * 한 번에 적용하지 않고 결과만 돌려주며, 사용자가 고른 뒤 applyGeneratedImage로 반영한다.
+ * 같은 프롬프트로 두 번 부르면 캐시 때문에 같은 그림이 나오므로 방향을 다르게 준다.
+ */
+const VARIANT_DIRECTIONS = [
+  { label: "A · 따뜻하게", fragment: "Layered warm textiles, softer lighting, cosier styling." },
+  {
+    label: "B · 담백하게",
+    fragment: "Cleaner and more minimal styling, fewer objects, calmer palette.",
+  },
+];
+
+export function enqueueGenerateVariants(
+  loaded: LoadedProject,
+  options: { styleId?: string | null; prompt?: string }
+): Job {
+  const projectId = loaded.project.id;
+  const ownerId = loaded.project.ownerId;
+
+  return getQueue().enqueue({
+    type: "GENERATE_INTERIOR",
+    projectId,
+    handler: async (update) => {
+      const reloaded = await loadProject(projectId, ownerId);
+      if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
+
+      const scene = reloaded.engine.getScene();
+      const imageUrl = scene.source.imageUrl;
+      if (!imageUrl) throw new Error("먼저 방 사진을 업로드해 주세요.");
+
+      const styleId = options.styleId ?? scene.styleId ?? "modern";
+      const style = STYLE_PRESET_MAP[styleId];
+      const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
+
+      const variants: { label: string; imageUrl: string }[] = [];
+
+      for (const [index, direction] of VARIANT_DIRECTIONS.entries()) {
+        update(
+          20 + index * 40,
+          `${index + 1}번째 시안을 만들고 있습니다... (${VARIANT_DIRECTIONS.length}개 중)`
+        );
+
+        const result = await providers.generation.generate({
+          image: { url: imageUrl },
+          prompt: [
+            buildGeneratePrompt(scene, style?.promptFragment, options.prompt),
+            direction.fragment,
+          ].join("\n"),
+          depthMap: scene.source.depthMapUrl ? { url: scene.source.depthMapUrl } : null,
+          segmentation: scene.source.segmentationUrl ? { url: scene.source.segmentationUrl } : null,
+          styleId,
+          settings: { objects: scene.objects.length, variant: direction.label },
+        });
+
+        variants.push({ label: direction.label, imageUrl: result.imageUrl });
+      }
+
+      return { variants };
+    },
+  });
+}
+
+/** 고른 시안을 장면에 반영한다 */
+export async function applyGeneratedImage(
+  loaded: LoadedProject,
+  imageUrl: string,
+  label = "AI 생성"
+): Promise<DesignProject> {
+  loaded.engine.applyGeneration({ generatedImageUrl: imageUrl });
+  const version = createVersion(loaded.engine.getScene(), label);
+
+  return persist(loaded, {
+    status: "ready",
+    thumbnailUrl: imageUrl,
+    versions: [...loaded.project.versions, version].slice(-20),
   });
 }
 
@@ -447,13 +543,17 @@ export async function runAICommand(
 
 /* ─────────────────────── Undo / Redo / Version ─────────────────────── */
 
-export async function undo(loaded: LoadedProject): Promise<{ ok: boolean; project: DesignProject }> {
+export async function undo(
+  loaded: LoadedProject
+): Promise<{ ok: boolean; project: DesignProject }> {
   const operation = loaded.engine.undo();
   const project = await persist(loaded);
   return { ok: Boolean(operation), project };
 }
 
-export async function redo(loaded: LoadedProject): Promise<{ ok: boolean; project: DesignProject }> {
+export async function redo(
+  loaded: LoadedProject
+): Promise<{ ok: boolean; project: DesignProject }> {
   const operation = loaded.engine.redo();
   const project = await persist(loaded);
   return { ok: Boolean(operation), project };

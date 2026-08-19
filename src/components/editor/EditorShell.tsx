@@ -6,6 +6,7 @@ import { useEditorStore } from "@/lib/editor/store";
 import { STYLE_PRESETS } from "@/models/styles";
 import { Toolbar } from "./Toolbar";
 import { CanvasControls } from "./CanvasControls";
+import { VariantCompare } from "./VariantCompare";
 import { Canvas2D } from "./Canvas/Canvas2D";
 import { Canvas3D } from "./Canvas/Canvas3D";
 import { LayersPanel } from "./Layers/LayersPanel";
@@ -60,6 +61,8 @@ export function EditorShell({ project }: { project: DesignProject }) {
           {ready && viewMode === "3d" ? <Canvas3D /> : ready ? <Canvas2D /> : null}
 
           {ready && hasImage && <CanvasControls />}
+
+          <VariantCompare />
 
           {!hasImage && ready && <OnboardingOverlay />}
 

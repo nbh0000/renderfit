@@ -1,20 +1,21 @@
 @import "tailwindcss";
 
 @theme {
-  /* 라이트 테마 고정: 웜 화이트 배경 + 딥 차콜 텍스트 + 테라코타 포인트 1개 */
-  --color-canvas: #faf9f7;
+  /* 라이트 테마 고정: 흰 배경 + 회색 계조. 포인트 색은 쓰지 않고 명도 대비로만 강조한다 */
+  --color-canvas: #ffffff;
   --color-surface: #ffffff;
-  --color-sunken: #f2efea;
-  --color-ink: #26231f;
-  --color-ink-soft: #5c5751;
-  --color-muted: #8b857d;
-  --color-line: #e6e1d9;
-  --color-line-strong: #d6cfc4;
-  --color-accent: #bf6242;
-  --color-accent-hover: #a85234;
-  --color-accent-soft: #f6e9e3;
-  --color-danger: #b4453a;
-  --color-success: #4f7a55;
+  --color-sunken: #f4f4f5;
+  --color-ink: #18181b;
+  --color-ink-soft: #3f3f46;
+  --color-muted: #71717a;
+  --color-line: #e4e4e7;
+  --color-line-strong: #d4d4d8;
+  /* 주요 동작(버튼·선택 상태)은 잉크색 그대로 쓴다 */
+  --color-accent: #18181b;
+  --color-accent-hover: #33333a;
+  --color-accent-soft: #f4f4f5;
+  --color-danger: #b42318;
+  --color-success: #15803d;
 
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
     "Apple SD Gothic Neo", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AppHeader } from "@/components/AppHeader";
+import { AppShell } from "@/components/AppShell";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPublicResult, memoryGetGallery, type GalleryItem } from "@/lib/gallery";
@@ -70,8 +70,7 @@ export default async function GalleryDetailPage({
   const styleLabel = item.styleLabel || STYLE_MAP[item.styleId]?.label || "스타일";
 
   return (
-    <div className="min-h-dvh">
-      <AppHeader active="gallery" authed={Boolean(viewer.userId)} />
+    <AppShell active="gallery" authed={Boolean(viewer.userId)}>
 
       <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-6">
         <Link href="/gallery" className="text-[12.5px] text-muted hover:text-ink">
@@ -115,6 +114,6 @@ export default async function GalleryDetailPage({
           AI가 생성한 참고용 시안입니다. 실제 시공 도면이 아니며, 치수와 마감은 현장 실측을 따라야 합니다.
         </p>
       </main>
-    </div>
+    </AppShell>
   );
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { AppHeader } from "@/components/AppHeader";
+import { AppShell } from "@/components/AppShell";
 import { getViewer } from "@/lib/auth";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getProject, memoryGetProject } from "@/lib/projects";
@@ -62,8 +62,7 @@ export default async function ProjectDetailPage({
   const succeeded = jobs.filter((job) => job.status === "succeeded");
 
   return (
-    <div className="min-h-dvh">
-      <AppHeader active="projects" />
+    <AppShell active="projects" authed>
 
       <main className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
         <Link href="/projects" className="text-[12.5px] text-muted hover:text-ink">
@@ -145,6 +144,6 @@ export default async function ProjectDetailPage({
           </div>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }

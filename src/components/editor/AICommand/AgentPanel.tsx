@@ -19,8 +19,14 @@ interface Message {
 }
 
 /** 버튼 한 번으로 실행되는 자주 쓰는 작업 */
-const QUICK_ACTIONS: { label: string; kind: "tool" | "job" | "ask"; value: string }[] = [
+const QUICK_ACTIONS: {
+  label: string;
+  kind: "tool" | "job" | "ask";
+  value: string;
+  body?: unknown;
+}[] = [
   { label: "가구 자동 배치", kind: "tool", value: "arrange_objects" },
+  { label: "2안 비교 생성", kind: "job", value: "/generate", body: { variants: 2 } },
   { label: "이 장면 다시 생성", kind: "job", value: "/generate" },
   { label: "가구 추천", kind: "ask", value: "이 방에 어울리는 가구를 3가지만 추천해 줘." },
   { label: "마감재 추천", kind: "ask", value: "이 방의 바닥·벽 마감재 조합을 추천해 줘." },
@@ -100,11 +106,13 @@ export function AgentPanel() {
           applied: result.ok,
         });
       } else if (action.kind === "job") {
-        await startJob(action.value);
+        await startJob(action.value, action.body);
         push({
           role: "assistant",
-          content: "생성을 시작했습니다. 완료되면 장면에 반영됩니다.",
-          applied: true,
+          content: action.body
+            ? "두 방향으로 시안을 만들고 있습니다. 완료되면 골라 주세요."
+            : "생성을 시작했습니다. 완료되면 장면에 반영됩니다.",
+          applied: !action.body,
         });
       } else {
         push({ role: "assistant", content: await ask(action.value) });

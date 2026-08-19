@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { AppHeader } from "@/components/AppHeader";
+import { AppShell } from "@/components/AppShell";
 import { DashboardClient, type ProjectSummary } from "@/components/dashboard/DashboardClient";
 import { getViewer } from "@/lib/auth";
 import { listProjects } from "@/services/projectService";
@@ -32,11 +32,10 @@ export default async function DashboardPage() {
   }));
 
   return (
-    <div className="min-h-dvh">
-      <AppHeader active="dashboard" authed={Boolean(viewer.userId)} />
+    <AppShell active="editor" authed={Boolean(viewer.userId)}>
       <main className="mx-auto max-w-[1200px] px-4 py-8 sm:px-6">
         <DashboardClient projects={summaries} providers={providerStatus()} />
       </main>
-    </div>
+    </AppShell>
   );
 }

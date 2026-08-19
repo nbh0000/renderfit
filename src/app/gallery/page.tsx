@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AppHeader } from "@/components/AppHeader";
+import { AppShell } from "@/components/AppShell";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { listPublicResults, memoryListGallery, type GalleryItem } from "@/lib/gallery";
@@ -32,8 +32,7 @@ export default async function GalleryPage() {
   }
 
   return (
-    <div className="min-h-dvh">
-      <AppHeader active="gallery" authed={Boolean(viewer.userId)} />
+    <AppShell active="gallery" authed={Boolean(viewer.userId)}>
 
       <main className="mx-auto max-w-[1100px] px-4 py-10 sm:px-6">
         <h1 className="serif-display text-[26px] leading-tight sm:text-[30px]">
@@ -77,6 +76,6 @@ export default async function GalleryPage() {
           </ul>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }

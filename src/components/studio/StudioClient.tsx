@@ -23,7 +23,7 @@ import {
   type SpaceSize,
 } from "@/lib/types";
 import { useAccount } from "@/lib/use-account";
-import { AppHeader } from "@/components/AppHeader";
+import { AppShell } from "@/components/AppShell";
 import { useToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/Button";
 import { Uploader, type UploadValue } from "./Uploader";
@@ -246,10 +246,10 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
   );
 
   return (
-    <div className="min-h-dvh">
-      <AppHeader
-        active="studio"
-        right={
+    <AppShell
+      active="studio"
+      authed
+      right={
           <>
             <span className="rounded-full border border-line bg-surface px-2.5 py-1">
               {plan.label} · 크레딧 {loaded ? account.credits : "—"}
@@ -277,8 +277,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
             )}
           </>
         }
-      />
-
+    >
       <main className="mx-auto grid max-w-[1400px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[380px_minmax(0,1fr)] lg:gap-8">
         {/* 좌측 패널 (모바일에서는 상단) */}
         <div className="space-y-4">
@@ -411,7 +410,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
           onClose={() => setFloorplan({ open: false, url: null, loading: false })}
         />
       )}
-    </div>
+    </AppShell>
   );
 }
 

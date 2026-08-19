@@ -74,6 +74,78 @@ export const ASSETS: Asset[] = [
   // ── Appliance ──
   asset("asset_tv_65", "65인치 TV", "tv", "appliance", ["modern", "contemporary"], [1450, 850, 60], ["tv", "티비", "텔레비전", "65"], "plane", ["mat_black_steel"]),
   asset("asset_air_purifier", "공기청정기", "appliance", "appliance", ["modern", "minimal"], [400, 800, 400], ["공기청정기", "appliance", "가전"], "cylinder", ["mat_white_paint"]),
+
+  /* ─────────────── 확장 카탈로그 (국내 유통 규격 기준) ─────────────── */
+
+  // ── 소파 ──
+  asset("asset_sofa_corner", "코너 카우치 소파", "sofa", "sofa", ["modern", "contemporary"], [2800, 830, 1700], ["소파", "sofa", "코너", "corner", "카우치", "L자"], "box", ["mat_grey_fabric"]),
+  asset("asset_sofa_1seat", "1인용 암체어 소파", "sofa", "sofa", ["minimal", "scandinavian"], [900, 800, 850], ["소파", "sofa", "1인용", "암체어", "싱글"], "box", ["mat_beige_fabric"]),
+  asset("asset_sofa_bed", "소파베드", "sofa", "sofa", ["modern", "minimal"], [1900, 780, 900], ["소파", "sofa", "소파베드", "sofabed", "원룸"], "box", ["mat_grey_fabric"]),
+  asset("asset_bench_entry", "현관 벤치", "sofa", "sofa", ["natural", "japandi"], [1000, 450, 380], ["벤치", "bench", "현관", "스툴"], "box", ["mat_oak"]),
+
+  // ── 의자 ──
+  asset("asset_desk_chair", "데스크 체어", "chair", "chair", ["modern", "minimal"], [620, 1050, 620], ["의자", "chair", "데스크", "office", "사무"], "box", ["mat_black_steel"]),
+  asset("asset_bar_stool", "바 스툴", "chair", "chair", ["industrial", "modern"], [400, 750, 400], ["의자", "stool", "바", "bar", "아일랜드"], "cylinder", ["mat_black_steel"]),
+  asset("asset_rocking_chair", "라운지 로킹체어", "chair", "chair", ["natural", "warm"], [700, 950, 900], ["의자", "chair", "로킹", "흔들"], "box", ["mat_oak"]),
+  asset("asset_kids_chair", "아이 의자", "chair", "chair", ["natural", "scandinavian"], [340, 600, 360], ["의자", "chair", "아이", "kids", "유아"], "box", ["mat_oak"]),
+
+  // ── 테이블·책상 ──
+  asset("asset_dining_table_4", "4인 다이닝 테이블", "table", "table", ["natural", "scandinavian"], [1400, 740, 800], ["테이블", "table", "다이닝", "4인", "식탁"], "box", ["mat_oak"]),
+  asset("asset_round_table", "라운드 티테이블", "table", "table", ["minimal", "contemporary"], [800, 450, 800], ["테이블", "table", "라운드", "원형", "티테이블"], "cylinder", ["mat_walnut"]),
+  asset("asset_desk_1400", "1400 책상", "table", "table", ["modern", "minimal"], [1400, 730, 700], ["책상", "desk", "테이블", "서재", "재택"], "box", ["mat_oak"]),
+  asset("asset_desk_1600_l", "L자 책상", "table", "table", ["modern", "industrial"], [1600, 730, 1400], ["책상", "desk", "L자", "게이밍", "서재"], "box", ["mat_black_steel"]),
+  asset("asset_console_table", "콘솔 테이블", "table", "table", ["luxury", "contemporary"], [1200, 800, 350], ["콘솔", "console", "테이블", "현관"], "box", ["mat_walnut"]),
+  asset("asset_nesting_table", "네스팅 테이블", "table", "table", ["japandi", "minimal"], [500, 450, 500], ["테이블", "nesting", "사이드", "보조"], "cylinder", ["mat_oak"]),
+  asset("asset_kitchen_island", "주방 아일랜드", "table", "table", ["modern", "contemporary"], [1800, 900, 900], ["아일랜드", "island", "주방", "kitchen", "조리대"], "box", ["mat_marble"]),
+
+  // ── 수납 ──
+  asset("asset_wardrobe_2door", "2도어 옷장", "cabinet", "cabinet", ["modern", "minimal"], [1200, 2100, 600], ["옷장", "wardrobe", "수납", "붙박이"], "box", ["mat_white_paint"]),
+  asset("asset_wardrobe_slide", "슬라이딩 붙박이장", "cabinet", "cabinet", ["modern", "luxury"], [2400, 2400, 600], ["옷장", "붙박이", "슬라이딩", "wardrobe"], "box", ["mat_white_paint"]),
+  asset("asset_chest_5", "5단 서랍장", "cabinet", "cabinet", ["natural", "scandinavian"], [800, 1200, 450], ["서랍장", "chest", "수납", "드로어"], "box", ["mat_oak"]),
+  asset("asset_nightstand", "협탁", "cabinet", "cabinet", ["warm", "minimal"], [450, 550, 400], ["협탁", "nightstand", "사이드", "침실"], "box", ["mat_walnut"]),
+  asset("asset_shoe_cabinet", "신발장", "cabinet", "cabinet", ["modern", "minimal"], [900, 1200, 350], ["신발장", "shoe", "현관", "수납"], "box", ["mat_white_paint"]),
+  asset("asset_open_shelf", "오픈 선반", "cabinet", "cabinet", ["industrial", "minimal"], [800, 1600, 300], ["선반", "shelf", "오픈", "책장"], "box", ["mat_black_steel"]),
+  asset("asset_kitchen_upper", "주방 상부장", "cabinet", "cabinet", ["modern", "minimal"], [3000, 700, 350], ["상부장", "주방", "kitchen", "수납"], "box", ["mat_white_paint"]),
+  asset("asset_kitchen_lower", "주방 하부장", "cabinet", "cabinet", ["modern", "minimal"], [3000, 850, 600], ["하부장", "주방", "kitchen", "싱크"], "box", ["mat_white_paint"]),
+
+  // ── 침대 ──
+  asset("asset_bed_single", "싱글 침대", "bed", "bed", ["minimal", "scandinavian"], [1000, 900, 2000], ["침대", "bed", "싱글", "1인"], "box", ["mat_linen"]),
+  asset("asset_bed_super_king", "슈퍼싱글 침대", "bed", "bed", ["modern", "warm"], [1100, 950, 2000], ["침대", "bed", "슈퍼싱글", "ss"], "box", ["mat_linen"]),
+  asset("asset_bed_king", "킹 침대", "bed", "bed", ["luxury", "contemporary"], [1800, 1050, 2100], ["침대", "bed", "킹", "king"], "box", ["mat_grey_fabric"]),
+  asset("asset_bunk_bed", "이층 침대", "bed", "bed", ["natural", "scandinavian"], [1050, 1650, 2050], ["침대", "bunk", "이층", "아이"], "box", ["mat_oak"]),
+  asset("asset_crib", "아기 침대", "bed", "bed", ["natural", "minimal"], [750, 950, 1300], ["침대", "crib", "아기", "유아"], "box", ["mat_oak"]),
+
+  // ── 조명 ──
+  asset("asset_pendant_long", "롱 펜던트 (식탁등)", "lamp", "lamp", ["modern", "contemporary"], [1200, 300, 200], ["조명", "펜던트", "식탁등", "다이닝"], "box", ["mat_black_steel"]),
+  asset("asset_ceiling_flush", "실링 라이트", "lamp", "lamp", ["minimal", "modern"], [500, 120, 500], ["조명", "실링", "천장등", "ceiling"], "cylinder", ["mat_white_paint"]),
+  asset("asset_wall_sconce", "벽등 (브래킷)", "lamp", "lamp", ["warm", "luxury"], [200, 300, 220], ["조명", "벽등", "sconce", "브래킷"], "cylinder", ["mat_brass"]),
+  asset("asset_arc_lamp", "아치 플로어 램프", "lamp", "lamp", ["contemporary", "luxury"], [1800, 2100, 400], ["조명", "아치", "arc", "플로어"], "cylinder", ["mat_black_steel"]),
+  asset("asset_desk_lamp", "데스크 램프", "lamp", "lamp", ["minimal", "modern"], [180, 450, 400], ["조명", "데스크", "스탠드", "task"], "cylinder", ["mat_black_steel"]),
+
+  // ── 러그·패브릭 ──
+  asset("asset_rug_round", "라운드 러그", "rug", "rug", ["natural", "scandinavian"], [1600, 20, 1600], ["러그", "rug", "라운드", "원형"], "plane", ["mat_beige_fabric"]),
+  asset("asset_rug_kilim", "킬림 러그", "rug", "rug", ["warm", "vintage"], [2000, 20, 1400], ["러그", "rug", "킬림", "kilim", "패턴"], "plane", ["mat_linen"]),
+  asset("asset_curtain_sheer", "쉬어 커튼", "decoration", "decoration", ["minimal", "natural"], [2400, 2400, 60], ["커튼", "curtain", "쉬어", "블라인드"], "plane", ["mat_linen"]),
+  asset("asset_blind_wood", "우드 블라인드", "decoration", "decoration", ["natural", "japandi"], [1500, 1400, 60], ["블라인드", "blind", "우드", "창"], "plane", ["mat_oak"]),
+
+  // ── 장식 ──
+  asset("asset_art_large", "대형 아트 액자", "decoration", "decoration", ["contemporary", "luxury"], [1400, 1000, 40], ["액자", "art", "그림", "대형"], "plane", ["mat_oak"]),
+  asset("asset_gallery_set", "갤러리월 3점 세트", "decoration", "decoration", ["modern", "minimal"], [1500, 600, 40], ["액자", "갤러리월", "세트", "art"], "plane", ["mat_black_steel"]),
+  asset("asset_floor_mirror", "전신 거울", "decoration", "decoration", ["minimal", "contemporary"], [600, 1700, 60], ["거울", "mirror", "전신", "스탠드"], "plane", ["mat_brass"]),
+  asset("asset_vase_set", "화병 세트", "decoration", "decoration", ["japandi", "minimal"], [300, 400, 300], ["화병", "vase", "오브제", "소품"], "cylinder", ["mat_white_paint"]),
+  asset("asset_basket", "라탄 바스켓", "decoration", "decoration", ["natural", "warm"], [450, 400, 450], ["바스켓", "basket", "라탄", "수납"], "cylinder", ["mat_linen"]),
+
+  // ── 식물 ──
+  asset("asset_plant_olive", "올리브 나무", "plant", "plant", ["natural", "warm"], [800, 1800, 800], ["식물", "plant", "올리브", "나무"], "cylinder", ["mat_green_plant"]),
+  asset("asset_plant_monstera", "몬스테라", "plant", "plant", ["natural", "contemporary"], [900, 1300, 900], ["식물", "plant", "몬스테라", "잎"], "cylinder", ["mat_green_plant"]),
+  asset("asset_plant_hanging", "행잉 플랜트", "plant", "plant", ["natural", "minimal"], [400, 700, 400], ["식물", "plant", "행잉", "hanging"], "sphere", ["mat_green_plant"]),
+
+  // ── 가전 ──
+  asset("asset_fridge_4door", "4도어 냉장고", "appliance", "appliance", ["modern", "contemporary"], [900, 1850, 800], ["냉장고", "fridge", "가전", "주방"], "box", ["mat_black_steel"]),
+  asset("asset_washer", "드럼 세탁기", "appliance", "appliance", ["modern", "minimal"], [600, 850, 650], ["세탁기", "washer", "가전", "베란다"], "box", ["mat_white_paint"]),
+  asset("asset_aircon_stand", "스탠드 에어컨", "appliance", "appliance", ["modern", "minimal"], [350, 1800, 350], ["에어컨", "aircon", "가전", "스탠드"], "box", ["mat_white_paint"]),
+  asset("asset_tv_55", "55인치 TV", "tv", "appliance", ["modern", "minimal"], [1240, 720, 60], ["tv", "티비", "55", "텔레비전"], "plane", ["mat_black_steel"]),
+  asset("asset_projector_screen", "빔 스크린", "tv", "appliance", ["minimal", "contemporary"], [2000, 1200, 40], ["빔", "프로젝터", "스크린", "projector"], "plane", ["mat_white_paint"]),
 ];
 
 export const ASSET_MAP: Record<string, Asset> = Object.fromEntries(ASSETS.map((a) => [a.id, a]));
