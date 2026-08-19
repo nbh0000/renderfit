@@ -18,6 +18,7 @@ import {
   rectangleWalls,
   validateOpening,
 } from "../geometry";
+import { arrangeObjects, placeObject } from "../placement";
 import { applyOperation, OPERATION_LABEL } from "../operations";
 import { validateOperation, type ValidationResult } from "../validation";
 
@@ -176,6 +177,56 @@ export class SceneEngine {
     }
 
     return this.commit(this.makeOperation("MOVE_OBJECT", id, before, after));
+  }
+
+  /**
+   * 배치 규칙(벽 스냅·겹침 회피·방 안 유지)을 적용해 옮긴다.
+   * target을 주면 그 지점으로 옮긴 뒤 정리하고, 없으면 현재 자리를 정리한다.
+   */
+  placeObject(id: string, target?: { cx: number; cy: number }): CommitResult {
+    const object = this.getObject(id);
+    if (!object) return { ok: false, error: "대상 객체를 찾을 수 없습니다." };
+
+    const patch = placeObject(this.scene, id, target);
+    if (!patch) return { ok: false, error: "이 객체는 자동 배치 대상이 아닙니다." };
+
+    const before = {
+      screen: { x: object.screen.x, rotation: object.screen.rotation },
+      depth: object.depth,
+    };
+    const after = {
+      screen: { x: patch.screen.x, rotation: patch.rotation },
+      depth: patch.depth,
+    };
+
+    return this.commit(this.makeOperation("MOVE_OBJECT", id, before, after, "배치"));
+  }
+
+  /** 방 안의 가구를 한 번에 정리한다 (undo 한 번으로 되돌아간다) */
+  arrangeObjects(): CommitResult {
+    const patches = arrangeObjects(this.scene);
+    if (patches.length === 0) return { ok: false, error: "정리할 가구가 없습니다." };
+
+    const byId = new Map(patches.map((entry) => [entry.id, entry.patch]));
+    const objects = this.scene.objects.map((object) => {
+      const patch = byId.get(object.id);
+      if (!patch) return object;
+      return {
+        ...object,
+        screen: { ...object.screen, x: patch.screen.x, rotation: patch.rotation },
+        depth: patch.depth,
+      };
+    });
+
+    return this.commit(
+      this.makeOperation(
+        "RESIZE_ROOM",
+        undefined,
+        { objects: this.scene.objects },
+        { objects },
+        `가구 ${patches.length}개 자동 배치`
+      )
+    );
   }
 
   rotateObject(id: string, rotation: { screen?: number; world?: Vec3 }): CommitResult {

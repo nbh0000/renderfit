@@ -16,8 +16,7 @@ import { ensureRoom, pointAlongWall, wallAngle, wallDirection, wallLength } from
 export const CAD_DISCLAIMER =
   "AI 추정 배치 도면 — 실측값이 아니며 시공 전 현장 실측으로 검증해야 합니다.";
 
-export const CAD_MEASURED_NOTE =
-  "사용자 입력 실측 치수 기준 도면 — 시공 전 최종 확인 필요.";
+export const CAD_MEASURED_NOTE = "사용자 입력 실측 치수 기준 도면 — 시공 전 최종 확인 필요.";
 
 export function disclaimerFor(measured: boolean): string {
   return measured ? CAD_MEASURED_NOTE : CAD_DISCLAIMER;
@@ -68,7 +67,9 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
 
   const objects: PlanObject[] = scene.objects
     .filter((object) => object.visibility)
-    .filter((object) => object.type !== "wall" && object.type !== "ceiling" && object.type !== "floor")
+    .filter(
+      (object) => object.type !== "wall" && object.type !== "ceiling" && object.type !== "floor"
+    )
     .map((object: SceneObject) => {
       // screen.x(0~1) → 방 가로 위치, depth(0~1, 클수록 안쪽) → 방 세로 위치
       const cx = (object.screen.x + object.screen.width / 2) * roomWidth;
@@ -457,7 +458,7 @@ export function buildPlanSvg(plan: PlanData): string {
   const W = plan.roomWidth;
   const L = plan.roomLength;
   const vbW = W + margin * 2;
-  const vbH = L + margin * 2 + 1400;
+  const vbH = L + margin * 2 + 1700;
 
   const esc = (value: string) =>
     value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -493,18 +494,83 @@ export function buildPlanSvg(plan: PlanData): string {
           for (const opening of openings) {
             const [x1, y1] = pointAlongWall(wall, opening.offset);
             const [x2, y2] = pointAlongWall(wall, opening.offset + opening.width);
-            const color = opening.type === "door" ? "#bf6242" : "#4a7fb5";
+            const [sx, sy] = [x1, fy(y1)];
+            const [ex, ey] = [x2, fy(y2)];
             const label = `${opening.name} ${Math.round(opening.width)}×${Math.round(opening.height)}`;
+            const midX = (sx + ex) / 2;
+            const midY = (sy + ey) / 2;
+
+            // 개구부 자리는 벽을 끊어 흰색으로 비운다 (건축 도면 관행)
             pieces.push(
-              `  <line x1="${x1.toFixed(1)}" y1="${fy(y1).toFixed(1)}" x2="${x2.toFixed(1)}" y2="${fy(y2).toFixed(1)}" stroke="${color}" stroke-width="${Math.max(60, wall.thickness * 0.5)}"/>`,
-              `  <text x="${((x1 + x2) / 2).toFixed(1)}" y="${(fy((y1 + y2) / 2) - 120).toFixed(1)}" font-size="96" text-anchor="middle" fill="${color}">${esc(label)}</text>`
+              `  <line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#ffffff" stroke-width="${wall.thickness + 4}"/>`
             );
+
+            if (opening.type === "door") {
+              // 문틀 + 90° 열림 궤적 (문짝 + 스윙 아크)
+              const dx = (ex - sx) / opening.width;
+              const dy = (ey - sy) / opening.width;
+              // 벽 안쪽(방향 법선)으로 열리게 그린다
+              const nx = -dy;
+              const ny = dx;
+              const leafX = sx + nx * opening.width;
+              const leafY = sy + ny * opening.width;
+
+              pieces.push(
+                `  <line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${leafX.toFixed(1)}" y2="${leafY.toFixed(1)}" stroke="#26231f" stroke-width="26"/>`,
+                `  <path d="M ${ex.toFixed(1)} ${ey.toFixed(1)} A ${opening.width.toFixed(1)} ${opening.width.toFixed(1)} 0 0 ${nx * dy - ny * dx >= 0 ? 1 : 0} ${leafX.toFixed(1)} ${leafY.toFixed(1)}" fill="none" stroke="#8b857d" stroke-width="14" stroke-dasharray="60 40"/>`,
+                `  <text x="${midX.toFixed(1)}" y="${(midY - 140).toFixed(1)}" font-size="96" text-anchor="middle" fill="#bf6242">${esc(label)}</text>`
+              );
+            } else {
+              // 창: 벽 두께 안에 유리선 3줄
+              const offsets = [-wall.thickness / 2, 0, wall.thickness / 2];
+              const dxn = (ex - sx) / opening.width;
+              const dyn = (ey - sy) / opening.width;
+              for (const offset of offsets) {
+                const ox = -dyn * offset;
+                const oy = dxn * offset;
+                pieces.push(
+                  `  <line x1="${(sx + ox).toFixed(1)}" y1="${(sy + oy).toFixed(1)}" x2="${(ex + ox).toFixed(1)}" y2="${(ey + oy).toFixed(1)}" stroke="#4a7fb5" stroke-width="14"/>`
+                );
+              }
+              pieces.push(
+                `  <text x="${midX.toFixed(1)}" y="${(midY - 140).toFixed(1)}" font-size="96" text-anchor="middle" fill="#4a7fb5">${esc(label)}</text>`
+              );
+            }
           }
 
           return pieces.join("\n");
         })
         .join("\n")
     : `  <rect x="0" y="0" width="${W}" height="${L}" fill="none" stroke="#26231f" stroke-width="24"/>`;
+
+  const areaM2 = (W / 1000) * (L / 1000);
+
+  /**
+   * 남측 벽(도면 아래쪽) 기준 치수 체인.
+   * 개구부가 있으면 벽–개구부–벽 구간을 끊어 표기한다 (시공 시 필요한 값).
+   */
+  const southWall = plan.walls.find(
+    (wall) => wall.start[1] === 0 && wall.end[1] === 0 && wall.end[0] > wall.start[0]
+  );
+  const chainPoints = [0, W];
+  for (const opening of southWall?.openings ?? []) {
+    chainPoints.push(opening.offset, opening.offset + opening.width);
+  }
+  const sorted = [...new Set(chainPoints)].sort((a, b) => a - b);
+  const chainY = L + 400;
+  const dimensionChain = sorted
+    .slice(0, -1)
+    .map((from, index) => {
+      const to = sorted[index + 1];
+      const mid = (from + to) / 2;
+      return [
+        `    <line x1="${from}" y1="${chainY}" x2="${to}" y2="${chainY}"/>`,
+        `    <line x1="${from}" y1="${chainY - 50}" x2="${from}" y2="${chainY + 50}"/>`,
+        `    <line x1="${to}" y1="${chainY - 50}" x2="${to}" y2="${chainY + 50}"/>`,
+        `    <text x="${mid}" y="${chainY - 90}" font-size="90" text-anchor="middle" stroke="none">${Math.round(to - from)}</text>`,
+      ].join("\n");
+    })
+    .join("\n");
 
   const objects = plan.objects
     .map((object) => {
@@ -520,18 +586,39 @@ export function buildPlanSvg(plan: PlanData): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-margin} ${-margin} ${vbW} ${vbH}" width="1400">
   <rect x="${-margin}" y="${-margin}" width="${vbW}" height="${vbH}" fill="#ffffff"/>
 
+  <!-- 가구 (벽보다 아래에 깔아 벽선이 가려지지 않게 한다) -->
+${objects}
+
   <!-- 벽 · 개구부 -->
 ${wallsSvg}
 
-  <!-- 가구 -->
-${objects}
+  <!-- 실 이름 · 면적 -->
+  <g font-family="Pretendard, sans-serif" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="60" stroke-linejoin="round">
+    <text x="${W / 2}" y="${fy(L) + 320}" font-size="150" fill="#26231f">${esc(plan.roomType)}</text>
+    <text x="${W / 2}" y="${fy(L) + 470}" font-size="105" fill="#6b6560">${areaM2.toFixed(1)}㎡ (${(areaM2 / 3.3058).toFixed(1)}평)</text>
+  </g>
+
+  <!-- 방위 · 축척 -->
+  <g stroke="#26231f" stroke-width="14" fill="#26231f" font-family="Pretendard, sans-serif">
+    <line x1="${-margin + 300}" y1="${-margin + 620}" x2="${-margin + 300}" y2="${-margin + 300}"/>
+    <polygon points="${-margin + 300},${-margin + 250} ${-margin + 230},${-margin + 400} ${-margin + 370},${-margin + 400}" stroke="none"/>
+    <text x="${-margin + 300}" y="${-margin + 780}" font-size="110" text-anchor="middle" stroke="none">N</text>
+  </g>
+  <g stroke="#26231f" stroke-width="12" fill="#26231f" font-family="Pretendard, sans-serif">
+    <line x1="${W - 1000}" y1="${-margin + 500}" x2="${W}" y2="${-margin + 500}"/>
+    <line x1="${W - 1000}" y1="${-margin + 440}" x2="${W - 1000}" y2="${-margin + 560}"/>
+    <line x1="${W - 500}" y1="${-margin + 460}" x2="${W - 500}" y2="${-margin + 540}"/>
+    <line x1="${W}" y1="${-margin + 440}" x2="${W}" y2="${-margin + 560}"/>
+    <text x="${W - 500}" y="${-margin + 700}" font-size="96" text-anchor="middle" stroke="none">1 m</text>
+  </g>
 
   <!-- 치수 -->
   <g stroke="#8b857d" stroke-width="12" fill="#8b857d" font-size="110">
-    <line x1="0" y1="${L + 420}" x2="${W}" y2="${L + 420}"/>
-    <line x1="0" y1="${L + 360}" x2="0" y2="${L + 480}"/>
-    <line x1="${W}" y1="${L + 360}" x2="${W}" y2="${L + 480}"/>
-    <text x="${W / 2}" y="${L + 620}" text-anchor="middle" stroke="none">${Math.round(W)} mm</text>
+${dimensionChain}
+    <line x1="0" y1="${L + 700}" x2="${W}" y2="${L + 700}"/>
+    <line x1="0" y1="${L + 640}" x2="0" y2="${L + 760}"/>
+    <line x1="${W}" y1="${L + 640}" x2="${W}" y2="${L + 760}"/>
+    <text x="${W / 2}" y="${L + 900}" text-anchor="middle" stroke="none">${Math.round(W)} mm</text>
 
     <line x1="${-420}" y1="0" x2="${-420}" y2="${L}"/>
     <line x1="${-480}" y1="0" x2="${-360}" y2="0"/>

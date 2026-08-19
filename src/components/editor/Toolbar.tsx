@@ -27,6 +27,7 @@ export function Toolbar() {
   const setTool = useEditorStore((state) => state.setTool);
   const canUndo = useEditorStore((state) => state.canUndo);
   const canRedo = useEditorStore((state) => state.canRedo);
+  const runTool = useEditorStore((state) => state.runTool);
   const undo = useEditorStore((state) => state.undo);
   const redo = useEditorStore((state) => state.redo);
   const saveVersion = useEditorStore((state) => state.saveVersion);
@@ -92,6 +93,13 @@ export function Toolbar() {
           {busy}
         </span>
       )}
+
+      <ToolbarButton
+        onClick={() => void runTool("arrange_objects")}
+        title="가구를 벽에 맞춰 겹치지 않게 정리합니다"
+      >
+        자동 배치
+      </ToolbarButton>
 
       <ToolbarButton onClick={() => void saveVersion(`v${new Date().toLocaleTimeString("ko-KR")}`)}>
         저장

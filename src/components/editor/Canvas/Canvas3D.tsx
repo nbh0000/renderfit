@@ -296,18 +296,17 @@ function WallMesh({
                 <meshStandardMaterial color={frameColor} roughness={0.6} />
               </mesh>
             ))}
-            {/* 창유리 — 문은 열린 개구부로 둔다 */}
+            {/* 창유리 — 문은 열린 개구부로 둔다.
+                transmission은 유리 1장마다 장면을 한 번 더 렌더하므로 쓰지 않는다. */}
             {opening.type === "window" && (
               <mesh>
                 <planeGeometry args={[openWidth, openHeight]} />
-                <meshPhysicalMaterial
+                <meshStandardMaterial
                   color="#dceaf2"
                   transparent
-                  opacity={0.3}
-                  roughness={0.05}
-                  metalness={0}
-                  transmission={0.85}
-                  thickness={0.02}
+                  opacity={0.22}
+                  roughness={0.08}
+                  metalness={0.1}
                   side={THREE.DoubleSide}
                 />
               </mesh>
@@ -466,6 +465,7 @@ function PlacementController({
         objectId: current.id,
         x: current.x,
         depth: current.depth,
+        snap: true,
       });
     };
 
@@ -483,6 +483,7 @@ function PlacementController({
 /** 카메라 초기 정렬 — OrbitControls가 첫 프레임에 엉뚱한 방향을 보는 문제 보정 */
 function CameraRig({ target }: { target: [number, number, number] }) {
   const camera = useThree((state) => state.camera);
+  const invalidate = useThree((state) => state.invalidate);
   const controls = useThree((state) => state.controls) as {
     target?: { set: (x: number, y: number, z: number) => void };
     update?: () => void;
@@ -495,7 +496,9 @@ function CameraRig({ target }: { target: [number, number, number] }) {
       controls.target.set(target[0], target[1], target[2]);
       controls.update?.();
     }
-  }, [camera, controls, target]);
+    // frameloop="demand"라 카메라를 옮긴 뒤 직접 한 프레임을 요청해야 한다.
+    invalidate();
+  }, [camera, controls, invalidate, target]);
 
   return null;
 }
@@ -574,6 +577,8 @@ export function Canvas3D() {
     <div className="h-full w-full bg-[#0f0e0c]">
       <Canvas
         shadows
+        // 가만히 두면 프레임을 그리지 않는다. 카메라 조작·드래그·상태 변경 때만 렌더한다.
+        frameloop="demand"
         dpr={DPR}
         gl={GL_CONFIG}
         camera={cameraConfig}
@@ -616,7 +621,7 @@ export function Canvas3D() {
           opacity={0.5}
           blur={2}
           far={3}
-          resolution={512}
+          resolution={256}
           color="#2a231c"
         />
 

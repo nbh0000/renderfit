@@ -145,6 +145,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       objectId: result.selectObjectId,
       x: hit.x,
       depth: hit.depth,
+      snap: true,
     });
   },
 

@@ -132,6 +132,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description: "개구부를 제거한다.",
     parameters: { wallId: "string", openingId: "string" },
   },
+  {
+    name: "arrange_objects",
+    description: "가구를 벽에 맞춰 겹치지 않게 자동 배치한다.",
+    parameters: {},
+  },
   { name: "search_asset", description: "가구 에셋을 검색한다.", parameters: { query: "string" } },
   { name: "render_preview", description: "미리보기 렌더를 실행한다.", parameters: {} },
   { name: "render_final", description: "최종 렌더를 실행한다.", parameters: {} },
@@ -223,6 +228,18 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       if (!object) return fail("대상 객체를 찾을 수 없습니다.");
       // dx/dy = 상대 이동(2.5D 드래그·AI 명령), x/depth = 절대 위치(3D 배치)
       const hasAbsolute = typeof args.x === "number" || typeof args.depth === "number";
+
+      // 3D에서 끌어다 놓은 경우에는 벽 스냅·겹침 회피를 적용해 사람이 놓은 것처럼 정리한다.
+      if (hasAbsolute && args.snap === true) {
+        const room = engine.getScene().room;
+        const cx =
+          (((args.x as number) ?? object.screen.x) + object.screen.width / 2) *
+          room.dimensions.width;
+        const cy = ((args.depth as number) ?? object.depth) * room.dimensions.length;
+        const placed = engine.placeObject(objectId, { cx, cy });
+        return toResult(command, placed, "가구를 배치했습니다.", objectId);
+      }
+
       const result = engine.moveObject(objectId, {
         screen: {
           x: hasAbsolute
@@ -539,6 +556,11 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       if (!wallId || !openingId) return fail("대상 개구부가 없습니다.");
       const result = engine.deleteOpening(wallId, openingId);
       return toResult(command, result, "개구부를 제거했습니다.");
+    }
+
+    case "arrange_objects": {
+      const result = engine.arrangeObjects();
+      return toResult(command, result, "가구를 정리했습니다.");
     }
 
     case "search_asset":
