@@ -25,7 +25,7 @@ export function CanvasControls() {
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 z-20 flex flex-wrap items-center gap-2">
       {/* 보기 전환 */}
-      <div className="pointer-events-auto flex gap-0.5 rounded-lg border border-white/15 bg-[#1b1a18]/85 p-0.5 backdrop-blur">
+      <div className="pointer-events-auto flex gap-0.5 rounded-lg border border-white/15 bg-[#0a0a0a]/85 p-0.5 backdrop-blur">
         {VIEW_MODES.map((mode) => (
           <button
             key={mode.id}
@@ -43,7 +43,7 @@ export function CanvasControls() {
 
       {/* 확대 — 3D는 휠·드래그로 조작하므로 2.5D에서만 노출 */}
       {viewMode !== "3d" && (
-        <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-white/15 bg-[#1b1a18]/85 p-0.5 text-white/80 backdrop-blur">
+        <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-white/15 bg-[#0a0a0a]/85 p-0.5 text-white/80 backdrop-blur">
           <button
             type="button"
             onClick={() => setZoom(zoom - 0.15)}
@@ -77,7 +77,7 @@ export function CanvasControls() {
           onClick={toggleGrid}
           className={[
             "pointer-events-auto rounded-lg border border-white/15 px-2.5 py-1.5 text-[11.5px] backdrop-blur transition-colors",
-            showGrid ? "bg-white text-ink" : "bg-[#1b1a18]/85 text-white/70 hover:text-white",
+            showGrid ? "bg-white text-ink" : "bg-[#0a0a0a]/85 text-white/70 hover:text-white",
           ].join(" ")}
         >
           격자

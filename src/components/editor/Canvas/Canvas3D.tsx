@@ -189,7 +189,7 @@ function RoomShell({ scene }: { scene: Scene }) {
 
       <mesh position={[0, height, 0]} rotation={[Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[width, length]} />
-        <meshStandardMaterial color="#f6f3ee" roughness={1} />
+        <meshStandardMaterial color="#f7f7f7" roughness={1} />
       </mesh>
     </group>
   );
@@ -264,7 +264,7 @@ function WallMesh({
           return (
             <mesh key={`${wall.id}_base_${index}`} position={[x, 0.05, z]} rotation={[0, angle, 0]}>
               <boxGeometry args={[(span.to - span.from) * MM, 0.1, thickness + 0.02]} />
-              <meshStandardMaterial color="#f2ede4" roughness={0.7} />
+              <meshStandardMaterial color="#f2f2f2" roughness={0.7} />
             </mesh>
           );
         })}
@@ -276,7 +276,7 @@ function WallMesh({
         const openHeight = opening.height * MM;
         const y = (opening.sillHeight + opening.height / 2) * MM;
 
-        const frameColor = opening.type === "door" ? "#8a6a4d" : "#f4f1ec";
+        const frameColor = opening.type === "door" ? "#3d3d3d" : "#f2f2f2";
         const jamb = 0.05; // 문선·창틀 폭 50mm
         const depth = thickness * 0.7;
 
@@ -302,7 +302,7 @@ function WallMesh({
               <mesh>
                 <planeGeometry args={[openWidth, openHeight]} />
                 <meshStandardMaterial
-                  color="#dceaf2"
+                  color="#e8eaec"
                   transparent
                   opacity={0.22}
                   roughness={0.08}
@@ -574,7 +574,7 @@ export function Canvas3D() {
   const backdropOn = showBackdrop && Boolean(backdropUrl);
 
   return (
-    <div className="h-full w-full bg-[#0f0e0c]">
+    <div className="h-full w-full bg-[#000000]">
       <Canvas
         shadows
         // 가만히 두면 프레임을 그리지 않는다. 카메라 조작·드래그·상태 변경 때만 렌더한다.

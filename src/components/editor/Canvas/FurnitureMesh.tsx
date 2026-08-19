@@ -81,7 +81,7 @@ export function FurnitureMesh({ object, material, selected }: MeshProps) {
   const outline = selected ? (
     <mesh>
       <boxGeometry args={[w * 1.04, h * 1.04, d * 1.04]} />
-      <meshBasicMaterial color="#bf6242" wireframe />
+      <meshBasicMaterial color="#000000" wireframe />
     </mesh>
   ) : null;
 

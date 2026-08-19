@@ -517,7 +517,7 @@ export function buildPlanSvg(plan: PlanData): string {
 
               pieces.push(
                 `  <line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${leafX.toFixed(1)}" y2="${leafY.toFixed(1)}" stroke="#26231f" stroke-width="26"/>`,
-                `  <path d="M ${ex.toFixed(1)} ${ey.toFixed(1)} A ${opening.width.toFixed(1)} ${opening.width.toFixed(1)} 0 0 ${nx * dy - ny * dx >= 0 ? 1 : 0} ${leafX.toFixed(1)} ${leafY.toFixed(1)}" fill="none" stroke="#8b857d" stroke-width="14" stroke-dasharray="60 40"/>`,
+                `  <path d="M ${ex.toFixed(1)} ${ey.toFixed(1)} A ${opening.width.toFixed(1)} ${opening.width.toFixed(1)} 0 0 ${nx * dy - ny * dx >= 0 ? 1 : 0} ${leafX.toFixed(1)} ${leafY.toFixed(1)}" fill="none" stroke="#8a8a8a" stroke-width="14" stroke-dasharray="60 40"/>`,
                 `  <text x="${midX.toFixed(1)}" y="${(midY - 140).toFixed(1)}" font-size="96" text-anchor="middle" fill="#bf6242">${esc(label)}</text>`
               );
             } else {
@@ -529,11 +529,11 @@ export function buildPlanSvg(plan: PlanData): string {
                 const ox = -dyn * offset;
                 const oy = dxn * offset;
                 pieces.push(
-                  `  <line x1="${(sx + ox).toFixed(1)}" y1="${(sy + oy).toFixed(1)}" x2="${(ex + ox).toFixed(1)}" y2="${(ey + oy).toFixed(1)}" stroke="#4a7fb5" stroke-width="14"/>`
+                  `  <line x1="${(sx + ox).toFixed(1)}" y1="${(sy + oy).toFixed(1)}" x2="${(ex + ox).toFixed(1)}" y2="${(ey + oy).toFixed(1)}" stroke="#4d4d4d" stroke-width="14"/>`
                 );
               }
               pieces.push(
-                `  <text x="${midX.toFixed(1)}" y="${(midY - 140).toFixed(1)}" font-size="96" text-anchor="middle" fill="#4a7fb5">${esc(label)}</text>`
+                `  <text x="${midX.toFixed(1)}" y="${(midY - 140).toFixed(1)}" font-size="96" text-anchor="middle" fill="#4d4d4d">${esc(label)}</text>`
               );
             }
           }
@@ -577,9 +577,9 @@ export function buildPlanSvg(plan: PlanData): string {
       const corners = rectCorners(object)
         .map(([x, y]) => `${x.toFixed(1)},${fy(y).toFixed(1)}`)
         .join(" ");
-      return `  <polygon points="${corners}" fill="#e8e1d6" stroke="#4a453e" stroke-width="18"/>
+      return `  <polygon points="${corners}" fill="#f2f2f2" stroke="#4d4d4d" stroke-width="18"/>
   <text x="${object.cx}" y="${fy(object.cy)}" font-size="110" text-anchor="middle" fill="#26231f">${esc(object.name)}</text>
-  <text x="${object.cx}" y="${fy(object.cy) + 130}" font-size="86" text-anchor="middle" fill="#6b6560">${Math.round(object.width)}×${Math.round(object.depth)}</text>`;
+  <text x="${object.cx}" y="${fy(object.cy) + 130}" font-size="86" text-anchor="middle" fill="#666666">${Math.round(object.width)}×${Math.round(object.depth)}</text>`;
     })
     .join("\n");
 
@@ -595,7 +595,7 @@ ${wallsSvg}
   <!-- 실 이름 · 면적 -->
   <g font-family="Pretendard, sans-serif" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="60" stroke-linejoin="round">
     <text x="${W / 2}" y="${fy(L) + 320}" font-size="150" fill="#26231f">${esc(plan.roomType)}</text>
-    <text x="${W / 2}" y="${fy(L) + 470}" font-size="105" fill="#6b6560">${areaM2.toFixed(1)}㎡ (${(areaM2 / 3.3058).toFixed(1)}평)</text>
+    <text x="${W / 2}" y="${fy(L) + 470}" font-size="105" fill="#666666">${areaM2.toFixed(1)}㎡ (${(areaM2 / 3.3058).toFixed(1)}평)</text>
   </g>
 
   <!-- 방위 · 축척 -->
@@ -613,7 +613,7 @@ ${wallsSvg}
   </g>
 
   <!-- 치수 -->
-  <g stroke="#8b857d" stroke-width="12" fill="#8b857d" font-size="110">
+  <g stroke="#8a8a8a" stroke-width="12" fill="#8a8a8a" font-size="110">
 ${dimensionChain}
     <line x1="0" y1="${L + 700}" x2="${W}" y2="${L + 700}"/>
     <line x1="0" y1="${L + 640}" x2="0" y2="${L + 760}"/>

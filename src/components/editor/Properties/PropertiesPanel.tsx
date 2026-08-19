@@ -96,7 +96,7 @@ export function PropertiesPanel() {
         </select>
 
         <div className="mt-2 flex flex-wrap gap-1">
-          {["#efe4d3", "#d8c8b2", "#a8a49e", "#6d4a33", "#2f2d2b", "#5c7a52", "#bf6242"].map(
+          {["#efe4d3", "#d8c8b2", "#a8a49e", "#6d4a33", "#2f2d2b", "#5c7a52", "#000000"].map(
             (color) => (
               <button
                 key={color}

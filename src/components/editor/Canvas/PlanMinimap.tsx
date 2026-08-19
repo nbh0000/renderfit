@@ -34,7 +34,7 @@ export function PlanMinimap() {
   );
 
   return (
-    <div className="absolute bottom-3 right-3 z-30 w-[190px] rounded-lg border border-white/15 bg-[#1b1a18]/85 p-2 backdrop-blur">
+    <div className="absolute bottom-3 right-3 z-30 w-[190px] rounded-lg border border-white/15 bg-[#0a0a0a]/85 p-2 backdrop-blur">
       <div className="mb-1 flex items-center justify-between text-[10.5px] text-white/70">
         <span>
           평면 {Math.round(W)}×{Math.round(L)}
@@ -55,7 +55,7 @@ export function PlanMinimap() {
           className="w-full"
           style={{ aspectRatio: `${W + padding * 2} / ${L + padding * 2}` }}
         >
-          <rect x={0} y={0} width={W} height={L} fill="#efe9e0" opacity={0.12} />
+          <rect x={0} y={0} width={W} height={L} fill="#ffffff" opacity={0.08} />
 
           {(room.walls ?? []).map((wall) => {
             const openings = [...(wall.openings ?? [])].sort((a, b) => a.offset - b.offset);
@@ -83,7 +83,7 @@ export function PlanMinimap() {
                       y1={fy(y1)}
                       x2={x2}
                       y2={fy(y2)}
-                      stroke="#f4f1ec"
+                      stroke="#ffffff"
                       strokeWidth={wall.thickness}
                       strokeLinecap="butt"
                     />
@@ -100,7 +100,9 @@ export function PlanMinimap() {
                       y1={fy(y1)}
                       x2={x2}
                       y2={fy(y2)}
-                      stroke={opening.type === "door" ? "#e08b60" : "#7cb3e0"}
+                      stroke="#ffffff"
+                      strokeOpacity={opening.type === "door" ? 0.55 : 0.28}
+                      strokeDasharray={opening.type === "window" ? "120 90" : undefined}
                       strokeWidth={Math.max(80, wall.thickness * 0.7)}
                     >
                       <title>
@@ -127,7 +129,7 @@ export function PlanMinimap() {
                 y={fy(cy) - depth / 2}
                 width={width}
                 height={depth}
-                fill={selected ? "#bf6242" : "#ffffff"}
+                fill={selected ? "#000000" : "#ffffff"}
                 fillOpacity={selected ? 0.75 : 0.35}
                 stroke={selected ? "#ffffff" : "#ffffff"}
                 strokeOpacity={selected ? 0.9 : 0.35}

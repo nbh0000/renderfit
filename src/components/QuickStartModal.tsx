@@ -75,7 +75,7 @@ export function QuickStartModal({
           role="dialog"
           aria-modal="true"
           aria-label="어떤 방식으로 시작할까요?"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-[#1b1a18]/55 p-4 backdrop-blur-sm sm:items-center"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-[#0a0a0a]/55 p-4 backdrop-blur-sm sm:items-center"
           onClick={() => setOpen(false)}
         >
           <div

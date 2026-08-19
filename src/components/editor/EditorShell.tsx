@@ -196,7 +196,7 @@ function OnboardingOverlay() {
   };
 
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#1b1a18]/92 p-6">
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#0a0a0a]/92 p-6">
       <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-surface p-6 text-center">
         {step === "upload" ? (
           <>

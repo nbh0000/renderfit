@@ -17,7 +17,7 @@ export function VariantCompare() {
   if (!variants?.length) return null;
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#1b1a18]/85 p-5">
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#0a0a0a]/85 p-5">
       <div className="w-full max-w-5xl">
         <div className="mb-3 flex items-center justify-between text-white">
           <div>
@@ -39,7 +39,7 @@ export function VariantCompare() {
           {variants.map((variant) => (
             <div
               key={variant.imageUrl}
-              className="overflow-hidden rounded-[var(--radius-card)] border border-white/15 bg-[#26231f]"
+              className="overflow-hidden rounded-[var(--radius-card)] border border-white/15 bg-[#0a0a0a]"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={variant.imageUrl} alt={variant.label} className="w-full" />

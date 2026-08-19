@@ -164,7 +164,7 @@ export function Canvas2D() {
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden bg-[#1b1a18]"
+      className="relative h-full w-full overflow-hidden bg-[#0a0a0a]"
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}
@@ -188,7 +188,7 @@ export function Canvas2D() {
       >
         <div
           ref={frameRef}
-          className="relative w-full max-w-[1100px] overflow-hidden rounded-lg bg-[#2a2724] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+          className="relative w-full max-w-[1100px] overflow-hidden rounded-lg bg-[#141414] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
           style={{ aspectRatio: `${scene?.source?.width ?? 4} / ${scene?.source?.height ?? 3}` }}
         >
           {background ? (
@@ -245,7 +245,7 @@ export function Canvas2D() {
                     className={[
                       "h-full w-full rounded-[4px] border-2",
                       selected
-                        ? "border-[#bf6242] bg-[#bf6242]/25"
+                        ? "border-[#000000] bg-[#000000]/25"
                         : "border-white/30 bg-white/5 hover:border-white/60",
                     ].join(" ")}
                     style={selected ? undefined : { backgroundColor: `${color}33` }}
@@ -254,7 +254,7 @@ export function Canvas2D() {
                   <span
                     className={[
                       "pointer-events-none absolute -top-5 left-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px]",
-                      selected ? "bg-[#bf6242] text-white" : "bg-black/50 text-white/80",
+                      selected ? "bg-[#000000] text-white" : "bg-black/50 text-white/80",
                     ].join(" ")}
                   >
                     {object.name}
@@ -266,7 +266,7 @@ export function Canvas2D() {
                       {/* 크기 조절 핸들 */}
                       <span
                         onPointerDown={(event) => onPointerDownObject(event, object, "scale")}
-                        className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-sm border border-white bg-[#bf6242]"
+                        className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-sm border border-white bg-[#000000]"
                       />
                       {/* 회전 핸들 */}
                       <span
