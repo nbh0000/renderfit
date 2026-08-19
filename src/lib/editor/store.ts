@@ -45,6 +45,8 @@ interface EditorState {
   viewportRaycast: ((clientX: number, clientY: number) => { x: number; depth: number } | null) | null;
   /** 3D 뷰에 생성 이미지를 배경으로 띄울지 */
   showBackdrop: boolean;
+  /** 2.5D 캔버스 확대 배율 (하단 바에서 조작) */
+  zoom: number;
 
   init: (project: DesignProject) => void;
   setScene: (scene: Scene) => void;
@@ -62,12 +64,15 @@ interface EditorState {
     raycast: ((clientX: number, clientY: number) => { x: number; depth: number } | null) | null
   ) => void;
   toggleBackdrop: () => void;
+  setZoom: (zoom: number) => void;
   placeAsset: (assetId: string, clientX: number, clientY: number) => Promise<void>;
 
   runTool: (tool: string, args?: Record<string, unknown>) => Promise<ToolCallResult>;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
-  runCommand: (instruction: string) => Promise<{ ok: boolean; message: string }>;
+  runCommand: (
+    instruction: string
+  ) => Promise<{ ok: boolean; message: string; intent?: string; toolCount?: number }>;
   startJob: (path: string, body?: unknown) => Promise<Job | null>;
   saveVersion: (label: string) => Promise<void>;
   reload: () => Promise<void>;
@@ -102,6 +107,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   viewportExport: null,
   viewportRaycast: null,
   showBackdrop: true,
+  zoom: 1,
 
   init: (project) =>
     set({
@@ -132,6 +138,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setViewportExport: (viewportExport) => set({ viewportExport }),
   setViewportRaycast: (viewportRaycast) => set({ viewportRaycast }),
   toggleBackdrop: () => set((state) => ({ showBackdrop: !state.showBackdrop })),
+  setZoom: (zoom) => set({ zoom: Math.min(3, Math.max(0.4, zoom)) }),
 
   /** 좌측 패널에서 3D 뷰로 끌어다 놓은 위치에 에셋을 추가한다 */
   placeAsset: async (assetId, clientX, clientY) => {
@@ -227,7 +234,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const jobs = (data.jobs as Job[] | undefined) ?? [];
     for (const job of jobs) void trackJob(job, set, get);
 
-    return { ok: true, message: data.message as string };
+    return {
+      ok: true,
+      message: data.message as string,
+      intent: data.intent as string | undefined,
+      toolCount: Array.isArray(data.results) ? data.results.length : 0,
+    };
   },
 
   /** analyze / generate / render 처럼 background job을 만드는 호출 */

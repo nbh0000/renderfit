@@ -30,11 +30,12 @@ export function Canvas2D() {
   const runTool = useEditorStore((state) => state.runTool);
   const showGrid = useEditorStore((state) => state.showGrid);
   const viewMode = useEditorStore((state) => state.viewMode);
+  const zoom = useEditorStore((state) => state.zoom);
+  const setZoom = useEditorStore((state) => state.setZoom);
 
   const frameRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [draft, setDraft] = useState<{ id: string; screen: SceneObject["screen"] } | null>(null);
-  const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const panRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
 
@@ -170,7 +171,7 @@ export function Canvas2D() {
       onWheel={(event) => {
         if (!event.ctrlKey && !event.metaKey) return;
         event.preventDefault();
-        setZoom((value) => Math.min(3, Math.max(0.4, value - event.deltaY * 0.001)));
+        setZoom(zoom - event.deltaY * 0.001);
       }}
       onPointerDown={(event) => {
         // 빈 곳을 누르면 선택 해제 + 공간 이동 시작

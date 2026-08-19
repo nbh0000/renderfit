@@ -5,6 +5,8 @@
 export const BRAND = {
   /** 화면에 노출되는 서비스명 */
   name: "렌더핏",
+  /** 로고(워드마크)에 쓰는 영문 표기 — 별도 이미지 없이 글자만 쓴다 */
+  wordmark: "RENDERFIT",
   /** 문서 타이틀 등에서 쓰는 전체 표기 */
   fullName: "렌더핏 RENDERFIT",
   /** 한 줄 소개 */

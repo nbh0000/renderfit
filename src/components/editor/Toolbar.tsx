@@ -2,14 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useEditorStore, type EditorTool, type ViewMode } from "@/lib/editor/store";
+import { useEditorStore, type EditorTool } from "@/lib/editor/store";
 import { BRAND } from "@/config/brand";
-
-const VIEW_MODES: { id: ViewMode; label: string }[] = [
-  { id: "image", label: "Image" },
-  { id: "2.5d", label: "2.5D" },
-  { id: "3d", label: "3D" },
-];
 
 const TOOLS: { id: EditorTool; label: string; hint: string }[] = [
   { id: "select", label: "선택", hint: "V" },
@@ -21,8 +15,6 @@ const TOOLS: { id: EditorTool; label: string; hint: string }[] = [
 export function Toolbar() {
   const projectId = useEditorStore((state) => state.projectId);
   const projectName = useEditorStore((state) => state.projectName);
-  const viewMode = useEditorStore((state) => state.viewMode);
-  const setViewMode = useEditorStore((state) => state.setViewMode);
   const tool = useEditorStore((state) => state.tool);
   const setTool = useEditorStore((state) => state.setTool);
   const canUndo = useEditorStore((state) => state.canUndo);
@@ -38,8 +30,11 @@ export function Toolbar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
-      <Link href="/dashboard" className="serif-display shrink-0 text-[15px]">
-        {BRAND.name}
+      <Link
+        href="/dashboard"
+        className="shrink-0 text-[13px] font-semibold tracking-[0.14em] text-ink hover:opacity-70"
+      >
+        {BRAND.wordmark}
       </Link>
       <span className="max-w-[180px] truncate text-[13px] font-medium">{projectName}</span>
 
@@ -48,7 +43,11 @@ export function Toolbar() {
       <ToolbarButton disabled={!canUndo} onClick={() => void undo()} title="실행 취소 (Ctrl+Z)">
         ↶
       </ToolbarButton>
-      <ToolbarButton disabled={!canRedo} onClick={() => void redo()} title="다시 실행 (Ctrl+Shift+Z)">
+      <ToolbarButton
+        disabled={!canRedo}
+        onClick={() => void redo()}
+        title="다시 실행 (Ctrl+Shift+Z)"
+      >
         ↷
       </ToolbarButton>
 
@@ -71,21 +70,8 @@ export function Toolbar() {
         ))}
       </div>
 
-      <div className="mx-auto flex items-center gap-1 rounded-lg bg-sunken p-0.5">
-        {VIEW_MODES.map((mode) => (
-          <button
-            key={mode.id}
-            type="button"
-            onClick={() => setViewMode(mode.id)}
-            className={[
-              "rounded-md px-3 py-1 text-[12px] transition-colors",
-              viewMode === mode.id ? "bg-surface font-medium text-ink shadow-sm" : "text-muted",
-            ].join(" ")}
-          >
-            {mode.label}
-          </button>
-        ))}
-      </div>
+      {/* 보기 전환은 캔버스 하단 컨트롤 바(CanvasControls)로 옮겼다 */}
+      <div className="mx-auto" />
 
       {busy && (
         <span className="flex items-center gap-1.5 text-[11.5px] text-muted">
@@ -134,7 +120,9 @@ export function Toolbar() {
             <ExportItem href={`/api/projects/${projectId}/export?format=image`} newTab>
               장면 이미지 (SVG)
             </ExportItem>
-            <ExportItem href={`/api/projects/${projectId}/export?format=scene`}>Scene JSON</ExportItem>
+            <ExportItem href={`/api/projects/${projectId}/export?format=scene`}>
+              Scene JSON
+            </ExportItem>
             <ExportItem href={`/api/projects/${projectId}/export?format=project`}>
               Project JSON
             </ExportItem>

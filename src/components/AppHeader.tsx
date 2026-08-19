@@ -30,17 +30,13 @@ export function AppHeader({ right, active, authed }: Props) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur-sm">
       <div className="mx-auto flex h-16 max-w-[1400px] items-center px-4 sm:px-6">
-        {/* 로고 */}
-        <Link href="/" className="group flex shrink-0 items-center gap-2" aria-label={BRAND.name}>
-          <span
-            aria-hidden
-            className="grid h-7 w-7 place-items-center rounded-[7px] bg-accent text-[13px] font-semibold text-white"
-          >
-            {BRAND.name.slice(0, 1)}
-          </span>
-          <span className="serif-display text-[19px] leading-none tracking-tight text-ink">
-            {BRAND.name}
-          </span>
+        {/* 로고 — 마크 없이 영문 워드마크만 쓴다 */}
+        <Link
+          href="/"
+          className="shrink-0 text-[17px] font-semibold leading-none tracking-[0.16em] text-ink transition-opacity hover:opacity-70"
+          aria-label={BRAND.wordmark}
+        >
+          {BRAND.wordmark}
         </Link>
 
         {/* 구분선 */}

@@ -25,8 +25,11 @@ export default async function LoginPage({
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-16">
-      <Link href="/" className="serif-display text-[18px]">
-        {BRAND.name}
+      <Link
+        href="/"
+        className="text-[16px] font-semibold tracking-[0.16em] text-ink hover:opacity-70"
+      >
+        {BRAND.wordmark}
       </Link>
 
       <h1 className="mt-8 text-[22px] font-semibold tracking-tight">
@@ -43,7 +46,8 @@ export default async function LoginPage({
           <div className="rounded-[var(--radius-card)] border border-dashed border-line-strong bg-surface p-4 text-[13px] leading-relaxed text-muted">
             Supabase 환경변수가 설정되지 않아 로그인을 사용할 수 없습니다.
             <br />
-            <code className="text-[12px]">.env.local</code>에 <code className="text-[12px]">NEXT_PUBLIC_SUPABASE_URL</code>,{" "}
+            <code className="text-[12px]">.env.local</code>에{" "}
+            <code className="text-[12px]">NEXT_PUBLIC_SUPABASE_URL</code>,{" "}
             <code className="text-[12px]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>를 넣어 주세요.
             <br />
             <br />

@@ -5,6 +5,7 @@ import type { DesignProject } from "@/scene/types";
 import { useEditorStore } from "@/lib/editor/store";
 import { STYLE_PRESETS } from "@/models/styles";
 import { Toolbar } from "./Toolbar";
+import { CanvasControls } from "./CanvasControls";
 import { Canvas2D } from "./Canvas/Canvas2D";
 import { Canvas3D } from "./Canvas/Canvas3D";
 import { LayersPanel } from "./Layers/LayersPanel";
@@ -12,6 +13,7 @@ import { PropertiesPanel } from "./Properties/PropertiesPanel";
 import { RoomPanel } from "./Room/RoomPanel";
 import { AssetsPanel } from "./Assets/AssetsPanel";
 import { AICommandBar } from "./AICommand/AICommandBar";
+import { AgentPanel } from "./AICommand/AgentPanel";
 import { useShortcuts } from "./useShortcuts";
 
 export function EditorShell({ project }: { project: DesignProject }) {
@@ -21,7 +23,7 @@ export function EditorShell({ project }: { project: DesignProject }) {
   const renderUrl = useEditorStore((state) => state.renderUrl);
   const setRenderUrl = useEditorStore((state) => state.setRenderUrl);
   const placeAsset = useEditorStore((state) => state.placeAsset);
-  const [rightTab, setRightTab] = useState<"layers" | "properties" | "room">("properties");
+  const [rightTab, setRightTab] = useState<"layers" | "properties" | "room" | "agent">("agent");
 
   useEffect(() => {
     init(project);
@@ -56,6 +58,8 @@ export function EditorShell({ project }: { project: DesignProject }) {
           }}
         >
           {ready && viewMode === "3d" ? <Canvas3D /> : ready ? <Canvas2D /> : null}
+
+          {ready && hasImage && <CanvasControls />}
 
           {!hasImage && ready && <OnboardingOverlay />}
 
@@ -93,10 +97,17 @@ export function EditorShell({ project }: { project: DesignProject }) {
         </main>
 
         {/* 우측: 레이어/속성 */}
-        <aside className="hidden w-[260px] shrink-0 flex-col border-l border-line bg-surface md:flex">
+        {/* AI 도우미는 대화가 들어가므로 조금 더 넓게 쓴다 */}
+        <aside
+          className={[
+            "hidden shrink-0 flex-col border-l border-line bg-surface md:flex",
+            rightTab === "agent" ? "w-[330px]" : "w-[260px]",
+          ].join(" ")}
+        >
           <div className="flex shrink-0 gap-0.5 border-b border-line px-2 py-1.5">
             {(
               [
+                { id: "agent", label: "AI 도우미" },
                 { id: "properties", label: "속성" },
                 { id: "room", label: "공간·치수" },
                 { id: "layers", label: "레이어" },
@@ -108,15 +119,25 @@ export function EditorShell({ project }: { project: DesignProject }) {
                 onClick={() => setRightTab(tab.id)}
                 className={[
                   "rounded-md px-2 py-1 text-[11.5px] transition-colors",
-                  rightTab === tab.id ? "bg-sunken font-medium text-ink" : "text-muted hover:text-ink",
+                  rightTab === tab.id
+                    ? "bg-sunken font-medium text-ink"
+                    : "text-muted hover:text-ink",
                 ].join(" ")}
               >
                 {tab.label}
               </button>
             ))}
           </div>
-          <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto">
-            {rightTab === "layers" ? (
+          {/* AI 도우미는 자체 스크롤을 쓰므로 바깥 스크롤을 걸지 않는다 */}
+          <div
+            className={[
+              "min-h-0 flex-1",
+              rightTab === "agent" ? "flex flex-col" : "scrollbar-slim overflow-y-auto",
+            ].join(" ")}
+          >
+            {rightTab === "agent" ? (
+              <AgentPanel />
+            ) : rightTab === "layers" ? (
               <LayersPanel />
             ) : rightTab === "room" ? (
               <RoomPanel />
