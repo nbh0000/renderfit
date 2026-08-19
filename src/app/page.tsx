@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
-import { QuickStartModal } from "@/components/QuickStartModal";
+import { StartChat } from "@/components/StartChat";
 import { BRAND } from "@/config/brand";
 import { getViewer } from "@/lib/auth";
 
@@ -29,26 +29,16 @@ export default async function HomePage() {
       <AppHeader authed={Boolean(viewer.userId)} />
 
       <main className="flex flex-1 items-center justify-center px-4 py-16 sm:px-6">
-        <div className="w-full max-w-[520px] text-center">
+        <div className="flex w-full max-w-[680px] flex-col items-center text-center">
           <p className="text-[13px] tracking-tight text-muted">{BRAND.tagline}</p>
 
-          <h1 className="serif-display mt-3 text-[32px] leading-[1.25] sm:text-[42px]">
-            사진 한 장이
-            <br />
-            완성된 시안이 됩니다
-          </h1>
-
-          <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
-            벽·창문·문의 구조는 그대로 둔 채 스타일 시안을 만듭니다.
-          </p>
-
-          <div className="mt-8 flex flex-col items-center gap-3">
-            <QuickStartModal
-              label="시작하기"
-              className="inline-flex h-12 w-full max-w-[260px] items-center justify-center rounded-lg bg-accent px-6 text-[15px] font-medium text-white transition-colors hover:bg-accent-hover"
-            />
-            <p className="text-[12px] text-muted">가입하면 3장을 무료로 만들어 볼 수 있습니다.</p>
+          <div className="mt-3 w-full">
+            <StartChat />
           </div>
+
+          <p className="mt-4 text-[12px] text-muted">
+            가입하면 3장을 무료로 만들어 볼 수 있습니다.
+          </p>
 
           <div className="mt-10 flex items-center justify-center gap-4 text-[13px] text-muted">
             <Link href="/gallery" className="hover:text-ink">
