@@ -69,15 +69,15 @@ export function StartChat() {
 
   return (
     <div className="w-full max-w-[680px] text-white">
-      <p className="text-center text-[12.5px] tracking-[0.14em] text-white/45">
+      <p className="text-center text-[12.5px] tracking-[0.14em] text-white/45 lg:text-left">
         사진 한 장으로 시작하는 인테리어
       </p>
-      <h1 className="serif-display mt-3 text-center text-[32px] leading-tight text-white sm:text-[44px]">
+      <h1 className="serif-display mt-3 text-center text-[32px] leading-tight text-white sm:text-[42px] lg:text-left">
         어떤 공간을 만들어 볼까요?
       </h1>
 
       {/* 일반 / 전문가 */}
-      <div className="mt-5 flex justify-center">
+      <div className="mt-5 flex justify-center lg:justify-start">
         <div className="flex gap-0.5 rounded-full border border-white/20 bg-white/5 p-0.5">
           {(
             [
@@ -166,7 +166,7 @@ export function StartChat() {
       </form>
 
       {track === "quick" && messages.length === 0 && (
-        <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+        <div className="mt-4 flex flex-wrap justify-center gap-1.5 lg:justify-start">
           {SUGGESTED_PROMPTS.map((prompt) => (
             <button
               key={prompt}
