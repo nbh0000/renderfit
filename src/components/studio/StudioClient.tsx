@@ -20,6 +20,7 @@ import {
   type GenerationJob,
   type GenerationSettings,
   type MaterialSpec,
+  type SpaceSize,
 } from "@/lib/types";
 import { useAccount } from "@/lib/use-account";
 import { AppHeader } from "@/components/AppHeader";
@@ -30,6 +31,7 @@ import { ModeSelector } from "./ModeSelector";
 import { RoomStyleSelector } from "./RoomStyleSelector";
 import { ProControls } from "./ProControls";
 import { ProjectPicker } from "./ProjectPicker";
+import { SpaceSizeInput } from "./SpaceSizeInput";
 import { ResultsPanel } from "./ResultsPanel";
 import { FloorplanModal } from "./FloorplanModal";
 import type { GenerationResultImage } from "@/lib/types";
@@ -61,6 +63,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
   const [resolution, setResolution] = useState<ResolutionId>("standard");
   const [mask, setMask] = useState<File | null>(null);
   const [customPrompt, setCustomPrompt] = useState("");
+  const [size, setSize] = useState<SpaceSize | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [simulateFailure, setSimulateFailure] = useState(false);
 
@@ -153,6 +156,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
       resolution,
       materials,
       customPrompt: customPrompt.trim() || undefined,
+      size,
       projectId,
       ...overrides,
       // 마스크는 파일이 함께 전송되므로 현재 캔버스 상태를 따른다.
@@ -191,6 +195,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
     account.plan,
     customPrompt,
     imageCount,
+    size,
     local,
     mask,
     materials,
@@ -284,6 +289,10 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
               inputType={mode.inputType}
               onError={(m) => toast(m, "error")}
             />
+          </Panel>
+
+          <Panel title="공간 크기">
+            <SpaceSizeInput value={size} onChange={setSize} />
           </Panel>
 
           <Panel title="모드">

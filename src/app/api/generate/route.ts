@@ -16,6 +16,7 @@ import { generateImages, isMockMode, type ImagePayload } from "@/lib/image-api";
 import { createMemoryStore, createSupabaseStore, type JobStore } from "@/lib/jobs/store";
 import { newId, putJob } from "@/lib/job-store";
 import { buildPrompt } from "@/lib/prompt";
+import { normalizeSpaceSize } from "@/lib/space";
 import { getViewer } from "@/lib/auth";
 import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
 import { SOURCES_BUCKET } from "@/lib/supabase/env";
@@ -70,6 +71,9 @@ export async function POST(request: Request) {
 
   const resolution = RESOLUTION_MAP[settings.resolution as ResolutionId];
   if (!resolution) return bad("해상도 값이 올바르지 않습니다.");
+
+  // 크기 입력은 범위를 벗어나면 조용히 버린다 (크기 지정 없이 생성)
+  settings = { ...settings, size: normalizeSpaceSize(settings.size) };
 
   /* ── 사용자와 플랜 ── */
   const viewer = await getViewer();

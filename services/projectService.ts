@@ -250,10 +250,20 @@ export function enqueueGenerate(
 
       update(30, "디자인을 생성하고 있습니다...");
 
+      // 편집기는 방 치수를 이미 알고 있으므로 가구 규모를 그 면적에 맞추도록 알려 준다.
+      const { width, length, height } = scene.room.dimensions;
+      const areaM2 = ((width / 1000) * (length / 1000)).toFixed(1);
+      const sizeLine =
+        `The room measures ${Math.round(width)} x ${Math.round(length)} mm ` +
+        `(${areaM2} m2) with a ceiling height of ${Math.round(height)} mm ` +
+        `(${scene.room.measured ? "measured on site" : "estimated"}). ` +
+        "Use furniture sizes, counts and circulation widths that actually fit this area.";
+
       const prompt = [
         "Redesign this interior space.",
         "Keep the position and structure of walls, windows, doors and ceiling exactly as in the original.",
         "Keep the original camera angle and perspective.",
+        sizeLine,
         style ? style.promptFragment : "",
         options.prompt ?? "",
       ]

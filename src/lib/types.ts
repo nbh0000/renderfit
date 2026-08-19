@@ -16,6 +16,21 @@ export interface MaterialSpec {
 
 export const EMPTY_MATERIALS: MaterialSpec = { floor: "", wall: "", accent: "" };
 
+/**
+ * 사용자가 입력한 공간 크기.
+ * 평수로 받거나(대략) 실측 치수로 받는다(정확). 둘 다 mm/㎡로 환산해 프롬프트에 넣는다.
+ */
+export interface SpaceSize {
+  unit: "pyeong" | "mm";
+  /** unit === "pyeong" */
+  pyeong?: number;
+  /** unit === "mm" */
+  width?: number;
+  length?: number;
+  /** 천장 높이 (mm, 선택) */
+  height?: number;
+}
+
 export interface GenerationSettings {
   modeId: ModeId;
   roomId: RoomId;
@@ -26,6 +41,8 @@ export interface GenerationSettings {
   useMask: boolean;
   /** 사용자가 직접 입력한 추가 지시 (선택) */
   customPrompt?: string;
+  /** 공간 크기 (선택) — 가구 규모를 면적에 맞추는 데 쓴다 */
+  size?: SpaceSize | null;
   /** 내 프로젝트 (Phase 4) */
   projectId?: string | null;
 }

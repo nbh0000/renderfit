@@ -2,6 +2,7 @@ import { getMode, STRUCTURE_LOCK } from "@/config/modes";
 import { getRoom } from "@/config/rooms";
 import { getStyle } from "@/config/styles";
 import { RESOLUTION_MAP } from "@/config/plans";
+import { buildSpaceFragment } from "./space";
 import type { GenerationSettings, MaterialSpec } from "./types";
 
 /**
@@ -46,6 +47,10 @@ export function buildPrompt(settings: GenerationSettings): string {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+
+  // 공간 크기를 입력했으면 가구 규모를 그 면적에 맞추도록 지시한다.
+  const space = buildSpaceFragment(settings.size);
+  if (space) lines.push(...space.split("\n"));
 
   // 사용자가 직접 쓴 요청은 스타일 지시 뒤에 붙이되, 구조 보존 원칙보다 앞설 수 없다.
   const custom = settings.customPrompt?.trim();
