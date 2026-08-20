@@ -96,6 +96,10 @@ export interface SceneObject {
   /** 2.5D 캔버스 배치 */
   screen: ScreenRect;
   assetId: string | null;
+  /** 외부 3D 모델(glTF/GLB) URL — 없으면 primitive로 그린다 */
+  modelUrl?: string | null;
+  /** CC-BY 등 저작자 표시가 필요한 모델의 표기 문구 */
+  attribution?: string | null;
   materialId: string | null;
   visibility: boolean;
   locked: boolean;

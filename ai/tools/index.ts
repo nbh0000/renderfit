@@ -55,8 +55,18 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   { name: "duplicate_object", description: "객체를 복제한다.", parameters: { objectId: "string" } },
   {
     name: "add_object",
-    description: "가구/소품을 장면에 추가한다.",
-    parameters: { type: "string", assetId: "string|null", name: "string" },
+    description:
+      "가구/소품을 장면에 추가한다. 외부 무료 모델을 넣을 때는 modelUrl과 치수(widthMm/heightMm/depthMm)를 함께 준다.",
+    parameters: {
+      type: "string",
+      assetId: "string|null",
+      name: "string",
+      modelUrl: "string",
+      attribution: "string",
+      widthMm: "number",
+      heightMm: "number",
+      depthMm: "number",
+    },
   },
   {
     name: "replace_object",
@@ -396,6 +406,28 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
         order: scene.objects.length,
         offsetIndex: (args.offsetIndex as number) ?? 0,
       });
+
+      /*
+       * 외부 모델(Poly Pizza 등)은 카탈로그에 없으므로 여기서 직접 붙인다.
+       * 저작자 표시가 필요한 라이선스가 있어 attribution도 함께 저장한다.
+       */
+      if (typeof args.modelUrl === "string" && args.modelUrl) {
+        object.modelUrl = String(args.modelUrl);
+        object.name = typeof args.name === "string" ? String(args.name) : object.name;
+        if (typeof args.attribution === "string") object.attribution = String(args.attribution);
+        if (typeof args.type === "string") object.type = args.type as typeof object.type;
+
+        for (const [key, field] of [
+          ["widthMm", "width"],
+          ["heightMm", "height"],
+          ["depthMm", "depth"],
+        ] as const) {
+          const value = args[key as never];
+          if (typeof value === "number" && value > 0) {
+            object.dimensions[field] = value;
+          }
+        }
+      }
 
       // 에셋이 참조하는 재질이 Scene에 없으면 먼저 넣어 준다.
       if (object.materialId && !scene.materials.some((m) => m.id === object.materialId)) {

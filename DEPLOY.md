@@ -78,6 +78,8 @@ Railway → New Project → Deploy from GitHub repo → 이 레포 선택.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon public 키 |
 | `SUPABASE_SERVICE_ROLE_KEY` | service_role 키 (필수 — Storage 저장·크레딧 환불에 사용) |
 | `GEMINI_API_KEY` | Gemini API 키 |
+| `POLY_PIZZA_API_KEY` | (선택) 무료 3D 모델 검색 — poly.pizza/api 에서 무료 발급 |
+| `GEMINI_VISION_MODEL` | (선택) 공간 분석 모델 (기본 gemini-3.1-flash) |
 | `NEXT_PUBLIC_SITE_URL` | `https://<railway-도메인>` |
 | `NODE_ENV` | `production` |
 

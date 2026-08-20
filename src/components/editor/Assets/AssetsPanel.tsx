@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ExternalAssetsTab } from "./ExternalAssetsTab";
 import { useEditorStore, useSelectedObject } from "@/lib/editor/store";
 import type { Asset } from "@/scene/types";
 import { DEFAULT_MATERIALS } from "@/models/materials";
 import { STYLE_PRESETS } from "@/models/styles";
 
-type Tab = "assets" | "materials" | "styles" | "lighting" | "ai";
+type Tab = "assets" | "external" | "materials" | "styles" | "lighting" | "ai";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "assets", label: "에셋" },
+  { id: "external", label: "무료 모델" },
   { id: "materials", label: "재질" },
   { id: "styles", label: "스타일" },
   { id: "lighting", label: "조명" },
@@ -39,6 +41,7 @@ export function AssetsPanel() {
 
       <div className="scrollbar-slim flex-1 overflow-y-auto">
         {tab === "assets" && <AssetsTab />}
+        {tab === "external" && <ExternalAssetsTab />}
         {tab === "materials" && <MaterialsTab />}
         {tab === "styles" && <StylesTab />}
         {tab === "lighting" && <LightingTab />}

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { RoundedBox } from "@react-three/drei";
+import { Suspense, useMemo } from "react";
+import { RoundedBox, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import type { Material, SceneObject } from "@/scene/types";
 import { textureForMaterial } from "./textures";
@@ -67,6 +67,57 @@ function Legs({
   );
 }
 
+/**
+ * 외부 glTF 모델.
+ *
+ * Poly Pizza 같은 무료 소스에서 받은 모델은 크기가 제각각이라, 불러온 뒤
+ * 바운딩 박스를 재서 Scene에 적힌 실제 치수(mm)에 맞춰 균일 축소·확대한다.
+ * 이렇게 해야 도면의 치수와 3D의 크기가 어긋나지 않는다.
+ */
+function ExternalModel({
+  url,
+  width,
+  height,
+  depth,
+}: {
+  url: string;
+  width: number;
+  height: number;
+  depth: number;
+}) {
+  const { scene } = useGLTF(url);
+
+  const model = useMemo(() => {
+    const clone = scene.clone(true);
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = box.getSize(new THREE.Vector3());
+
+    // 세 축 중 가장 빡빡한 비율에 맞춰 원형을 유지한 채 넣는다.
+    const factor = Math.min(
+      size.x > 0 ? width / size.x : 1,
+      size.y > 0 ? height / size.y : 1,
+      size.z > 0 ? depth / size.z : 1
+    );
+    clone.scale.setScalar(Number.isFinite(factor) && factor > 0 ? factor : 1);
+
+    // 바닥에 붙이고 가운데로 옮긴다.
+    const scaled = new THREE.Box3().setFromObject(clone);
+    const center = scaled.getCenter(new THREE.Vector3());
+    clone.position.set(-center.x, -scaled.min.y, -center.z);
+
+    clone.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+
+    return clone;
+  }, [scene, width, height, depth]);
+
+  return <primitive object={model} />;
+}
+
 export function FurnitureMesh({ object, material, selected }: MeshProps) {
   const w = object.dimensions.width * MM * object.transform.scale[0];
   const h = object.dimensions.height * MM * object.transform.scale[1];
@@ -77,6 +128,23 @@ export function FurnitureMesh({ object, material, selected }: MeshProps) {
     () => new THREE.MeshStandardMaterial({ color: "#3a332c", roughness: 0.5 }),
     []
   );
+
+  // 외부 모델이 있으면 그것이 우선이다 — primitive는 모델이 없을 때의 대비책이다.
+  if (object.modelUrl) {
+    return (
+      <group>
+        <Suspense fallback={<mesh><boxGeometry args={[w, h, d]} /><primitive object={mat} attach="material" /></mesh>}>
+          <ExternalModel url={object.modelUrl} width={w} height={h} depth={d} />
+        </Suspense>
+        {selected && (
+          <mesh>
+            <boxGeometry args={[w * 1.04, h * 1.04, d * 1.04]} />
+            <meshBasicMaterial color="#000000" wireframe />
+          </mesh>
+        )}
+      </group>
+    );
+  }
 
   const outline = selected ? (
     <mesh>
