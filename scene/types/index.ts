@@ -110,6 +110,15 @@ export interface SceneObject {
   metadata: Record<string, unknown>;
 }
 
+/** 문 종류 — 평면도 기호가 달라진다 */
+export type DoorType = "hinged" | "sliding" | "folding" | "opening";
+
+/** 경첩이 벽의 어느 쪽에 달리는지 (벽 start 기준) */
+export type DoorHinge = "start" | "end";
+
+/** 문이 열리는 쪽 — 평면상 벽 법선 기준으로 안/밖 */
+export type DoorSwing = "in" | "out";
+
 /** 문·창 등 벽에 뚫리는 개구부 */
 export interface WallOpening {
   id: string;
@@ -122,6 +131,43 @@ export interface WallOpening {
   height: number;
   /** 바닥에서 개구부 하단까지 (문은 0, 창은 보통 900) */
   sillHeight: number;
+  /** 문일 때만 의미가 있다. 없으면 여닫이·start 경첩·안쪽 열림으로 본다 */
+  doorType?: DoorType;
+  hinge?: DoorHinge;
+  swing?: DoorSwing;
+}
+
+/**
+ * 전기·통신 설비.
+ *
+ * 도면에서 시공자가 가장 먼저 확인하는 값이라 위치(어느 벽, 얼마 떨어져)와
+ * 바닥에서의 높이를 함께 들고 있어야 한다.
+ */
+export type ElectricalKind =
+  | "outlet"
+  | "outlet-aircon"
+  | "switch"
+  | "switch-3way"
+  | "ceiling-light"
+  | "wall-light"
+  | "data"
+  | "tv-jack"
+  | "panel";
+
+export interface ElectricalFixture {
+  id: string;
+  name: string;
+  kind: ElectricalKind;
+  /** 벽에 붙는 설비의 벽 id. 천장 조명처럼 벽이 없으면 null */
+  wallId: string | null;
+  /** 벽 시작점에서의 거리 (mm). wallId가 있을 때 쓴다 */
+  offset: number;
+  /** wallId가 null일 때 쓰는 평면 좌표 (mm) */
+  point?: [number, number];
+  /** 바닥에서의 설치 높이 (mm) */
+  height: number;
+  /** 회로·용량 등 도면 주기 */
+  note?: string;
 }
 
 /** 벽 한 장 — 평면상의 선분 + 두께/높이 + 개구부 */
@@ -147,6 +193,8 @@ export interface RoomSpec {
   measured?: boolean;
   /** 실측 메모 (측정일·측정자 등) */
   measuredNote?: string;
+  /** 전기·통신 설비 배치 */
+  electrical?: ElectricalFixture[];
 }
 
 export interface CameraSpec {

@@ -23,13 +23,6 @@ const LINKS = [
   { href: "/pricing", label: "요금제" },
 ];
 
-/** 방 하나를 꾸미는 흐름을 세 단계로 보여 준다 */
-const STEPS = [
-  { step: "01", title: "방 사진 한 장", body: "찍어 둔 사진을 그대로 올립니다." },
-  { step: "02", title: "크기와 스타일", body: "평수·치수를 넣으면 그 면적에 맞춰 배치합니다." },
-  { step: "03", title: "시안과 도면", body: "시안을 고르고 3D·평면도까지 이어서 봅니다." },
-];
-
 /** 첫 화면에 노출할 스타일 — 자주 찾는 순서 */
 const FEATURED_STYLES = ["modern", "nordic", "minimal", "natural-wood", "hotel", "cafe"];
 
@@ -110,10 +103,11 @@ export default async function HomePage() {
           <div className="space-y-3">
             <div className="overflow-hidden rounded-2xl border border-white/12 bg-white/[0.04] p-2 shadow-[0_24px_70px_rgba(0,0,0,0.5)]">
               <BeforeAfterSlider
-                beforeSrc="/api/placeholder/hero/before"
-                afterSrc="/api/placeholder/hero/after"
+                beforeSrc="/showcase/hero-before.jpg"
+                afterSrc="/showcase/hero-after.jpg"
                 beforeLabel="올린 사진"
                 afterLabel="AI 시안"
+                hint="스크롤해보세요"
                 className="rounded-xl"
               />
             </div>
@@ -168,17 +162,7 @@ export default async function HomePage() {
       {/* 진행 단계 */}
       <section className="border-t border-white/10">
         <div className="mx-auto max-w-[1180px] px-5 py-12 sm:px-8">
-          <ul className="grid gap-4 sm:grid-cols-3">
-            {STEPS.map((item) => (
-              <li key={item.step} className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
-                <span className="text-[11.5px] tracking-[0.18em] text-white/35">{item.step}</span>
-                <h3 className="mt-2 text-[15px] font-semibold">{item.title}</h3>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-white/55">{item.body}</p>
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/studio"
               className="inline-flex h-11 items-center rounded-lg bg-accent px-5 text-[14px] font-medium text-white transition-colors hover:bg-accent-hover"

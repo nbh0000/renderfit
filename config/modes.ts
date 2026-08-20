@@ -22,6 +22,14 @@ export interface Mode {
    */
   promptTemplate: string;
   requiredPlan: PlanId;
+  /**
+   * 가구를 새로 놓는 모드인지.
+   * false인 모드(화질 개선, 공간 비우기)에 평수 지시를 붙이면
+   * "가구를 모두 제거한다"와 "면적에 맞게 채운다"가 정면으로 충돌한다.
+   */
+  placesFurniture: boolean;
+  /** 스타일 선택이 프롬프트에 반영되는 모드인지 ({{style}} 사용 여부와 일치해야 한다) */
+  usesStyle: boolean;
 }
 
 /**
@@ -48,6 +56,8 @@ export const MODES: Mode[] = [
       "결과물은 실제 촬영한 인테리어 사진처럼 자연스러운 광원과 그림자를 가진 포토리얼 이미지여야 한다.",
     ].join("\n"),
     requiredPlan: "free",
+    placesFurniture: true,
+    usesStyle: true,
   },
   {
     id: "keep-style",
@@ -64,6 +74,8 @@ export const MODES: Mode[] = [
       "부동산 매물 촬영 전문가가 찍은 사진처럼 밝고 깨끗한 톤으로 마무리한다.",
     ].join("\n"),
     requiredPlan: "free",
+    placesFurniture: false,
+    usesStyle: false,
   },
   {
     id: "staging",
@@ -82,6 +94,8 @@ export const MODES: Mode[] = [
       "바닥재와 벽 마감은 원본을 유지하며, 조명 방향과 그림자는 원본 광원과 일치시킨다.",
     ].join("\n"),
     requiredPlan: "free",
+    placesFurniture: true,
+    usesStyle: true,
   },
   {
     id: "empty",
@@ -91,13 +105,15 @@ export const MODES: Mode[] = [
     promptTemplate: [
       "{{structureLock}}",
       "대상 공간: {{room}}",
-      "입력 사진에서 가구, 가전, 러그, 커튼, 액자, 생활 잡화를 모두 제거한다.",
+      "입력 사진에서 가구, 가전, 러그, 커튼, 액자, 화분과 식물, 조명 기구, 생활 잡화를 모두 제거한다.",
       "제거된 자리의 바닥, 벽, 천장은 주변 마감재를 자연스럽게 이어 붙여 복원한다.",
       "붙박이장, 싱크대, 욕실 위생도기처럼 구조에 고정된 요소는 남긴다.",
       "{{materials}}",
       "사람이 살지 않는 깨끗한 공실 상태의 사진으로 마무리한다.",
     ].join("\n"),
     requiredPlan: "free",
+    placesFurniture: false,
+    usesStyle: false,
   },
   {
     id: "sketch2render",
@@ -116,6 +132,8 @@ export const MODES: Mode[] = [
       "물리적으로 정확한 전역 조명과 부드러운 그림자를 사용한 건축 시각화 품질로 렌더링한다.",
     ].join("\n"),
     requiredPlan: "free",
+    placesFurniture: true,
+    usesStyle: true,
   },
   {
     id: "plan2render",
@@ -135,6 +153,8 @@ export const MODES: Mode[] = [
       "치수, 면적, 숫자 표기는 이미지에 넣지 않는다.",
     ].join("\n"),
     requiredPlan: "pro",
+    placesFurniture: true,
+    usesStyle: true,
   },
 ];
 

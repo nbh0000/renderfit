@@ -109,6 +109,7 @@ export async function POST(request: Request) {
   }
 
   /* ── 장수와 크레딧 ── */
+  // 클라이언트가 고른 장수. 범위를 벗어나면 조용히 잘라 낸다.
   const requestedCount = Number(form.get("count") ?? IMAGES_PER_JOB);
   const count = Math.min(
     IMAGES_PER_JOB,
@@ -132,6 +133,12 @@ export async function POST(request: Request) {
     referenceFile instanceof File && validateImageFile(referenceFile).ok
       ? (await toPayload(referenceFile)).payload
       : undefined;
+
+  // 참고 이미지를 전제로 한 스타일인데 이미지가 없으면, 모델은 존재하지 않는
+  // 이미지를 따라 하라는 지시를 받게 된다. 크레딧을 쓰기 전에 막는다.
+  if (style.requiresReference && !reference) {
+    return bad(`${style.label} 스타일은 참고 이미지를 함께 올려야 합니다.`);
+  }
 
   const maskFile = form.get("mask");
   const mask =
@@ -167,6 +174,8 @@ export async function POST(request: Request) {
         reference,
         size: resolution.px,
         count,
+        creditsPerImage: resolution.creditsPerImage,
+        model: resolution.model,
         watermark,
         hint,
         forceFail,
@@ -265,6 +274,8 @@ export async function POST(request: Request) {
       reference,
       size: resolution.px,
       count,
+      creditsPerImage: resolution.creditsPerImage,
+      model: resolution.model,
       watermark,
       hint,
       forceFail,
@@ -289,6 +300,10 @@ interface PipelineInput {
   reference?: ImagePayload;
   size: number;
   count: number;
+  /** 장당 크레딧 — 일부만 성공했을 때 나머지를 환불하는 데 쓴다 */
+  creditsPerImage: number;
+  /** 해상도에 맞는 모델 (2K·4K는 상위 모델만 지원한다) */
+  model: string;
   watermark: boolean;
   hint: { room: string; style: string; mode: string };
   forceFail: boolean;
@@ -310,11 +325,45 @@ async function runPipeline(input: PipelineInput): Promise<void> {
       mask: input.mask,
       reference: input.reference,
       size: input.size,
+      model: input.model,
       count: input.count,
       hint: input.hint,
     });
 
     await input.store.saveResults(input.jobId, images, input.watermark);
+
+    const notes: string[] = [];
+    let refund = 0;
+
+    // 4장 중 일부만 성공하는 경우가 있다. 못 만든 장수는 그 자리에서 되돌려 준다.
+    const missing = input.count - images.length;
+    if (missing > 0) {
+      refund += missing * input.creditsPerImage;
+      notes.push(`${input.count}장 중 ${images.length}장만 생성되었습니다.`);
+    }
+
+    /*
+     * 고해상도로 결제했는데 모델이 그 크기를 돌려주지 않는 경우가 있다.
+     * (현재 gemini-2.5-flash-image는 2K 요청에도 1184px 정도를 돌려준다)
+     * 받은 만큼만 청구되도록 기본 해상도와의 차액을 돌려준다.
+     */
+    if (input.creditsPerImage > 1) {
+      const undersized = images.filter((image) => image.width < input.size * 0.9).length;
+      if (undersized > 0) {
+        refund += undersized * (input.creditsPerImage - 1);
+        notes.push(
+          `요청하신 ${input.size}px보다 작은 이미지가 ${undersized}장 나와 고해상도 추가분을 환불했습니다.`
+        );
+      }
+    }
+
+    if (refund > 0) {
+      await input.store.refundPartial(
+        input.jobId,
+        refund,
+        `${notes.join(" ")} 해당 크레딧 ${refund}개를 환불했습니다.`
+      );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
     try {

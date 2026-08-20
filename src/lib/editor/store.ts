@@ -11,7 +11,13 @@ import type { Job } from "@/lib/queue";
  * 이 스토어는 "무엇을 보여줄지"와 "무엇을 호출할지"만 관리한다.
  */
 
-export type ViewMode = "image" | "2.5d" | "3d";
+/**
+ * 편집기 보기 모드.
+ *
+ * 2.5D(화면 좌표 기반 반입체 뷰)는 실제 치수를 담지 못해 도면으로 쓸 수 없어 걷어냈다.
+ * 대신 실측 좌표를 그대로 쓰는 평면도·입면도를 두고, 입체는 3D에서만 본다.
+ */
+export type ViewMode = "image" | "plan" | "elevation" | "3d";
 export type EditorTool = "select" | "move" | "rotate" | "scale";
 
 export interface ToolCallResult {
@@ -45,7 +51,7 @@ interface EditorState {
   viewportRaycast: ((clientX: number, clientY: number) => { x: number; depth: number } | null) | null;
   /** 3D 뷰에 생성 이미지를 배경으로 띄울지 */
   showBackdrop: boolean;
-  /** 2.5D 캔버스 확대 배율 (하단 바에서 조작) */
+  /** 평면도·입면도 확대 배율 (하단 바에서 조작) */
   zoom: number;
   /** 2안 비교 결과 — 고르기 전까지 장면에는 반영하지 않는다 */
   variants: { label: string; imageUrl: string }[] | null;
@@ -97,7 +103,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   projectName: "",
   scene: {} as Scene,
   selectedIds: [],
-  viewMode: "2.5d",
+  viewMode: "plan",
   tool: "select",
   canUndo: false,
   canRedo: false,

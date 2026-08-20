@@ -7,6 +7,7 @@ import {
   toRoomDimensions,
 } from "@/lib/space";
 import { buildPrompt } from "@/lib/prompt";
+import { furnitureScaleGuide } from "@/config/space";
 import { EMPTY_MATERIALS, type GenerationSettings } from "@/lib/types";
 
 function settings(size: GenerationSettings["size"]): GenerationSettings {
@@ -71,7 +72,34 @@ describe("프롬프트 반영", () => {
   it("크기를 입력하면 면적 지시문이 들어간다", () => {
     const prompt = buildPrompt(settings({ unit: "pyeong", pyeong: 24 }));
     expect(prompt).toContain("24평");
-    expect(prompt).toContain("실제로 들어갈 수 있는");
+    expect(prompt).toContain("79.3㎡");
+    // 환산 치수와 면적 구간별 가구 규모까지 숫자로 넘어가야 한다.
+    expect(prompt).toContain("가로 8.0m × 세로 10.0m");
+    expect(prompt).toContain("면적에 비해 지나치게 크거나 많은 가구를 넣지 않고");
+  });
+
+  it("좁은 면적에는 큰 가구를 넣지 말라는 지시가 붙는다", () => {
+    const prompt = buildPrompt(settings({ unit: "pyeong", pyeong: 3 }));
+    expect(prompt).toContain("폭 1400mm를 넘는 가구는 놓지 않는다");
+    expect(prompt).toContain("35%");
+  });
+
+  it("넓어질수록 허용 가구 규모가 커진다", () => {
+    expect(furnitureScaleGuide(12)).toContain("1600mm");
+    expect(furnitureScaleGuide(30)).toContain("50%");
+    expect(furnitureScaleGuide(200)).toContain("구역을 나눠");
+  });
+
+  it("가구 규모 지시에 특정 가구 이름을 강제하지 않는다", () => {
+    // 매장·사무실 요청과 충돌하지 않아야 한다.
+    for (const area of [8, 12, 20, 30, 50, 100]) {
+      expect(furnitureScaleGuide(area)).not.toContain("TV장");
+    }
+  });
+
+  it("사진이 넓어 보여도 입력한 면적을 따르라고 못박는다", () => {
+    const prompt = buildPrompt(settings({ unit: "pyeong", pyeong: 12 }));
+    expect(prompt).toContain("사진 속 공간이 실제보다 넓어 보이더라도");
   });
 
   it("크기를 비우면 문장이 붙지 않는다", () => {

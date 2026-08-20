@@ -9,6 +9,7 @@ import { CanvasControls } from "./CanvasControls";
 import { VariantCompare } from "./VariantCompare";
 import { Canvas2D } from "./Canvas/Canvas2D";
 import { Canvas3D } from "./Canvas/Canvas3D";
+import { DrawingView } from "./Drawings/DrawingView";
 import { LayersPanel } from "./Layers/LayersPanel";
 import { PropertiesPanel } from "./Properties/PropertiesPanel";
 import { RoomPanel } from "./Room/RoomPanel";
@@ -58,7 +59,13 @@ export function EditorShell({ project }: { project: DesignProject }) {
             void placeAsset(assetId, event.clientX, event.clientY);
           }}
         >
-          {ready && viewMode === "3d" ? <Canvas3D /> : ready ? <Canvas2D /> : null}
+          {!ready ? null : viewMode === "3d" ? (
+            <Canvas3D />
+          ) : viewMode === "plan" || viewMode === "elevation" ? (
+            <DrawingView mode={viewMode} />
+          ) : (
+            <Canvas2D />
+          )}
 
           {ready && hasImage && <CanvasControls />}
 

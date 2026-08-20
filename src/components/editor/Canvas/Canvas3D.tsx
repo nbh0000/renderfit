@@ -503,6 +503,68 @@ function CameraRig({ target }: { target: [number, number, number] }) {
   return null;
 }
 
+/**
+ * 그림자 맵 갱신 제어.
+ *
+ * 기본값은 매 프레임 그림자를 다시 굽는다. 카메라를 돌리는 동안에도 계속 다시 구워서
+ * 회전이 끊겨 보였다. 그림자는 조명·물체가 움직일 때만 바뀌므로, 자동 갱신을 끄고
+ * 장면이 실제로 달라졌을 때만 한 프레임 갱신한다.
+ */
+/* three.js 렌더러 상태는 React 값이 아니라 명령형으로 설정한다 */
+function setShadowAutoUpdate(renderer: THREE.WebGLRenderer, value: boolean): void {
+  renderer.shadowMap.autoUpdate = value;
+}
+
+function requestShadowUpdate(renderer: THREE.WebGLRenderer): void {
+  renderer.shadowMap.needsUpdate = true;
+}
+
+function ShadowUpdater({ signature }: { signature: string }) {
+  const gl = useThree((state) => state.gl);
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    setShadowAutoUpdate(gl, false);
+    return () => setShadowAutoUpdate(gl, true);
+  }, [gl]);
+
+  useEffect(() => {
+    requestShadowUpdate(gl);
+    invalidate();
+  }, [gl, invalidate, signature]);
+
+  return null;
+}
+
+/**
+ * 카메라를 조작하는 동안에는 해상도를 낮춘다.
+ *
+ * 조작이 끝나면 원래 해상도로 한 프레임 더 그린다 — 움직일 때는 부드럽게,
+ * 멈추면 선명하게.
+ */
+function AdaptiveResolution() {
+  const setDpr = useThree((state) => state.setDpr);
+  const controls = useThree((state) => state.controls) as
+    | { addEventListener: (type: string, fn: () => void) => void; removeEventListener: (type: string, fn: () => void) => void }
+    | null;
+
+  useEffect(() => {
+    if (!controls) return;
+
+    const onStart = () => setDpr(DPR[0]);
+    const onEnd = () => setDpr(DPR[1]);
+
+    controls.addEventListener("start", onStart);
+    controls.addEventListener("end", onEnd);
+    return () => {
+      controls.removeEventListener("start", onStart);
+      controls.removeEventListener("end", onEnd);
+    };
+  }, [controls, setDpr]);
+
+  return null;
+}
+
 /** 렌더 캡처 · GLB 내보내기를 위해 3D 컨텍스트를 스토어에 등록한다 */
 function CanvasBridge() {
   const { gl, scene, camera } = useThree();
@@ -570,6 +632,15 @@ export function Canvas3D() {
   if (!scene?.room) return null;
 
   const objects = scene.objects.filter((object) => object.visibility);
+
+  /*
+   * 그림자를 다시 구워야 하는 시점을 판단하는 값.
+   * 물체의 위치·크기·개수와 방 치수가 바뀔 때만 달라진다 (카메라 이동은 포함하지 않는다).
+   */
+  const shadowSignature = objects
+    .map((object) => `${object.id}:${object.screen.x}:${object.depth}:${object.transform.scale[1]}`)
+    .join("|")
+    .concat(`#${scene.room.dimensions.width}x${scene.room.dimensions.length}`);
   const backdropUrl = scene.source.generatedImageUrl ?? scene.source.imageUrl;
   const backdropOn = showBackdrop && Boolean(backdropUrl);
 
@@ -615,7 +686,13 @@ export function Canvas3D() {
           />
         ))}
 
+        {/*
+          접지 그림자. frames를 주지 않으면 매 프레임 렌더 타깃을 다시 그려서
+          카메라를 돌릴 때 가장 크게 끊긴다. 장면이 바뀔 때만 다시 굽도록 key로 묶는다.
+        */}
         <ContactShadows
+          key={shadowSignature}
+          frames={1}
           position={[0, 0.005, 0]}
           scale={Math.max(6, roomLength + 2)}
           opacity={0.5}
@@ -631,8 +708,15 @@ export function Canvas3D() {
           maxPolarAngle={Math.PI / 2.05}
           minDistance={1.2}
           maxDistance={14}
+          // 관성을 주면 프레임이 조금 건너뛰어도 움직임이 끊겨 보이지 않는다.
+          enableDamping
+          dampingFactor={0.12}
+          rotateSpeed={0.75}
+          zoomSpeed={0.8}
         />
         <CameraRig target={target} />
+        <ShadowUpdater signature={shadowSignature} />
+        <AdaptiveResolution />
         <PlacementController scene={scene} draft={draft} setDraft={setDraft} />
       </Canvas>
 

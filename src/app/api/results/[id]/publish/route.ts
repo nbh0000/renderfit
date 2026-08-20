@@ -1,6 +1,7 @@
 import { getViewer } from "@/lib/auth";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { memoryPublish, publishResult, unpublishResult } from "@/lib/gallery";
+import { displayNameFor, memoryPublish, publishResult, unpublishResultById } from "@/lib/gallery";
+import { RESULTS_BUCKET, SOURCES_BUCKET } from "@/lib/supabase/env";
 
 /**
  * 생성물 공개(갤러리 노출) 동의 처리.
@@ -43,6 +44,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       width: body.width ?? 1024,
       height: body.height ?? 768,
       createdAt: new Date().toISOString(),
+      authorName: "나",
+      beforeUrl: null,
     });
     return Response.json({ ok: true, slug: item.slug });
   }
@@ -53,7 +56,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   if (!supabase) return Response.json({ error: "서버 설정 오류입니다." }, { status: 500 });
 
   if (body.isPublic === false) {
-    const ok = await unpublishResult(supabase, id);
+    const ok = await unpublishResultById(supabase, id);
     return ok
       ? Response.json({ ok: true, slug: null })
       : Response.json({ error: "공개 설정을 바꾸지 못했습니다." }, { status: 500 });
@@ -78,5 +81,72 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     return Response.json({ error: "공개 처리에 실패했습니다." }, { status: 500 });
   }
 
+  /*
+   * 갤러리에 보여 줄 값들을 공개 시점에 확정한다.
+   * profiles는 본인만 조회할 수 있어 갤러리에서 조인이 안 되므로 이름을 복사해 둔다.
+   */
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", viewer.userId)
+    .maybeSingle();
+
+  const beforePath = await copySourceForGallery(supabase, id, viewer.userId);
+
+  // 갤러리 컬럼이 아직 없는 DB에서는 조용히 넘어간다 (공개 자체는 이미 끝났다).
+  const { error: metaError } = await supabase
+    .from("generation_results")
+    .update({
+      author_name: displayNameFor(profile ?? {}),
+      ...(beforePath ? { before_path: beforePath } : {}),
+    })
+    .eq("id", id);
+
+  if (metaError && metaError.code !== "42703") {
+    console.warn("갤러리 메타 기록 실패", metaError.message);
+  }
+
   return Response.json({ ok: true, slug: published.slug });
+}
+
+/**
+ * 전/후 비교용 원본 사본을 공개 버킷으로 옮긴다.
+ *
+ * 원본은 비공개 sources 버킷에 있어 갤러리 방문자가 볼 수 없다.
+ * 공개에 동의한 시안에 한해 사본을 만들고, 공개를 해제하면 다시 지운다.
+ * 실패해도 공개 자체는 유지한다 — 비교 슬라이더만 빠진다.
+ */
+async function copySourceForGallery(
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabase>>>,
+  resultId: string,
+  userId: string
+): Promise<string | null> {
+  try {
+    const { data: result } = await supabase
+      .from("generation_results")
+      .select("job_id, generation_jobs!inner (source_path)")
+      .eq("id", resultId)
+      .maybeSingle();
+
+    const sourcePath = (result as unknown as { generation_jobs: { source_path: string | null } })
+      ?.generation_jobs?.source_path;
+    if (!sourcePath) return null;
+
+    const { data: file } = await supabase.storage.from(SOURCES_BUCKET).download(sourcePath);
+    if (!file) return null;
+
+    const extension = sourcePath.split(".").pop() || "jpg";
+    const target = `${userId}/gallery/${resultId}-before.${extension}`;
+
+    const { error } = await supabase.storage
+      .from(RESULTS_BUCKET)
+      .upload(target, Buffer.from(await file.arrayBuffer()), {
+        contentType: file.type || "image/jpeg",
+        upsert: true,
+      });
+
+    return error ? null : target;
+  } catch {
+    return null;
+  }
 }

@@ -1,4 +1,5 @@
 import type {
+  ElectricalFixture,
   Material,
   RoomSpec,
   Scene,
@@ -17,7 +18,9 @@ import {
   fitObjectsToRoom,
   rectangleWalls,
   validateOpening,
+  wallLength,
 } from "../geometry";
+import { deriveOpenings, rescaleOpenings } from "../openings";
 import { arrangeObjects, placeObject } from "../placement";
 import { applyOperation, OPERATION_LABEL } from "../operations";
 import { validateOperation, type ValidationResult } from "../validation";
@@ -480,13 +483,17 @@ export class SceneEngine {
         const previous = room.walls?.[index];
         if (!previous) return wall;
         const length = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
+        const previousLength = Math.hypot(
+          previous.end[0] - previous.start[0],
+          previous.end[1] - previous.start[1]
+        );
+
         return {
           ...wall,
           id: previous.id,
           name: previous.name,
-          openings: (previous.openings ?? []).filter(
-            (opening) => opening.offset + opening.width <= length
-          ),
+          // 벽이 길어지거나 짧아져도 창·문은 같은 비율 자리에 남는다.
+          openings: rescaleOpenings(previous.openings ?? [], previousLength, length, next.height),
         };
       });
     }
@@ -581,6 +588,80 @@ export class SceneEngine {
     return this.updateWall(wallId, {
       openings: (wall.openings ?? []).map((opening) => (opening.id === openingId ? next : opening)),
     });
+  }
+
+  /**
+   * 사진에서 찾은 창·문을 벽 개구부로 반영한다.
+   * 평면도·입면도·3D가 모두 개구부를 보고 그리므로, 이 한 번으로 세 곳이 같이 바뀐다.
+   */
+  syncOpeningsFromObjects(): CommitResult & { added?: number; skipped?: string[] } {
+    const room = ensureRoom(this.scene.room);
+    const { walls, added, skipped } = deriveOpenings(room, this.scene.objects);
+
+    if (added === 0 && skipped.length === 0) {
+      return { ok: false, error: "사진에서 찾은 창문이나 문이 없습니다." };
+    }
+
+    const result = this.setWalls(walls, `사진 속 창·문 ${added}개 반영`);
+    return { ...result, added, skipped };
+  }
+
+  /* ─────────────────────── 전기 · 통신 설비 ─────────────────────── */
+
+  private getElectrical(): ElectricalFixture[] {
+    return this.scene.room.electrical ?? [];
+  }
+
+  addFixture(fixture: ElectricalFixture): CommitResult {
+    const invalid = this.validateFixture(fixture);
+    if (invalid) return { ok: false, error: invalid };
+    return this.commitRoom({ electrical: [...this.getElectrical(), fixture] }, "설비 추가");
+  }
+
+  updateFixture(id: string, patch: Partial<ElectricalFixture>): CommitResult {
+    const list = this.getElectrical();
+    const target = list.find((fixture) => fixture.id === id);
+    if (!target) return { ok: false, error: "설비를 찾을 수 없습니다." };
+
+    const next = { ...target, ...patch, id: target.id };
+    const invalid = this.validateFixture(next);
+    if (invalid) return { ok: false, error: invalid };
+
+    return this.commitRoom(
+      { electrical: list.map((fixture) => (fixture.id === id ? next : fixture)) },
+      "설비 수정"
+    );
+  }
+
+  deleteFixture(id: string): CommitResult {
+    const list = this.getElectrical();
+    if (!list.some((fixture) => fixture.id === id)) {
+      return { ok: false, error: "설비를 찾을 수 없습니다." };
+    }
+    return this.commitRoom(
+      { electrical: list.filter((fixture) => fixture.id !== id) },
+      "설비 삭제"
+    );
+  }
+
+  /** 벽 밖이나 천장 위에 설비가 놓이지 않게 막는다 */
+  private validateFixture(fixture: ElectricalFixture): string | null {
+    const ceiling = this.scene.room.dimensions.height;
+    if (fixture.height < 0 || fixture.height > ceiling) {
+      return `설치 높이는 0~${ceiling}mm 사이여야 합니다.`;
+    }
+
+    if (!fixture.wallId) return null;
+
+    const wall = this.getWall(fixture.wallId);
+    if (!wall) return "설비를 붙일 벽을 찾을 수 없습니다.";
+
+    const length = wallLength(wall);
+    if (fixture.offset < 0 || fixture.offset > length) {
+      return `벽 길이(${Math.round(length)}mm)를 벗어난 위치입니다.`;
+    }
+
+    return null;
   }
 
   deleteOpening(wallId: string, openingId: string): CommitResult {

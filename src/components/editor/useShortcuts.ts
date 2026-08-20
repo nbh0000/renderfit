@@ -64,7 +64,7 @@ export function useShortcuts() {
           store.setViewMode("image");
           break;
         case "2":
-          store.setViewMode("2.5d");
+          store.setViewMode("plan");
           break;
         case "3":
           store.setViewMode("3d");

@@ -69,11 +69,9 @@ export function StartChat() {
 
   return (
     <div className="w-full max-w-[680px] text-white">
-      <p className="text-center text-[12.5px] tracking-[0.14em] text-white/45 lg:text-left">
+      {/* 큰 헤드라인을 걷어내고 이 줄이 문서의 h1을 맡는다 */}
+      <h1 className="serif-display text-center text-[24px] leading-tight text-white sm:text-[28px] lg:text-left">
         사진 한 장으로 시작하는 인테리어
-      </p>
-      <h1 className="serif-display mt-3 text-center text-[32px] leading-tight text-white sm:text-[42px] lg:text-left">
-        어떤 공간을 만들어 볼까요?
       </h1>
 
       {/* 일반 / 전문가 */}

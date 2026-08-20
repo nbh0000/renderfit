@@ -11,6 +11,8 @@ export interface JobStore {
   markProcessing(jobId: string): Promise<void>;
   saveResults(jobId: string, images: GeneratedImage[], watermarked: boolean): Promise<void>;
   markFailed(jobId: string, message: string, refundCredits: number): Promise<void>;
+  /** 요청한 장수보다 적게 나왔을 때, 못 만든 장수만큼 되돌려 준다 */
+  refundPartial(jobId: string, credits: number, note: string): Promise<void>;
 }
 
 function extensionFor(mimeType: string): string {
@@ -48,6 +50,9 @@ export function createMemoryStore(): JobStore {
         error: message,
         creditsRefunded: refundCredits > 0,
       });
+    },
+    async refundPartial(jobId, credits, note) {
+      patchJob(jobId, { error: note, creditsRefunded: credits > 0 });
     },
   };
 }
@@ -104,6 +109,16 @@ export function createSupabaseStore(
       await admin
         .from("generation_jobs")
         .update({ status: "succeeded", completed_at: new Date().toISOString() })
+        .eq("id", jobId);
+    },
+
+    async refundPartial(jobId, credits, note) {
+      const refunded = credits > 0 ? await refund(credits) : false;
+
+      // 성공한 job이므로 status는 건드리지 않고, 무슨 일이 있었는지만 남긴다.
+      await admin
+        .from("generation_jobs")
+        .update({ error: note.slice(0, 500), credits_refunded: refunded })
         .eq("id", jobId);
     },
 

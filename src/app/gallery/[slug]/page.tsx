@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { getPublicResult, memoryGetGallery, type GalleryItem } from "@/lib/gallery";
+import { bumpViewCount, getPublicResult, memoryGetGallery, type GalleryItem } from "@/lib/gallery";
+import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
+import { GalleryDeleteButton } from "@/components/gallery/GalleryDeleteButton";
 import { ROOM_MAP } from "@/config/rooms";
 import { STYLE_MAP } from "@/config/styles";
 import { BRAND } from "@/config/brand";
@@ -12,12 +14,12 @@ import { getViewer } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-async function loadItem(slug: string): Promise<GalleryItem | null> {
+async function loadItem(slug: string, viewerId?: string | null): Promise<GalleryItem | null> {
   const decoded = decodeURIComponent(slug);
   if (isSupabaseConfigured()) {
     const supabase = await createServerSupabase();
     if (!supabase) return null;
-    return getPublicResult(supabase, decoded);
+    return getPublicResult(supabase, decoded, viewerId);
   }
   return memoryGetGallery(decoded) ?? null;
 }
@@ -61,10 +63,15 @@ export default async function GalleryDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const item = await loadItem(slug);
+  const viewer = await getViewer();
+  const item = await loadItem(slug, viewer.userId);
   if (!item) notFound();
 
-  const viewer = await getViewer();
+  // 페이지를 연 만큼 조회수를 올린다. 실패해도 화면은 그대로 보여 준다.
+  if (isSupabaseConfigured()) {
+    const supabase = await createServerSupabase();
+    if (supabase) await bumpViewCount(supabase, decodeURIComponent(slug));
+  }
 
   const roomLabel = item.roomLabel || ROOM_MAP[item.roomId]?.label || "공간";
   const styleLabel = item.styleLabel || STYLE_MAP[item.styleId]?.label || "스타일";
@@ -80,13 +87,34 @@ export default async function GalleryDetailPage({
         <h1 className="serif-display mt-2 text-[24px] leading-tight sm:text-[28px]">
           {item.title}
         </h1>
-        <p className="mt-1.5 text-[13px] text-muted">
-          {roomLabel} · {styleLabel} · {new Date(item.createdAt).toLocaleDateString("ko-KR")}
-        </p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
+          <span>{roomLabel}</span>
+          <span aria-hidden>·</span>
+          <span>{styleLabel}</span>
+          <span aria-hidden>·</span>
+          <span className="text-ink-soft">{item.authorName}</span>
+          <span aria-hidden>·</span>
+          {/* 방금 올린 +1까지 포함해서 보여 준다 */}
+          <span>조회 {(item.viewCount + 1).toLocaleString("ko-KR")}</span>
+          <span aria-hidden>·</span>
+          <span>{new Date(item.createdAt).toLocaleDateString("ko-KR")}</span>
+
+          {item.canDelete && <GalleryDeleteButton slug={item.slug} />}
+        </div>
 
         <div className="mt-5 overflow-hidden rounded-[var(--radius-card)] border border-line bg-sunken">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={item.imageUrl} alt={item.title} className="w-full object-cover" />
+          {item.beforeUrl ? (
+            <BeforeAfterSlider
+              beforeSrc={item.beforeUrl}
+              afterSrc={item.imageUrl}
+              beforeLabel="원본 사진"
+              afterLabel="AI 시안"
+              hint="좌우로 움직여 보세요"
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.imageUrl} alt={item.title} className="w-full object-cover" />
+          )}
         </div>
 
         <p className="mt-5 text-[14px] leading-relaxed text-ink-soft">

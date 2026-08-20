@@ -284,7 +284,7 @@ export function Canvas2D() {
       <div className="pointer-events-none absolute bottom-3 left-3 flex gap-2 text-[11px] text-white/60">
         <span className="rounded bg-black/40 px-2 py-1">{Math.round(zoom * 100)}%</span>
         <span className="rounded bg-black/40 px-2 py-1">
-          {viewMode === "image" ? "이미지" : "2.5D"} · 객체 {objects.length}
+          {viewMode === "image" ? "이미지" : "도면"} · 객체 {objects.length}
         </span>
         <span className="rounded bg-black/40 px-2 py-1">Ctrl+휠 확대 · 빈 곳 드래그로 이동</span>
       </div>

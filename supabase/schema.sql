@@ -152,11 +152,17 @@ create table if not exists public.generation_results (
   -- Phase 5: SEO 갤러리 공개 동의
   is_public boolean not null default false,
   slug text unique,
+  -- 갤러리 노출용 — 공개 시점에 채운다 (profiles는 본인만 조회 가능해 조인할 수 없다)
+  author_name text,
+  view_count integer not null default 0,
+  -- 갤러리 전/후 비교에 쓸 원본 사본(공개 버킷) 경로
+  before_path text,
   created_at timestamptz not null default now()
 );
 
 create index if not exists generation_results_job_idx on public.generation_results (job_id, position);
 create index if not exists generation_results_public_idx on public.generation_results (is_public, created_at desc);
+create index if not exists generation_results_views_idx on public.generation_results (is_public, view_count desc);
 
 alter table public.generation_results enable row level security;
 
@@ -171,6 +177,31 @@ create policy "결과 생성은 본인만" on public.generation_results
 drop policy if exists "결과 수정은 본인만" on public.generation_results;
 create policy "결과 수정은 본인만" on public.generation_results
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+/*
+ * 갤러리 조회수 증가.
+ * 비로그인 방문자도 올릴 수 있어야 해서 security definer로 두되,
+ * 공개된 항목만 건드린다.
+ */
+create or replace function public.increment_gallery_view(p_slug text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  v_count integer;
+begin
+  update public.generation_results
+     set view_count = view_count + 1
+   where slug = p_slug and is_public = true
+  returning view_count into v_count;
+
+  return coalesce(v_count, 0);
+end;
+$;
+
+grant execute on function public.increment_gallery_view(text) to anon, authenticated;
 
 /* ───────────────────────────── 크레딧 함수 ──────────────────────────── */
 

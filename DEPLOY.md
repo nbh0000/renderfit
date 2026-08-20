@@ -17,6 +17,11 @@ Railway는 상시 실행 서버라 이 앱의 백그라운드 잡(분석·생성
 1. `supabase/schema.sql` — 프로필·크레딧·빠른 생성(job/결과)·`sources`/`results` 버킷
 2. `supabase/design-schema.sql` — 에디터용 `design_projects` 등 + **`scene-files` 비공개 버킷**
 
+이미 운영 중인 DB라면 `schema.sql`을 다시 돌리는 대신 변경분만 적용합니다.
+- `supabase/migrations-gallery.sql` — 갤러리 작성자·조회수·전후 비교용 컬럼과 조회수 함수
+
+> 이 마이그레이션 전에도 갤러리는 동작합니다(작성자·조회수·비교 슬라이더만 비어 보입니다).
+
 실행 후 Storage 탭에서 버킷 3개(`sources`, `results`, `scene-files`)가 보이면 정상입니다.
 
 ### 1-3. 구글 로그인

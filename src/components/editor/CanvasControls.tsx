@@ -10,7 +10,8 @@ import { useEditorStore, type ViewMode } from "@/lib/editor/store";
 
 const VIEW_MODES: { id: ViewMode; label: string }[] = [
   { id: "image", label: "이미지" },
-  { id: "2.5d", label: "2.5D" },
+  { id: "plan", label: "평면도" },
+  { id: "elevation", label: "측면도" },
   { id: "3d", label: "3D" },
 ];
 
@@ -41,7 +42,7 @@ export function CanvasControls() {
         ))}
       </div>
 
-      {/* 확대 — 3D는 휠·드래그로 조작하므로 2.5D에서만 노출 */}
+      {/* 확대 — 3D는 휠·드래그로 조작하므로 2D 도면에서만 노출 */}
       {viewMode !== "3d" && (
         <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-white/15 bg-[#0a0a0a]/85 p-0.5 text-white/80 backdrop-blur">
           <button

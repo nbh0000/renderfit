@@ -5,6 +5,7 @@ import { useEditorStore } from "@/lib/editor/store";
 import type { WallOpening, WallSegment } from "@/scene/types";
 import { ensureRoom, findFreeOffset, floorArea, wallLength } from "@/scene/geometry";
 import { NumberField } from "../shared/NumberField";
+import { ElectricalPanel } from "./ElectricalPanel";
 
 /**
  * 공간 패널 — 실측 치수 입력 + 벽·개구부 편집.
@@ -24,6 +25,7 @@ export function RoomPanel() {
   const [height, setHeight] = useState("");
   const [saving, setSaving] = useState(false);
   const [openWallId, setOpenWallId] = useState<string | null>(null);
+  const [deriveNote, setDeriveNote] = useState<string | null>(null);
 
   // 서버 Scene이 바뀌면 입력값을 동기화한다.
   useEffect(() => {
@@ -43,6 +45,25 @@ export function RoomPanel() {
       height: Number(height),
       measured,
     });
+
+    /*
+     * 실측값을 확정하면 그 치수 위에 사진 속 창·문을 얹는다.
+     * 실치수를 넣는 이유가 "이 방 구조 그대로 도면을 뽑는 것"이므로,
+     * 별도 버튼을 누르게 하지 않고 여기서 같이 처리한다.
+     */
+    if (measured) {
+      const result = await runTool("derive_openings", {});
+      setDeriveNote(result.ok ? result.message : null);
+    }
+
+    setSaving(false);
+  };
+
+  /** 사진 속 창·문을 다시 읽어 온다 (치수를 이미 확정한 뒤 쓰는 버튼) */
+  const syncOpenings = async () => {
+    setSaving(true);
+    const result = await runTool("derive_openings", {});
+    setDeriveNote(result.message);
     setSaving(false);
   };
 
@@ -113,9 +134,20 @@ export function RoomPanel() {
           </button>
         </div>
 
+        <button
+          type="button"
+          onClick={() => void syncOpenings()}
+          disabled={saving}
+          className="mt-1.5 w-full rounded border border-line px-2 py-1.5 text-[11.5px] hover:bg-sunken disabled:opacity-40"
+        >
+          사진 속 창·문을 벽에 반영
+        </button>
+
+        {deriveNote && <p className="mt-1 text-[10.5px] text-accent">{deriveNote}</p>}
+
         <p className="mt-1.5 text-[10.5px] leading-relaxed text-muted">
-          확정하면 도면 고지가 &lsquo;실측 기준&rsquo;으로 바뀝니다. 치수를 바꾸면 벽이 새 크기로
-          다시 맞춰지고 개구부는 유지됩니다.
+          확정하면 도면 고지가 &lsquo;실측 기준&rsquo;으로 바뀌고, 사진에서 찾은 창·문이 그 치수에 맞춰
+          벽에 반영됩니다. 치수를 바꾸면 벽이 새 크기로 다시 맞춰지고 개구부는 비율대로 따라갑니다.
         </p>
       </section>
 
@@ -159,6 +191,11 @@ export function RoomPanel() {
             벽이 없습니다. 치수를 적용하면 자동으로 만들어집니다.
           </p>
         )}
+      </section>
+
+      <section>
+        <h3 className="mb-1.5 text-[11.5px] font-semibold text-ink">전기 · 통신</h3>
+        <ElectricalPanel />
       </section>
     </div>
   );
@@ -313,7 +350,7 @@ function OpeningRow({ wall, opening }: { wall: WallSegment; opening: WallOpening
   const runTool = useEditorStore((state) => state.runTool);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const update = async (patch: Record<string, number>) => {
+  const update = async (patch: Record<string, number | string>) => {
     const result = await runTool("update_opening", {
       wallId: wall.id,
       openingId: opening.id,
@@ -356,6 +393,82 @@ function OpeningRow({ wall, opening }: { wall: WallSegment; opening: WallOpening
           />
         )}
       </div>
+
+      {/* 문 사양 — 평면도 기호와 입면도 표기가 이 값으로 결정된다 */}
+      {opening.type === "door" && (
+        <div className="mt-1.5 space-y-1.5 border-t border-line pt-1.5">
+          <Choice
+            label="종류"
+            value={opening.doorType ?? "hinged"}
+            options={[
+              ["hinged", "여닫이"],
+              ["sliding", "미닫이"],
+              ["folding", "접이"],
+              ["opening", "개구부"],
+            ]}
+            onChange={(v) => update({ doorType: v })}
+          />
+          {(opening.doorType ?? "hinged") === "hinged" && (
+            <>
+              <Choice
+                label="경첩"
+                value={opening.hinge ?? "start"}
+                options={[
+                  ["start", "좌측"],
+                  ["end", "우측"],
+                ]}
+                onChange={(v) => update({ hinge: v })}
+              />
+              <Choice
+                label="열림"
+                value={opening.swing ?? "in"}
+                options={[
+                  ["in", "안쪽"],
+                  ["out", "바깥"],
+                ]}
+                onChange={(v) => update({ swing: v })}
+              />
+            </>
+          )}
+        </div>
+      )}
     </li>
+  );
+}
+
+/** 값이 몇 개뿐인 선택 — 셀렉트보다 눌러서 바로 보이는 쪽이 도면 작업에 빠르다 */
+function Choice({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: [string, string][];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="w-8 shrink-0 text-[10.5px] text-muted">{label}</span>
+      <div className="flex flex-1 gap-0.5">
+        {options.map(([id, text]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onChange(id)}
+            aria-pressed={value === id}
+            className={[
+              "flex-1 rounded px-1 py-1 text-[10.5px] transition-colors",
+              value === id
+                ? "bg-accent-soft font-medium text-accent"
+                : "border border-line text-muted hover:text-ink",
+            ].join(" ")}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

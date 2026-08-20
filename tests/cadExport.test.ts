@@ -98,8 +98,9 @@ describe("평면도 SVG", () => {
 
   it("치수와 고지를 포함한 SVG를 만든다", () => {
     expect(svg.startsWith("<svg")).toBe(true);
-    expect(svg).toContain("5000 mm");
-    expect(svg).toContain("6000 mm");
+    // 전체 치수는 사방 치수 체인의 바깥 줄에 숫자만 찍힌다 (mm 단위는 타이틀블록에 적는다)
+    expect(svg).toContain(">5000<");
+    expect(svg).toContain(">6000<");
     expect(svg).toContain(CAD_DISCLAIMER);
     expect(svg).not.toContain("NaN");
   });

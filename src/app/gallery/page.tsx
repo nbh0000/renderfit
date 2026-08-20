@@ -70,6 +70,11 @@ export default async function GalleryPage() {
                     />
                   </span>
                   <p className="mt-1.5 text-[13px] font-medium">{item.title}</p>
+                  <p className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-muted">
+                    <span className="truncate">{item.authorName}</span>
+                    <span aria-hidden>·</span>
+                    <span className="shrink-0">조회 {item.viewCount.toLocaleString("ko-KR")}</span>
+                  </p>
                 </Link>
               </li>
             ))}

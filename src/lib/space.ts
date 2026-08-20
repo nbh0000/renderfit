@@ -1,8 +1,10 @@
 import {
   DEFAULT_CEILING_MM,
   PYEONG_TO_M2,
+  SPACE_HARD_RULES,
   SPACE_LIMITS,
   SPACE_PROMPT_TEMPLATE,
+  furnitureScaleGuide,
 } from "@/config/space";
 import type { SpaceSize } from "./types";
 
@@ -87,11 +89,28 @@ export function summarizeSpaceSize(size: SpaceSize): string {
   return `${area.toFixed(1)}㎡ · ${m2ToPyeong(area).toFixed(1)}평`;
 }
 
-/** 프롬프트에 붙일 문단. 크기 정보가 없으면 빈 문자열 */
+/**
+ * 프롬프트에 붙일 문단. 크기 정보가 없으면 빈 문자열.
+ *
+ * 평수만 적어 주면 모델이 그 값을 무시하고 넓은 방을 그리기 쉬워서,
+ * 면적과 함께 환산 치수와 '이 면적에 들어가는 가구 목록'까지 숫자로 넘긴다.
+ */
 export function buildSpaceFragment(size: SpaceSize | null | undefined): string {
   const normalized = normalizeSpaceSize(size);
   if (!normalized) return "";
-  return SPACE_PROMPT_TEMPLATE.replaceAll("{{size}}", describeSpaceSize(normalized));
+
+  const area = spaceAreaM2(normalized);
+  const dimensions = toRoomDimensions(normalized);
+
+  return SPACE_PROMPT_TEMPLATE.replaceAll("{{size}}", describeSpaceSize(normalized))
+    .replaceAll(
+      "{{dimensions}}",
+      dimensions
+        ? `가로 ${(dimensions.width / 1000).toFixed(1)}m × 세로 ${(dimensions.length / 1000).toFixed(1)}m, 천장 ${(dimensions.height / 1000).toFixed(1)}m`
+        : "알 수 없음"
+    )
+    .replaceAll("{{furniture}}", area ? furnitureScaleGuide(area) : "")
+    .replaceAll("{{hardRules}}", SPACE_HARD_RULES);
 }
 
 /**

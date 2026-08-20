@@ -12,6 +12,8 @@ interface Props {
   aspect?: string;
   /** 시안(After) 쪽에만 겹쳐 그릴 요소 — 무료 플랜 워터마크에 사용 */
   afterOverlay?: React.ReactNode;
+  /** 조작 방법을 알려 주는 문구. 한 번 만지면 사라진다 */
+  hint?: string;
 }
 
 /**
@@ -26,8 +28,11 @@ export function BeforeAfterSlider({
   className = "",
   aspect = "4 / 3",
   afterOverlay,
+  hint,
 }: Props) {
   const [pos, setPos] = useState(50);
+  // 한 번이라도 움직여 본 사람에게는 안내가 방해가 된다.
+  const [touched, setTouched] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
 
@@ -46,6 +51,7 @@ export function BeforeAfterSlider({
       style={{ aspectRatio: aspect }}
       onPointerDown={(e) => {
         draggingRef.current = true;
+        setTouched(true);
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         updateFromClientX(e.clientX);
       }}
@@ -102,6 +108,7 @@ export function BeforeAfterSlider({
         role="slider"
         tabIndex={0}
         onKeyDown={(e) => {
+          if (e.key === "ArrowLeft" || e.key === "ArrowRight") setTouched(true);
           if (e.key === "ArrowLeft") setPos((p) => Math.max(0, p - 4));
           if (e.key === "ArrowRight") setPos((p) => Math.min(100, p + 4));
         }}
@@ -112,6 +119,16 @@ export function BeforeAfterSlider({
           <path d="M6 3L2 8l4 5M10 3l4 5-4 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
+
+      {/* 손잡이 바로 아래에 붙여 둔다 — 무엇을 움직여야 하는지 같이 보이게 */}
+      {hint && !touched && (
+        <span
+          className="pointer-events-none absolute top-1/2 mt-9 -translate-x-1/2 animate-pulse whitespace-nowrap rounded-full bg-ink/70 px-2.5 py-1 text-[11px] font-medium text-white"
+          style={{ left: `${pos}%` }}
+        >
+          {hint}
+        </span>
+      )}
     </div>
   );
 }

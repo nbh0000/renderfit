@@ -1,3 +1,5 @@
+import { ELECTRICAL_MAP } from "@/config/electrical";
+import type { ElectricalKind } from "@/scene/types";
 import type { StructuredCommand, ToolDefinition } from "@/ai/providers/types";
 import type { Asset, SceneObject } from "@/scene/types";
 import { SceneEngine, createSceneObject } from "@/scene/engine/SceneEngine";
@@ -124,13 +126,52 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "update_opening",
-    description: "개구부의 위치·크기를 수정한다.",
-    parameters: { wallId: "string", openingId: "string", offset: "number", width: "number", height: "number", sillHeight: "number" },
+    description:
+      "개구부의 위치·크기와 문 사양(문 종류·경첩 위치·열림 방향)을 수정한다. doorType은 hinged|sliding|folding|opening, hinge는 start|end, swing은 in|out.",
+    parameters: {
+      wallId: "string",
+      openingId: "string",
+      offset: "number",
+      width: "number",
+      height: "number",
+      sillHeight: "number",
+      doorType: "string",
+      hinge: "string",
+      swing: "string",
+    },
   },
   {
     name: "delete_opening",
     description: "개구부를 제거한다.",
     parameters: { wallId: "string", openingId: "string" },
+  },
+  {
+    name: "derive_openings",
+    description:
+      "사진 분석으로 찾은 창문·문을 벽의 개구부로 반영한다. 평면도·측면도·3D에 실제 구조로 나타난다.",
+    parameters: {},
+  },
+  {
+    name: "add_fixture",
+    description:
+      "콘센트·스위치·조명 같은 전기/통신 설비를 추가한다. kind는 outlet|outlet-aircon|switch|switch-3way|ceiling-light|wall-light|data|tv-jack|panel. 벽에 붙이려면 wallId와 offset(벽 시작점에서 mm)을, 천장이면 wallId 없이 쓴다.",
+    parameters: {
+      kind: "string",
+      wallId: "string",
+      offset: "number",
+      height: "number",
+      name: "string",
+    },
+  },
+  {
+    name: "update_fixture",
+    description: "설비의 위치·높이를 수정한다.",
+    parameters: { fixtureId: "string", wallId: "string", offset: "number", height: "number" },
+  },
+  {
+    name: "delete_fixture",
+    description: "설비를 제거한다.",
+    parameters: { fixtureId: "string" },
   },
   {
     name: "arrange_objects",
@@ -537,6 +578,51 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       return toResult(command, result, "개구부를 추가했습니다.");
     }
 
+    case "derive_openings": {
+      const result = engine.syncOpeningsFromObjects();
+      if (!result.ok) return toResult(command, result, "");
+
+      const skipped = result.skipped?.length
+        ? ` (자리가 없어 ${result.skipped.join(", ")}은(는) 건너뜀)`
+        : "";
+      return toResult(command, result, `창·문 ${result.added}개를 벽에 반영했습니다.${skipped}`);
+    }
+
+    case "add_fixture": {
+      const kind = args.kind as ElectricalKind;
+      const spec = ELECTRICAL_MAP[kind];
+      if (!spec) return fail("알 수 없는 설비 종류입니다.");
+
+      const wallId = typeof args.wallId === "string" && args.wallId ? args.wallId : null;
+      const result = engine.addFixture({
+        id: `fx_${Math.random().toString(36).slice(2, 10)}`,
+        name: typeof args.name === "string" && args.name ? args.name : spec.label,
+        kind,
+        wallId,
+        offset: typeof args.offset === "number" ? args.offset : 0,
+        height: typeof args.height === "number" ? args.height : spec.defaultHeight,
+      });
+      return toResult(command, result, `${spec.label}을(를) 추가했습니다.`);
+    }
+
+    case "update_fixture": {
+      const fixtureId = args.fixtureId as string;
+      if (!fixtureId) return fail("대상 설비가 없습니다.");
+      const patch: Record<string, unknown> = {};
+      for (const key of ["offset", "height"]) {
+        if (typeof args[key as never] === "number") patch[key] = args[key as never];
+      }
+      if (typeof args.wallId === "string") patch.wallId = args.wallId || null;
+      if (typeof args.name === "string") patch.name = args.name;
+      return toResult(command, engine.updateFixture(fixtureId, patch), "설비를 수정했습니다.");
+    }
+
+    case "delete_fixture": {
+      const fixtureId = args.fixtureId as string;
+      if (!fixtureId) return fail("대상 설비가 없습니다.");
+      return toResult(command, engine.deleteFixture(fixtureId), "설비를 제거했습니다.");
+    }
+
     case "update_opening": {
       const wallId = args.wallId as string;
       const openingId = args.openingId as string;
@@ -546,6 +632,17 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
         if (typeof args[key as never] === "number") patch[key] = args[key as never];
       }
       if (typeof args.name === "string") patch.name = args.name;
+
+      // 문 사양 — 값이 정해진 목록 안에 있을 때만 반영한다.
+      const enums: Record<string, string[]> = {
+        doorType: ["hinged", "sliding", "folding", "opening"],
+        hinge: ["start", "end"],
+        swing: ["in", "out"],
+      };
+      for (const [key, allowed] of Object.entries(enums)) {
+        const value = args[key as never];
+        if (typeof value === "string" && allowed.includes(value)) patch[key] = value;
+      }
       const result = engine.updateOpening(wallId, openingId, patch);
       return toResult(command, result, "개구부를 수정했습니다.");
     }

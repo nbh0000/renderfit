@@ -115,33 +115,105 @@ export function planAllows(planId: PlanId, required: PlanId): boolean {
 
 /* ── 해상도 옵션 · 크레딧 정책 ── */
 
-export type ResolutionId = "standard" | "high";
+/**
+ * 해상도 옵션.
+ *
+ * id는 DB(generation_jobs.resolution)에 그대로 저장되므로 기존 값을 바꾸지 않는다.
+ * 해상도마다 쓰는 모델이 다르다 — 2K·4K는 Nano Banana Pro만 지원한다.
+ */
+export type ResolutionId = "standard" | "high" | "ultra";
 
 export interface ResolutionOption {
   id: ResolutionId;
   label: string;
-  px: 1024 | 2048;
+  /** 긴 변 기준 목표 픽셀 */
+  px: 1024 | 2048 | 4096;
   /** 1장당 크레딧 */
   creditsPerImage: number;
   requiredPlan: PlanId;
+  /** 이 해상도를 만들 수 있는 모델 (환경변수 GEMINI_IMAGE_MODEL로 전체 덮어쓰기 가능) */
+  model: string;
+  /** 옵션 아래에 붙는 짧은 설명 */
+  note: string;
+  /** 1장 생성에 걸리는 대략적인 시간(초) — 대기 화면 안내에 쓴다 */
+  estimatedSeconds: number;
 }
 
+/*
+ * 사용 모델과 원가.
+ *
+ * 2026-08 기준 공식 단가(장당)와 실측 결과다.
+ *   gemini-2.5-flash-image (Nano Banana)     $0.039  → 2K를 요청해도 1184×864
+ *   gemini-3.1-flash-image (Nano Banana 2)   2K $0.101 / 4K $0.151
+ *                                            → 2K 2400×1792(26초), 4K 4800×3584(28초)
+ *   gemini-3-pro-image     (Nano Banana Pro) 1~2K $0.134 / 4K $0.24
+ *                                            → 4K 4800×3584(42초)
+ *
+ * 4K는 Nano Banana 2가 Pro보다 37% 싸고 더 빠르며, 실측에서 원본 구조도 덜 흐트러졌다.
+ * 그래서 Pro는 기본 경로에서 쓰지 않는다.
+ */
+
+/** 기본 해상도용 — 가장 저렴하고 빠르다 */
+export const MODEL_FLASH = "gemini-2.5-flash-image";
+/** 2K·4K가 실제로 나오는 모델 */
+export const MODEL_FLASH_HI = "gemini-3.1-flash-image";
+/**
+ * 상위 모델. 현재는 쓰지 않는다 — 더 비싸고 느린데 품질 이득이 뚜렷하지 않았다.
+ * 필요하면 RESOLUTIONS의 model 값이나 GEMINI_IMAGE_MODEL로 바꿔 쓸 수 있다.
+ */
+export const MODEL_PRO = "gemini-3-pro-image";
+
 export const RESOLUTIONS: ResolutionOption[] = [
-  { id: "standard", label: "기본 (1024px)", px: 1024, creditsPerImage: 1, requiredPlan: "free" },
-  { id: "high", label: "고해상도 (2048px)", px: 2048, creditsPerImage: 2, requiredPlan: "pro" },
+  {
+    id: "standard",
+    label: "기본 (1024px)",
+    px: 1024,
+    creditsPerImage: 1,
+    requiredPlan: "free",
+    model: MODEL_FLASH,
+    note: "빠르고 가볍습니다. 화면으로 보기에 충분합니다.",
+    estimatedSeconds: 15,
+  },
+  {
+    id: "high",
+    label: "고해상도 (2K)",
+    px: 2048,
+    creditsPerImage: 3,
+    // 해상도는 플랜이 아니라 크레딧으로 조절한다 — 무료 사용자도 한 장은 크게 뽑을 수 있게.
+    requiredPlan: "free",
+    model: MODEL_FLASH_HI,
+    note: "약 2400×1792로 나옵니다. 인쇄물이나 확대해서 볼 때.",
+    estimatedSeconds: 30,
+  },
+  {
+    id: "ultra",
+    label: "초고해상도 (4K)",
+    px: 4096,
+    creditsPerImage: 4,
+    requiredPlan: "free",
+    model: MODEL_FLASH_HI,
+    note: "약 4800×3584로 나옵니다. 대형 출력용입니다.",
+    estimatedSeconds: 35,
+  },
 ];
 
 export const RESOLUTION_MAP: Record<ResolutionId, ResolutionOption> = Object.fromEntries(
   RESOLUTIONS.map((r) => [r.id, r])
 ) as Record<ResolutionId, ResolutionOption>;
 
-/** 한 번의 생성 요청에서 만들어지는 결과 장수 (기본값) */
+/** 한 번의 생성 요청에서 만들어지는 결과 장수 (기본값 · 최댓값) */
 export const IMAGES_PER_JOB = 4;
+
+/** 사용자가 고를 수 있는 장수. 크레딧을 아끼려는 사람을 위해 1장부터 둔다 */
+export const IMAGE_COUNT_OPTIONS = [1, 2, 4] as const;
 
 /** 참고용 배치도 1장 생성 비용 (이미지 1장 = 1크레딧 규칙을 그대로 따른다) */
 export const FLOORPLAN_CREDITS = 1;
 
-/** 크레딧: 1장 = 1크레딧, 고해상도 1장 = 2크레딧. 월 갱신, 이월 없음. */
+/**
+ * 크레딧: 기본 1장 = 1크레딧, 2K = 3크레딧, 4K = 4크레딧. 월 갱신, 이월 없음.
+ * 원가 대비로 정한 값이다 (기본 $0.039 / 2K $0.101 / 4K $0.151).
+ */
 export function creditCost(resolution: ResolutionId, count: number = IMAGES_PER_JOB): number {
   return RESOLUTION_MAP[resolution].creditsPerImage * count;
 }

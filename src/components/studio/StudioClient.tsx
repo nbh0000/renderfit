@@ -6,13 +6,16 @@ import { ROOMS, type RoomId } from "@/config/rooms";
 import { STYLES, type StyleId } from "@/config/styles";
 import {
   FLOORPLAN_CREDITS,
+  IMAGES_PER_JOB,
   PLANS,
+  RESOLUTION_MAP,
   affordableImageCount,
   creditCost,
   getPlan,
   planAllows,
   type PlanId,
   type ResolutionId,
+  IMAGE_COUNT_OPTIONS,
 } from "@/config/plans";
 import {
   EMPTY_MATERIALS,
@@ -30,6 +33,7 @@ import { Uploader, type UploadValue } from "./Uploader";
 import { ModeSelector } from "./ModeSelector";
 import { RoomStyleSelector } from "./RoomStyleSelector";
 import { ProControls } from "./ProControls";
+import { ResolutionSelector } from "./ResolutionSelector";
 import { ProjectPicker } from "./ProjectPicker";
 import { SpaceSizeInput } from "./SpaceSizeInput";
 import { ResultsPanel } from "./ResultsPanel";
@@ -61,6 +65,8 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
   const [styleId, setStyleId] = useState<StyleId>(STYLES[0].id);
   const [materials, setMaterials] = useState<MaterialSpec>(EMPTY_MATERIALS);
   const [resolution, setResolution] = useState<ResolutionId>("standard");
+  // 사용자가 고른 장수. 크레딧이 모자라면 아래에서 만들 수 있는 만큼으로 줄인다.
+  const [wantedCount, setWantedCount] = useState<number>(IMAGES_PER_JOB);
   const [mask, setMask] = useState<File | null>(null);
   const [customPrompt, setCustomPrompt] = useState("");
   const [size, setSize] = useState<SpaceSize | null>(null);
@@ -75,11 +81,14 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const mode = MODE_MAP[modeId];
+  // 커스텀 스타일처럼 참고 이미지를 전제로 하는 스타일인지
+  const needsReference = Boolean(STYLES.find((s) => s.id === styleId)?.requiresReference);
   const plan = getPlan(account.plan);
-  // 남은 크레딧이 4장에 못 미치면 만들 수 있는 장수만큼만 생성한다 (무료 플랜 3크레딧 등)
-  const imageCount = affordableImageCount(resolution, account.credits);
+  // 남은 크레딧이 모자라면 만들 수 있는 장수만큼만 생성한다 (무료 플랜 3크레딧 등)
+  const affordable = affordableImageCount(resolution, account.credits);
+  const imageCount = Math.min(wantedCount, affordable);
   const cost = creditCost(resolution, Math.max(imageCount, 1));
-  const notEnoughCredits = loaded && imageCount === 0;
+  const notEnoughCredits = loaded && affordable === 0;
 
   useEffect(() => {
     return () => {
@@ -103,7 +112,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
   }, [account.plan, modeId]);
 
   const startPolling = useCallback(
-    (jobId: string, charged: number) => {
+    (jobId: string, charged: number, requested: number) => {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = setInterval(async () => {
         try {
@@ -118,7 +127,13 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
             if (next.status === "failed") {
               // 로컬 모드는 클라이언트가, Supabase 모드는 서버가 환불한다.
               if (local) refund(charged);
-              toast("실패했습니다. 크레딧이 환불되었습니다", "error");
+              // 사유를 알려 줘야 사용자가 다음에 무엇을 바꿔야 할지 안다.
+              toast(next.error ?? "생성에 실패했습니다. 크레딧이 환불되었습니다", "error");
+            } else if (next.results.length < requested) {
+              toast(
+                next.error ?? `${next.results.length}장만 생성되었습니다. 나머지는 환불되었습니다`,
+                "error"
+              );
             } else {
               toast(`시안 ${next.results.length}장이 완성되었습니다`, "success");
             }
@@ -146,6 +161,10 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
     }
     if (notEnoughCredits) {
       toast("크레딧이 부족합니다. 요금제를 확인해 주세요.", "error");
+      return;
+    }
+    if (needsReference && !reference) {
+      toast("참고 이미지를 올려 주세요.", "error");
       return;
     }
 
@@ -185,7 +204,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
       if (!res.ok) throw new Error(data.error ?? "생성 요청에 실패했습니다.");
 
       spend(data.creditsCharged as number);
-      startPolling(data.jobId as string, data.creditsCharged as number);
+      startPolling(data.jobId as string, data.creditsCharged as number, imageCount);
     } catch (err) {
       setRunning(false);
       toast(err instanceof Error ? err.message : "생성 요청에 실패했습니다.", "error");
@@ -194,6 +213,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
   [
     account.plan,
     customPrompt,
+    needsReference,
     imageCount,
     size,
     local,
@@ -320,6 +340,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
               reference={reference}
               onReferenceChange={setReference}
               onError={(m) => toast(m, "error")}
+              usesStyle={mode.usesStyle}
             />
           </Panel>
 
@@ -337,18 +358,49 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
             </div>
           </Panel>
 
+          <Panel title="해상도">
+            <ResolutionSelector
+              value={resolution}
+              credits={account.credits}
+              onChange={setResolution}
+            />
+          </Panel>
+
           <ProControls
             plan={account.plan}
             materials={materials}
             onMaterialsChange={setMaterials}
-            resolution={resolution}
-            onResolutionChange={setResolution}
             onLocked={(m) => toast(m, "error")}
             sourceUrl={source?.url ?? null}
             onMaskChange={setMask}
           />
 
           <div className="sticky bottom-0 -mx-4 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur-sm sm:mx-0 sm:rounded-[var(--radius-card)] sm:border sm:px-4">
+            <div className="mb-2 flex items-center gap-1.5">
+              <span className="mr-1 text-[12px] text-muted">장수</span>
+              {IMAGE_COUNT_OPTIONS.map((option) => {
+                const affordableHere = option <= affordable;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    disabled={!affordableHere}
+                    onClick={() => setWantedCount(option)}
+                    aria-pressed={wantedCount === option}
+                    className={[
+                      "h-8 flex-1 rounded-md border text-[12.5px] transition-colors",
+                      wantedCount === option
+                        ? "border-accent bg-accent-soft font-medium text-accent"
+                        : "border-line text-muted hover:text-ink",
+                      affordableHere ? "" : "cursor-not-allowed opacity-40",
+                    ].join(" ")}
+                  >
+                    {option}장
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="mb-2 flex items-center justify-between text-[12.5px]">
               {notEnoughCredits ? (
                 <span className="text-danger">크레딧이 모두 소진되었습니다</span>
@@ -381,8 +433,12 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
           )}
         </div>
 
-        {/* 우측 결과 영역 */}
-        <section>
+        {/*
+          우측 결과 영역.
+          왼쪽 설정 패널이 길어서 아래로 내리면 결과가 화면 밖으로 사라졌다.
+          넓은 화면에서는 결과를 화면에 붙여 두고 그 안에서만 스크롤하게 한다.
+        */}
+        <section className="lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-[15px] font-semibold">결과</h2>
             {job?.status === "succeeded" && (
@@ -396,6 +452,7 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
             originalUrl={source?.url ?? null}
             running={running}
             expectedCount={Math.max(imageCount, 1)}
+            estimatedSeconds={RESOLUTION_MAP[resolution].estimatedSeconds}
             // "이 결과로 다시 생성" — 그 결과를 만든 설정 그대로 재실행한다.
             onRegenerate={() => void generate(job?.settings)}
             onFloorplan={requestFloorplan}

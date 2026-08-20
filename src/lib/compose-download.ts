@@ -81,12 +81,30 @@ export async function composeImage(src: string, options: ComposeOptions): Promis
   if (options.watermark) drawWatermark(ctx, width, height);
   if (options.disclaimer) drawDisclaimer(ctx, width, height, barHeight, options.disclaimer);
 
+  /*
+   * 2K·4K 결과를 PNG로 구우면 파일이 30MB를 넘고 모바일에서는 메모리째로 실패한다.
+   * 인테리어 사진에는 투명도가 필요 없으므로 큰 이미지는 JPEG로 내보낸다.
+   */
+  const large = canvas.width * canvas.height > 2_000_000;
+  const type = large ? "image/jpeg" : "image/png";
+
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("이미지를 만들지 못했습니다."));
-    }, "image/png");
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("이미지를 만들지 못했습니다."));
+      },
+      type,
+      large ? 0.92 : undefined
+    );
   });
+}
+
+/** Blob 종류에 맞는 확장자 — 파일명이 내용과 어긋나지 않게 한다 */
+export function extensionForBlob(blob: Blob): string {
+  if (blob.type.includes("jpeg")) return "jpg";
+  if (blob.type.includes("webp")) return "webp";
+  return "png";
 }
 
 /** Blob을 파일로 내려받는다. */

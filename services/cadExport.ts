@@ -1,4 +1,11 @@
-import type { Scene, SceneObject, WallOpening, WallSegment } from "@/scene/types";
+import type {
+  ElectricalFixture,
+  Scene,
+  SceneObject,
+  WallOpening,
+  WallSegment,
+} from "@/scene/types";
+import { electricalSpec } from "@/config/electrical";
 import { OBJECT_GROUP_OF } from "@/scene/types";
 import { ensureRoom, pointAlongWall, wallAngle, wallDirection, wallLength } from "@/scene/geometry";
 
@@ -48,6 +55,8 @@ export interface PlanData {
   roomLength: number;
   roomHeight: number;
   objects: PlanObject[];
+  /** 전기·통신 설비 (도면 E-* 레이어) */
+  electrical: ElectricalFixture[];
   createdAt: string;
 }
 
@@ -96,6 +105,7 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
     roomLength,
     roomHeight: room.dimensions.height,
     objects,
+    electrical: room.electrical ?? [],
     createdAt: new Date().toISOString(),
   };
 }
@@ -183,6 +193,16 @@ class DxfWriter {
       const [x2, y2] = points[(i + 1) % points.length];
       this.line(x1, y1, x2, y2, layer);
     }
+  }
+
+  /** 전기 기호용 원 (R12 CIRCLE 엔티티) */
+  circle(x: number, y: number, radius: number, layer: string) {
+    this.tag(0, "CIRCLE");
+    this.tag(8, layer);
+    this.tag(10, round(x));
+    this.tag(20, round(y));
+    this.tag(30, 0);
+    this.tag(40, round(radius));
   }
 
   text(x: number, y: number, height: number, value: string, layer: string, rotation = 0) {
@@ -368,6 +388,8 @@ export function buildDxf(plan: PlanData): string {
     { name: "E-LITE", color: 1 },
     { name: "A-DOOR", color: 30 },
     { name: "A-GLAZ", color: 4 },
+    { name: "E-POWR", color: 5 },
+    { name: "E-COMM", color: 3 },
   ]);
 
   dxf.section("ENTITIES");
@@ -397,6 +419,19 @@ export function buildDxf(plan: PlanData): string {
       ],
       "A-WALL"
     );
+  }
+
+  /*
+   * 전기·통신 설비.
+   * 기호 원 + 종류 문자 + 설치 높이를 함께 찍는다 — 도면만 보고 시공할 수 있어야 한다.
+   */
+  for (const fixture of plan.electrical) {
+    const spec = electricalSpec(fixture.kind);
+    const [x, y] = electricalPoint(plan, fixture);
+    dxf.circle(x, y, 110, spec.layer);
+    dxf.text(x - 60, y - 45, 90, spec.symbol, spec.layer);
+    dxf.text(x - 120, y - 260, 75, `H${Math.round(fixture.height)}`, spec.layer);
+    if (fixture.note) dxf.text(x - 120, y - 400, 70, fixture.note, "A-NOTE");
   }
 
   // 가구·설비 footprint + 라벨
@@ -453,8 +488,98 @@ export function buildDxf(plan: PlanData): string {
 /* ─────────────────────── 치수 평면도 (SVG) ─────────────────────── */
 
 /** 인쇄용 평면도. 도면과 같은 좌표계를 쓰되 사람이 바로 읽을 수 있게 그린다. */
+/**
+ * 설비의 평면 좌표(mm).
+ * 벽에 붙은 것은 벽을 따라 offset만큼, 벽이 없으면 지정 좌표나 방 중앙을 쓴다.
+ */
+export function electricalPoint(plan: PlanData, fixture: ElectricalFixture): [number, number] {
+  if (fixture.wallId) {
+    const wall = plan.walls.find((item) => item.id === fixture.wallId);
+    if (wall) return pointAlongWall(wall, fixture.offset);
+  }
+  if (fixture.point) return fixture.point;
+  return [plan.roomWidth / 2, plan.roomLength / 2];
+}
+
+/** 문 기호 설명 — 도면 주기에 그대로 찍힌다 */
+export function doorNote(opening: WallOpening): string {
+  const type = opening.doorType ?? "hinged";
+  if (type === "sliding") return "(미닫이)";
+  if (type === "folding") return "(접이문)";
+  if (type === "opening") return "(개구부)";
+
+  const hinge = opening.hinge === "end" ? "우힌지" : "좌힌지";
+  const swing = opening.swing === "out" ? "밖열림" : "안열림";
+  return `(${hinge}·${swing})`;
+}
+
+/**
+ * 평면도의 문 기호.
+ *
+ * 여닫이는 문짝 선과 90° 스윙 아크로, 미닫이는 벽과 나란한 이동 궤적으로 그린다.
+ * 열리는 쪽은 벽 법선을 기준으로 잡는다 — 벽이 방을 반시계로 감싸므로
+ * (-dy, dx) 방향이 방 안쪽이다.
+ */
+function doorSymbol(
+  opening: WallOpening,
+  sx: number,
+  sy: number,
+  ex: number,
+  ey: number
+): string[] {
+  const width = opening.width;
+  const dx = (ex - sx) / width;
+  const dy = (ey - sy) / width;
+
+  const type = opening.doorType ?? "hinged";
+  if (type === "opening") return [];
+
+  if (type === "sliding") {
+    // 문짝은 벽 옆으로 밀려 들어간다 — 겹침 구간을 점선으로 표시한다.
+    const slideX = sx - dx * width;
+    const slideY = sy - dy * width;
+    return [
+      `  <line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#26231f" stroke-width="26"/>`,
+      `  <line x1="${slideX.toFixed(1)}" y1="${slideY.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="#8a8a8a" stroke-width="14" stroke-dasharray="60 40"/>`,
+    ];
+  }
+
+  const inward = opening.swing !== "out";
+  const nx = (inward ? -dy : dy);
+  const ny = (inward ? dx : -dx);
+
+  // 경첩 쪽 끝점에서 문짝이 뻗어 나간다.
+  const hingeAtStart = opening.hinge !== "end";
+  const hx = hingeAtStart ? sx : ex;
+  const hy = hingeAtStart ? sy : ey;
+  const fx = hingeAtStart ? ex : sx;
+  const fy2 = hingeAtStart ? ey : sy;
+
+  const leafX = hx + nx * width;
+  const leafY = hy + ny * width;
+
+  if (type === "folding") {
+    // 접이문: 절반 지점에서 꺾이는 두 장으로 표현한다.
+    const midX = hx + (nx * width) / 2;
+    const midY = hy + (ny * width) / 2;
+    const tipX = midX + ((fx - hx) / 2);
+    const tipY = midY + ((fy2 - hy) / 2);
+    return [
+      `  <polyline points="${hx.toFixed(1)},${hy.toFixed(1)} ${midX.toFixed(1)},${midY.toFixed(1)} ${tipX.toFixed(1)},${tipY.toFixed(1)}" fill="none" stroke="#26231f" stroke-width="26"/>`,
+    ];
+  }
+
+  // 여닫이: 문짝 + 열림 궤적
+  const sweep = hingeAtStart === inward ? 0 : 1;
+  return [
+    `  <line x1="${hx.toFixed(1)}" y1="${hy.toFixed(1)}" x2="${leafX.toFixed(1)}" y2="${leafY.toFixed(1)}" stroke="#26231f" stroke-width="26"/>`,
+    `  <path d="M ${fx.toFixed(1)} ${fy2.toFixed(1)} A ${width.toFixed(1)} ${width.toFixed(1)} 0 0 ${sweep} ${leafX.toFixed(1)} ${leafY.toFixed(1)}" fill="none" stroke="#8a8a8a" stroke-width="14" stroke-dasharray="60 40"/>`,
+  ];
+}
+
 export function buildPlanSvg(plan: PlanData): string {
-  const margin = 900;
+  // 사방 치수줄(안쪽 420 · 바깥 900)과 글자가 잘리지 않을 만큼 여백을 둔다.
+  const margin = 1500;
   const W = plan.roomWidth;
   const L = plan.roomLength;
   const vbW = W + margin * 2;
@@ -506,19 +631,9 @@ export function buildPlanSvg(plan: PlanData): string {
             );
 
             if (opening.type === "door") {
-              // 문틀 + 90° 열림 궤적 (문짝 + 스윙 아크)
-              const dx = (ex - sx) / opening.width;
-              const dy = (ey - sy) / opening.width;
-              // 벽 안쪽(방향 법선)으로 열리게 그린다
-              const nx = -dy;
-              const ny = dx;
-              const leafX = sx + nx * opening.width;
-              const leafY = sy + ny * opening.width;
-
               pieces.push(
-                `  <line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${leafX.toFixed(1)}" y2="${leafY.toFixed(1)}" stroke="#26231f" stroke-width="26"/>`,
-                `  <path d="M ${ex.toFixed(1)} ${ey.toFixed(1)} A ${opening.width.toFixed(1)} ${opening.width.toFixed(1)} 0 0 ${nx * dy - ny * dx >= 0 ? 1 : 0} ${leafX.toFixed(1)} ${leafY.toFixed(1)}" fill="none" stroke="#8a8a8a" stroke-width="14" stroke-dasharray="60 40"/>`,
-                `  <text x="${midX.toFixed(1)}" y="${(midY - 140).toFixed(1)}" font-size="96" text-anchor="middle" fill="#bf6242">${esc(label)}</text>`
+                ...doorSymbol(opening, sx, sy, ex, ey),
+                `  <text x="${midX.toFixed(1)}" y="${(midY - 140).toFixed(1)}" font-size="96" text-anchor="middle" fill="#bf6242">${esc(label)} ${esc(doorNote(opening))}</text>`
               );
             } else {
               // 창: 벽 두께 안에 유리선 3줄
@@ -545,31 +660,91 @@ export function buildPlanSvg(plan: PlanData): string {
 
   const areaM2 = (W / 1000) * (L / 1000);
 
-  /**
-   * 남측 벽(도면 아래쪽) 기준 치수 체인.
-   * 개구부가 있으면 벽–개구부–벽 구간을 끊어 표기한다 (시공 시 필요한 값).
+  /*
+   * 사방 치수 체인.
+   *
+   * 건축 평면도 관행대로 네 면 모두에 치수를 넣는다.
+   * 안쪽 줄은 벽–개구부–벽으로 끊은 구간 치수, 바깥 줄은 전체 치수다.
+   * 시공자가 도면 한 장만 보고 먹매김을 할 수 있어야 하므로 두 단을 함께 그린다.
    */
-  const southWall = plan.walls.find(
-    (wall) => wall.start[1] === 0 && wall.end[1] === 0 && wall.end[0] > wall.start[0]
+  const chainGap = 420;
+  const chainOuter = 900;
+
+  /** 한 변의 구간 분할점 — 그 변에 붙은 벽의 개구부에서 뽑는다 */
+  const splitPoints = (
+    pick: (wall: (typeof plan.walls)[number]) => boolean,
+    axis: 0 | 1,
+    span: number
+  ): number[] => {
+    const wall = plan.walls.find(pick);
+    const points = [0, span];
+    for (const opening of wall?.openings ?? []) {
+      const [ax, ay] = pointAlongWall(wall!, opening.offset);
+      const [bx, by] = pointAlongWall(wall!, opening.offset + opening.width);
+      points.push(axis === 0 ? ax : ay, axis === 0 ? bx : by);
+    }
+    return [...new Set(points.map((value) => Math.round(value)))].sort((a, b) => a - b);
+  };
+
+  /** 수평 치수줄 (도면 위/아래) */
+  const horizontalChain = (points: number[], y: number): string =>
+    points
+      .slice(0, -1)
+      .map((from, index) => {
+        const to = points[index + 1];
+        if (to - from <= 0) return "";
+        return [
+          `    <line x1="${from}" y1="${y}" x2="${to}" y2="${y}"/>`,
+          `    <line x1="${from}" y1="${y - 50}" x2="${from}" y2="${y + 50}"/>`,
+          `    <line x1="${to}" y1="${y - 50}" x2="${to}" y2="${y + 50}"/>`,
+          `    <text x="${(from + to) / 2}" y="${y - 90}" font-size="90" text-anchor="middle" stroke="none">${to - from}</text>`,
+        ].join("\n");
+      })
+      .join("\n");
+
+  /** 수직 치수줄 (도면 좌/우) — 글자를 90° 돌려 세운다 */
+  const verticalChain = (points: number[], x: number): string =>
+    points
+      .slice(0, -1)
+      .map((from, index) => {
+        const to = points[index + 1];
+        if (to - from <= 0) return "";
+        const y1 = fy(from);
+        const y2 = fy(to);
+        const midY = (y1 + y2) / 2;
+        return [
+          `    <line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}"/>`,
+          `    <line x1="${x - 50}" y1="${y1}" x2="${x + 50}" y2="${y1}"/>`,
+          `    <line x1="${x - 50}" y1="${y2}" x2="${x + 50}" y2="${y2}"/>`,
+          `    <text x="${x - 90}" y="${midY}" font-size="90" text-anchor="middle" stroke="none" transform="rotate(-90 ${x - 90} ${midY})">${to - from}</text>`,
+        ].join("\n");
+      })
+      .join("\n");
+
+  const southPoints = splitPoints(
+    (wall) => wall.start[1] === 0 && wall.end[1] === 0,
+    0,
+    W
   );
-  const chainPoints = [0, W];
-  for (const opening of southWall?.openings ?? []) {
-    chainPoints.push(opening.offset, opening.offset + opening.width);
-  }
-  const sorted = [...new Set(chainPoints)].sort((a, b) => a - b);
-  const chainY = L + 400;
-  const dimensionChain = sorted
-    .slice(0, -1)
-    .map((from, index) => {
-      const to = sorted[index + 1];
-      const mid = (from + to) / 2;
-      return [
-        `    <line x1="${from}" y1="${chainY}" x2="${to}" y2="${chainY}"/>`,
-        `    <line x1="${from}" y1="${chainY - 50}" x2="${from}" y2="${chainY + 50}"/>`,
-        `    <line x1="${to}" y1="${chainY - 50}" x2="${to}" y2="${chainY + 50}"/>`,
-        `    <text x="${mid}" y="${chainY - 90}" font-size="90" text-anchor="middle" stroke="none">${Math.round(to - from)}</text>`,
-      ].join("\n");
-    })
+  const northPoints = splitPoints(
+    (wall) => wall.start[1] === L && wall.end[1] === L,
+    0,
+    W
+  );
+  const westPoints = splitPoints((wall) => wall.start[0] === 0 && wall.end[0] === 0, 1, L);
+  const eastPoints = splitPoints((wall) => wall.start[0] === W && wall.end[0] === W, 1, L);
+
+  const dimensionChain = [
+    horizontalChain(southPoints, L + chainGap),
+    horizontalChain([0, W], L + chainOuter),
+    horizontalChain(northPoints, -chainGap + 40),
+    horizontalChain([0, W], -chainOuter + 40),
+    verticalChain(westPoints, -chainGap),
+    verticalChain([0, L], -chainOuter),
+    verticalChain(eastPoints, W + chainGap),
+    verticalChain([0, L], W + chainOuter),
+  ]
+    .filter(Boolean)
     .join("\n");
 
   const objects = plan.objects
@@ -583,6 +758,19 @@ export function buildPlanSvg(plan: PlanData): string {
     })
     .join("\n");
 
+  const electrical = plan.electrical
+    .map((fixture) => {
+      const spec = electricalSpec(fixture.kind);
+      const [px, py] = electricalPoint(plan, fixture);
+      const x = px;
+      const y = fy(py);
+      // 원 안에 기호 문자, 아래에 설치 높이 — 시공자가 도면에서 바로 읽는 두 값이다.
+      return `  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="110" fill="#ffffff" stroke="#1f5f9c" stroke-width="18"/>
+  <text x="${x.toFixed(1)}" y="${(y + 38).toFixed(1)}" font-size="96" text-anchor="middle" fill="#1f5f9c">${esc(spec.symbol)}</text>
+  <text x="${x.toFixed(1)}" y="${(y + 250).toFixed(1)}" font-size="76" text-anchor="middle" fill="#1f5f9c">H${Math.round(fixture.height)}</text>`;
+    })
+    .join("\n");
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-margin} ${-margin} ${vbW} ${vbH}" width="1400">
   <rect x="${-margin}" y="${-margin}" width="${vbW}" height="${vbH}" fill="#ffffff"/>
 
@@ -591,6 +779,11 @@ ${objects}
 
   <!-- 벽 · 개구부 -->
 ${wallsSvg}
+
+  <!-- 전기 · 통신 -->
+  <g font-family="Pretendard, sans-serif">
+${electrical}
+  </g>
 
   <!-- 실 이름 · 면적 -->
   <g font-family="Pretendard, sans-serif" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="60" stroke-linejoin="round">
@@ -615,15 +808,6 @@ ${wallsSvg}
   <!-- 치수 -->
   <g stroke="#8a8a8a" stroke-width="12" fill="#8a8a8a" font-size="110">
 ${dimensionChain}
-    <line x1="0" y1="${L + 700}" x2="${W}" y2="${L + 700}"/>
-    <line x1="0" y1="${L + 640}" x2="0" y2="${L + 760}"/>
-    <line x1="${W}" y1="${L + 640}" x2="${W}" y2="${L + 760}"/>
-    <text x="${W / 2}" y="${L + 900}" text-anchor="middle" stroke="none">${Math.round(W)} mm</text>
-
-    <line x1="${-420}" y1="0" x2="${-420}" y2="${L}"/>
-    <line x1="${-480}" y1="0" x2="${-360}" y2="0"/>
-    <line x1="${-480}" y1="${L}" x2="${-360}" y2="${L}"/>
-    <text x="${-520}" y="${L / 2}" text-anchor="middle" stroke="none" transform="rotate(-90 ${-520} ${L / 2})">${Math.round(L)} mm</text>
   </g>
 
   <!-- 타이틀블록 -->

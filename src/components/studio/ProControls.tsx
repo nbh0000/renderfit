@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RESOLUTIONS, planAllows, type PlanId, type ResolutionId } from "@/config/plans";
+import { planAllows, type PlanId } from "@/config/plans";
 import { PlanBadge } from "@/components/ui/PlanBadge";
 import type { MaterialSpec } from "@/lib/types";
 import { MaskCanvas } from "./MaskCanvas";
@@ -10,8 +10,6 @@ interface Props {
   plan: PlanId;
   materials: MaterialSpec;
   onMaterialsChange: (materials: MaterialSpec) => void;
-  resolution: ResolutionId;
-  onResolutionChange: (id: ResolutionId) => void;
   onLocked: (message: string) => void;
   /** 마스킹 대상 원본 (업로드 전이면 null) */
   sourceUrl: string | null;
@@ -28,8 +26,6 @@ export function ProControls({
   plan,
   materials,
   onMaterialsChange,
-  resolution,
-  onResolutionChange,
   onLocked,
   sourceUrl,
   onMaskChange,
@@ -118,40 +114,6 @@ export function ProControls({
             </div>
           </div>
 
-          {/* c. 해상도 */}
-          <div>
-            <p className="text-[13px] font-semibold">해상도</p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {RESOLUTIONS.map((option) => {
-                const locked = !planAllows(plan, option.requiredPlan);
-                const active = resolution === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => {
-                      if (locked) {
-                        onLocked("고해상도 출력은 프로 플랜 전용입니다.");
-                        return;
-                      }
-                      onResolutionChange(option.id);
-                    }}
-                    className={[
-                      "rounded-lg border px-3 py-2 text-left text-[12.5px] transition-colors",
-                      active ? "border-accent bg-accent-soft" : "border-line hover:bg-sunken",
-                      locked ? "opacity-60" : "",
-                    ].join(" ")}
-                  >
-                    <span className="block font-medium">{option.label}</span>
-                    <span className="block text-[11px] text-muted">
-                      1장당 {option.creditsPerImage}크레딧
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
       )}
     </section>

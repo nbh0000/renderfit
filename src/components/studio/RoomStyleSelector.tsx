@@ -14,6 +14,8 @@ interface Props {
   reference: UploadValue | null;
   onReferenceChange: (value: UploadValue | null) => void;
   onError: (message: string) => void;
+  /** 현재 모드가 스타일을 쓰는지. false면 고르게 두지 않고 이유를 알린다 */
+  usesStyle?: boolean;
 }
 
 export function RoomStyleSelector({
@@ -24,6 +26,7 @@ export function RoomStyleSelector({
   reference,
   onReferenceChange,
   onError,
+  usesStyle = true,
 }: Props) {
   const refInput = useRef<HTMLInputElement>(null);
   const needsReference = STYLES.find((s) => s.id === styleId)?.requiresReference;
@@ -50,7 +53,16 @@ export function RoomStyleSelector({
 
       <div>
         <span className="mb-2 block text-[13px] font-semibold">스타일</span>
-        <div className="grid grid-cols-4 gap-2">
+
+        {!usesStyle && (
+          <p className="mb-2 rounded-lg border border-line bg-sunken px-2.5 py-2 text-[11.5px] leading-relaxed text-muted">
+            지금 고른 모드는 사진의 스타일을 그대로 두는 모드라 스타일 선택이 결과에 반영되지
+            않습니다. 스타일을 바꾸려면 모드를 &lsquo;리디자인&rsquo;이나 &lsquo;가상 스테이징&rsquo;으로
+            바꿔 주세요.
+          </p>
+        )}
+
+        <div className={`grid grid-cols-4 gap-2 ${usesStyle ? "" : "pointer-events-none opacity-40"}`}>
           {STYLES.map((style) => {
             const active = style.id === styleId;
             return (

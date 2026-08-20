@@ -21,7 +21,7 @@ export interface Style {
   label: string;
   /** 프롬프트에 병합되는 스타일 묘사 */
   promptFragment: string;
-  /** 썸네일 (현재는 플레이스홀더 SVG 라우트) */
+  /** 썸네일 — 같은 빈 방 사진 한 장을 스타일별로 시안화한 이미지 */
   thumbnail: string;
   /** 플레이스홀더 썸네일과 선택 UI에 쓰이는 대표 색 */
   tone: string;
@@ -29,7 +29,16 @@ export interface Style {
   requiresReference?: boolean;
 }
 
-const thumb = (id: StyleId) => `/api/placeholder/style/${id}`;
+/**
+ * 스타일 썸네일.
+ *
+ * public/showcase 안의 이미지는 모두 같은 빈 방 사진(base-room.jpg) 한 장을
+ * 스타일만 바꿔 생성한 것이라, 카드를 나란히 놓으면 스타일 차이만 보인다.
+ * 생성 스크립트는 scripts/showcase/generate.mjs.
+ * 참고 이미지를 받아야 하는 커스텀 스타일만 원본 빈 방을 그대로 쓴다.
+ */
+const thumb = (id: StyleId) =>
+  id === "custom" ? "/showcase/base-room.jpg" : `/showcase/style-${id}.jpg`;
 
 export const STYLES: Style[] = [
   {

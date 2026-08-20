@@ -8,7 +8,14 @@ import { BRAND } from "@/config/brand";
  * 오가는 동선이 짧아지고, 본문은 가운데에 넓게 남는다.
  */
 
-export type SidebarKey = "home" | "studio" | "projects" | "gallery" | "pricing" | "editor";
+export type SidebarKey =
+  | "home"
+  | "studio"
+  | "projects"
+  | "library"
+  | "gallery"
+  | "pricing"
+  | "editor";
 
 const SECTIONS: { title?: string; items: { key: SidebarKey; href: string; label: string }[] }[] = [
   {
@@ -21,6 +28,7 @@ const SECTIONS: { title?: string; items: { key: SidebarKey; href: string; label:
     title: "작업",
     items: [
       { key: "editor", href: "/dashboard", label: "스튜디오 (편집기)" },
+      { key: "library", href: "/library", label: "내 보관함" },
       { key: "projects", href: "/projects", label: "내 폴더" },
     ],
   },
