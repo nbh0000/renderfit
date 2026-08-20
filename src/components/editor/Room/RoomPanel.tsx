@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { useEditorStore } from "@/lib/editor/store";
 import type { WallOpening, WallSegment } from "@/scene/types";
-import { ensureRoom, findFreeOffset, floorArea, wallLength } from "@/scene/geometry";
+import {
+  ensureRoom,
+  findFreeOffset,
+  floorArea,
+  polygonArea,
+  toSquareMeters,
+  wallLength,
+} from "@/scene/geometry";
 import { NumberField } from "../shared/NumberField";
 import { ElectricalPanel } from "./ElectricalPanel";
 
@@ -19,6 +26,7 @@ export function RoomPanel() {
 
   const room = scene?.room ? ensureRoom(scene.room) : null;
   const walls = room?.walls ?? [];
+  const areas = room?.areas ?? [];
 
   const [width, setWidth] = useState("");
   const [length, setLength] = useState("");
@@ -190,6 +198,56 @@ export function RoomPanel() {
           <p className="py-4 text-center text-[11.5px] text-muted">
             벽이 없습니다. 치수를 적용하면 자동으로 만들어집니다.
           </p>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-1.5 flex items-center justify-between">
+          <h3 className="text-[11.5px] font-semibold text-ink">실 {areas.length}개</h3>
+          <button
+            type="button"
+            onClick={() => void runTool("add_room_area", { name: "거실" })}
+            className="text-[11px] text-accent hover:underline"
+          >
+            방 전체를 실로
+          </button>
+        </div>
+
+        {areas.length === 0 ? (
+          <p className="text-[10.5px] leading-relaxed text-muted">
+            실을 만들면 평면도에 실명과 면적이 적힙니다. 평면도에서 &lsquo;실&rsquo; 도구로 모서리를
+            찍어 그리거나, 위 버튼으로 방 전체를 실 하나로 잡을 수 있습니다.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {areas.map((area) => (
+              <li
+                key={area.id}
+                className="flex items-center gap-1.5 rounded border border-line bg-canvas px-1.5 py-1"
+              >
+                <input
+                  defaultValue={area.name}
+                  onBlur={(event) => {
+                    const name = event.target.value.trim();
+                    if (name && name !== area.name) {
+                      void runTool("update_room_area", { areaId: area.id, name });
+                    }
+                  }}
+                  className="min-w-0 flex-1 bg-transparent text-[11px] outline-none focus:underline"
+                />
+                <span className="shrink-0 text-[10.5px] tabular-nums text-muted">
+                  {toSquareMeters(polygonArea(area.points)).toFixed(1)}㎡
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void runTool("delete_room_area", { areaId: area.id })}
+                  className="shrink-0 text-[10.5px] text-danger hover:underline"
+                >
+                  삭제
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

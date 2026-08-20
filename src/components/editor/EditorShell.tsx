@@ -63,6 +63,20 @@ export function EditorShell({ project }: { project: DesignProject }) {
         >
           {!ready ? null : viewMode === "3d" ? (
             <Canvas3D />
+          ) : viewMode === "split" ? (
+            /*
+             * 평면 + 3D 동시 보기.
+             * 도면을 고치면서 입체를 바로 확인하는 게 이 편집기의 기본 작업 방식이라
+             * 화면을 위아래로 나눠 둘 다 띄운다.
+             */
+            <div className="flex h-full flex-col">
+              <div className="min-h-0 flex-1 border-b border-line">
+                <PlanEditor />
+              </div>
+              <div className="min-h-0 flex-1">
+                <Canvas3D />
+              </div>
+            </div>
           ) : viewMode === "plan" ? (
             <PlanEditor />
           ) : viewMode === "elevation" ? (

@@ -307,3 +307,76 @@ export function createWall(
     openings: patch.openings ?? [],
   };
 }
+
+/* ────────────────────────────── 실(방) 영역 ────────────────────────────── */
+
+/**
+ * 폴리곤 면적 (㎟).
+ *
+ * 신발끈 공식. 점 순서가 시계/반시계 어느 쪽이든 쓸 수 있게 절댓값으로 돌려준다.
+ */
+export function polygonArea(points: [number, number][]): number {
+  if (points.length < 3) return 0;
+
+  let sum = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    sum += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(sum) / 2;
+}
+
+/** 폴리곤 무게중심 — 실명과 면적을 적을 자리 */
+export function polygonCentroid(points: [number, number][]): [number, number] {
+  if (points.length === 0) return [0, 0];
+  if (points.length < 3) {
+    return [
+      points.reduce((sum, [x]) => sum + x, 0) / points.length,
+      points.reduce((sum, [, y]) => sum + y, 0) / points.length,
+    ];
+  }
+
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+
+  for (let i = 0; i < points.length; i += 1) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    const cross = x1 * y2 - x2 * y1;
+    area += cross;
+    cx += (x1 + x2) * cross;
+    cy += (y1 + y2) * cross;
+  }
+
+  // 면적이 0이면(선분처럼 눌린 폴리곤) 평균점으로 물러난다.
+  if (area === 0) {
+    return [
+      points.reduce((sum, [x]) => sum + x, 0) / points.length,
+      points.reduce((sum, [, y]) => sum + y, 0) / points.length,
+    ];
+  }
+
+  return [cx / (3 * area), cy / (3 * area)];
+}
+
+/** 점이 폴리곤 안에 있는지 (ray casting) */
+export function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
+  const [px, py] = point;
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersects = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+/** ㎟ → ㎡ */
+export function toSquareMeters(areaMm2: number): number {
+  return areaMm2 / 1_000_000;
+}

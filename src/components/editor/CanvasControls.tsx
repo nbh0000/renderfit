@@ -12,6 +12,7 @@ import { useEditorStore, type PlanTool, type ViewMode } from "@/lib/editor/store
 const PLAN_TOOLS: { id: PlanTool; label: string; hint: string }[] = [
   { id: "select", label: "선택", hint: "끌어서 이동 · 우클릭 드래그로 화면 이동" },
   { id: "wall", label: "벽", hint: "두 점을 찍어 벽을 긋습니다" },
+  { id: "room", label: "실", hint: "모서리를 찍고 더블클릭으로 닫습니다" },
   { id: "dimension", label: "치수", hint: "두 점 사이 길이를 표기합니다" },
   { id: "text", label: "글자", hint: "도면에 문구를 넣습니다" },
   { id: "polyline", label: "선", hint: "여러 점을 찍고 더블클릭으로 끝냅니다" },
@@ -25,6 +26,7 @@ const VIEW_MODES: { id: ViewMode; label: string }[] = [
   { id: "plan", label: "평면도" },
   { id: "elevation", label: "측면도" },
   { id: "3d", label: "3D" },
+  { id: "split", label: "평면+3D" },
 ];
 
 export function CanvasControls() {
@@ -59,7 +61,7 @@ export function CanvasControls() {
       </div>
 
       {/* 그리기 도구 — 평면도에서만 의미가 있다 */}
-      {viewMode === "plan" && (
+      {(viewMode === "plan" || viewMode === "split") && (
         <>
           <div className="pointer-events-auto flex gap-0.5 rounded-lg border border-white/15 bg-[#0a0a0a]/85 p-0.5 backdrop-blur">
             {PLAN_TOOLS.map((item) => (
@@ -96,7 +98,7 @@ export function CanvasControls() {
       )}
 
       {/* 확대 — 3D는 휠·드래그로 조작하므로 2D 도면에서만 노출 */}
-      {viewMode !== "3d" && (
+      {viewMode !== "3d" && viewMode !== "split" && (
         <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-white/15 bg-[#0a0a0a]/85 p-0.5 text-white/80 backdrop-blur">
           <button
             type="button"

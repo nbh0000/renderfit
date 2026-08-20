@@ -1,5 +1,6 @@
 import type {
   Annotation,
+  RoomArea,
   ElectricalFixture,
   Material,
   RoomSpec,
@@ -17,6 +18,7 @@ import {
   DEFAULT_WALL_THICKNESS,
   ensureRoom,
   fitObjectsToRoom,
+  polygonArea,
   rectangleWalls,
   validateOpening,
   wallLength,
@@ -613,6 +615,63 @@ export class SceneEngine {
 
     const result = this.setWalls(walls, `사진 속 창·문 ${added}개 반영`);
     return { ...result, added, skipped };
+  }
+
+  /* ─────────────────────────── 실(방) 영역 ─────────────────────────── */
+
+  private getAreas(): RoomArea[] {
+    return this.scene.room.areas ?? [];
+  }
+
+  addArea(area: RoomArea): CommitResult {
+    const invalid = this.validateArea(area);
+    if (invalid) return { ok: false, error: invalid };
+    return this.commitRoom({ areas: [...this.getAreas(), area] }, `실 추가 — ${area.name}`);
+  }
+
+  updateArea(id: string, patch: Partial<RoomArea>): CommitResult {
+    const list = this.getAreas();
+    const target = list.find((item) => item.id === id);
+    if (!target) return { ok: false, error: "실을 찾을 수 없습니다." };
+
+    const next = { ...target, ...patch, id: target.id };
+    const invalid = this.validateArea(next);
+    if (invalid) return { ok: false, error: invalid };
+
+    return this.commitRoom(
+      { areas: list.map((item) => (item.id === id ? next : item)) },
+      "실 수정"
+    );
+  }
+
+  deleteArea(id: string): CommitResult {
+    const list = this.getAreas();
+    if (!list.some((item) => item.id === id)) return { ok: false, error: "실을 찾을 수 없습니다." };
+    return this.commitRoom({ areas: list.filter((item) => item.id !== id) }, "실 삭제");
+  }
+
+  /** 방 외곽 전체를 실 하나로 만든다 — 한 칸짜리 방에서 빠르게 시작하는 길 */
+  addAreaFromRoomBounds(name = "거실"): CommitResult {
+    const { width, length } = this.scene.room.dimensions;
+    return this.addArea({
+      id: `area_${Math.random().toString(36).slice(2, 10)}`,
+      name,
+      points: [
+        [0, 0],
+        [width, 0],
+        [width, length],
+        [0, length],
+      ],
+      showArea: true,
+    });
+  }
+
+  private validateArea(area: RoomArea): string | null {
+    if (area.points.length < 3) return "실은 점이 3개 이상 필요합니다.";
+    if (!area.name.trim()) return "실 이름을 입력해 주세요.";
+    // 면적이 0에 가까우면 한 줄로 눌린 폴리곤이라 도면에 쓸 수 없다.
+    if (polygonArea(area.points) < 100_000) return "실 넓이가 너무 작습니다.";
+    return null;
   }
 
   /* ───────────────────────── 도면 주석 ───────────────────────── */

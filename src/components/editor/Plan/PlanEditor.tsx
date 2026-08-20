@@ -3,8 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditorStore } from "@/lib/editor/store";
 import { electricalSpec } from "@/config/electrical";
-import { ensureRoom, pointAlongWall } from "@/scene/geometry";
-import type { Annotation, SceneObject, WallSegment } from "@/scene/types";
+import {
+  ensureRoom,
+  pointAlongWall,
+  polygonArea,
+  polygonCentroid,
+  toSquareMeters,
+} from "@/scene/geometry";
+import type { Annotation, RoomArea, SceneObject, WallSegment } from "@/scene/types";
 import { orthogonalize, snapPoint, usePlanViewport } from "./usePlanViewport";
 import { PlanRulers } from "./PlanRulers";
 
@@ -25,7 +31,7 @@ interface Draft {
 }
 
 interface DragState {
-  kind: "object" | "annotation";
+  kind: "object" | "annotation" | "area";
   id: string;
   /** 잡은 지점과 대상 기준점의 차이 (mm) */
   grabDx: number;
@@ -57,6 +63,7 @@ export function PlanEditor() {
   const walls = useMemo(() => room?.walls ?? [], [room]);
   const annotations = useMemo(() => room?.annotations ?? [], [room]);
   const fixtures = useMemo(() => room?.electrical ?? [], [room]);
+  const areas = useMemo(() => room?.areas ?? [], [room]);
 
   const objects = useMemo(
     () =>
@@ -70,13 +77,39 @@ export function PlanEditor() {
     [scene?.objects]
   );
 
-  /* 방 전체가 보이도록 처음 한 번 맞춘다 */
+  /*
+   * 방 전체가 보이도록 맞춘다.
+   *
+   * 처음 한 번뿐 아니라 캔버스 크기가 바뀔 때도 다시 맞춘다 — 평면+3D 분할로 바꾸면
+   * 높이가 절반이 되는데, 그때 배율을 그대로 두면 방이 화면 밖으로 나간다.
+   */
   const fitted = useRef(false);
+  const roomWidthMm = room?.dimensions.width;
+  const roomLengthMm = room?.dimensions.length;
+
   useEffect(() => {
-    if (fitted.current || !room) return;
-    fitted.current = true;
-    view.fit(room.dimensions.width, room.dimensions.length);
-  }, [room, view]);
+    const element = containerRef.current;
+    if (!element || !roomWidthMm || !roomLengthMm) return;
+
+    if (!fitted.current) {
+      fitted.current = true;
+      view.fit(roomWidthMm, roomLengthMm);
+    }
+
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      // 크기 변경이 연달아 오므로 다음 프레임에 한 번만 반영한다.
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => view.fit(roomWidthMm, roomLengthMm));
+    });
+
+    observer.observe(element);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+    // view.fit은 참조가 고정돼 있어 의존성에 넣어도 반복 실행되지 않는다.
+  }, [containerRef, roomWidthMm, roomLengthMm, view]);
 
   /** 가구의 평면 좌표 — 도면 생성기(toPlanData)와 같은 규칙을 쓴다 */
   const objectCenter = useCallback(
@@ -113,6 +146,22 @@ export function PlanEditor() {
         y2: Math.round(to[1]),
       });
       setHint(result.ok ? `벽 ${Math.round(length)}mm 추가` : result.message);
+    },
+    [runTool]
+  );
+
+  const commitArea = useCallback(
+    async (points: [number, number][]) => {
+      if (polygonArea(points) < 100_000) {
+        setHint("실이 너무 작습니다");
+        return;
+      }
+
+      const name = window.prompt("실 이름", "거실")?.trim();
+      if (!name) return;
+
+      const result = await runTool("add_room_area", { name, points });
+      setHint(result.message);
     },
     [runTool]
   );
@@ -157,8 +206,8 @@ export function PlanEditor() {
     setDraft((current) => {
       const points = current ? [...current.points, point] : [point];
 
-      // 벽·치수선은 두 점이면 바로 확정한다. 폴리라인은 더블클릭으로 끝낸다.
-      if (points.length === 2 && planTool !== "polyline") {
+      // 벽·치수선은 두 점이면 바로 확정한다. 실·폴리라인은 더블클릭으로 닫는다.
+      if (points.length === 2 && planTool !== "polyline" && planTool !== "room") {
         const end = orthogonalize(points[0], points[1]);
         const length = Math.hypot(end[0] - points[0][0], end[1] - points[0][1]);
 
@@ -227,6 +276,21 @@ export function PlanEditor() {
         return;
       }
 
+      if (state.kind === "area") {
+        const area = areas.find((item) => item.id === state.id);
+        if (!area) return;
+
+        const [ax, ay] = area.points[0];
+        await runTool("update_room_area", {
+          areaId: state.id,
+          points: area.points.map(([x, y]) => [
+            Math.round(x + (to[0] - ax)),
+            Math.round(y + (to[1] - ay)),
+          ]),
+        });
+        return;
+      }
+
       const annotation = annotations.find((item) => item.id === state.id);
       if (!annotation) return;
 
@@ -238,13 +302,16 @@ export function PlanEditor() {
         points: annotation.points.map(([x, y]) => [Math.round(x + dx), Math.round(y + dy)]),
       });
     },
-    [annotations, room, runTool, scene?.objects]
+    [annotations, areas, room, runTool, scene?.objects]
   );
 
   /* 더블클릭으로 폴리라인 마무리 */
   const onDoubleClick = () => {
     if (draft && draft.points.length >= 2 && planTool === "polyline") {
       void commitAnnotation("polyline", draft.points);
+    }
+    if (draft && draft.points.length >= 3 && planTool === "room") {
+      void commitArea(draft.points);
     }
     setDraft(null);
   };
@@ -260,7 +327,9 @@ export function PlanEditor() {
         const target = document.activeElement?.tagName;
         if (target === "INPUT" || target === "TEXTAREA") return;
         const id = selectedIds[0];
-        if (annotations.some((item) => item.id === id)) {
+        if (areas.some((item) => item.id === id)) {
+          void runTool("delete_room_area", { areaId: id });
+        } else if (annotations.some((item) => item.id === id)) {
           void runTool("delete_annotation", { annotationId: id });
         } else if (walls.some((wall) => wall.id === id)) {
           void runTool("delete_wall", { wallId: id });
@@ -270,7 +339,7 @@ export function PlanEditor() {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [annotations, runTool, selectedIds, setPlanTool, walls]);
+  }, [annotations, areas, runTool, selectedIds, setPlanTool, walls]);
 
   if (!room) return null;
 
@@ -314,6 +383,25 @@ export function PlanEditor() {
           />
 
           <g pointerEvents={picking ? "auto" : "none"}>
+          {/* 실 — 가장 아래에 깔아 벽과 가구가 위로 올라오게 한다 */}
+          {areas.map((area) => (
+            <AreaShape
+              key={area.id}
+              area={area}
+              toScreen={toScreen}
+              selected={selectedIds.includes(area.id)}
+              onGrab={(point) => {
+                select([area.id]);
+                setDrag({
+                  kind: "area",
+                  id: area.id,
+                  grabDx: point[0] - area.points[0][0],
+                  grabDy: point[1] - area.points[0][1],
+                });
+              }}
+            />
+          ))}
+
           {/* 가구 */}
           {objects.map((object) => (
             <ObjectShape
@@ -422,6 +510,7 @@ export function PlanEditor() {
 const TOOL_HINT: Record<string, string> = {
   select: "끌어서 이동 · 휠로 확대 · 우클릭 드래그로 화면 이동",
   wall: "두 점을 찍어 벽을 긋습니다 (Esc 취소)",
+  room: "모서리를 차례로 찍고 더블클릭으로 실을 닫습니다",
   dimension: "두 점을 찍어 치수를 답니다",
   text: "클릭한 자리에 문구를 넣습니다",
   polyline: "여러 점을 찍고 더블클릭으로 끝냅니다",
@@ -491,6 +580,64 @@ function PlanPolygon({
 }) {
   const path = points.map(([x, y]) => toScreen(x, y).join(",")).join(" ");
   return <polygon points={path} fill={fill} stroke={stroke} strokeWidth={1} pointerEvents="none" />;
+}
+
+function AreaShape({
+  area,
+  toScreen,
+  selected,
+  onGrab,
+}: {
+  area: RoomArea;
+  toScreen: (x: number, y: number) => [number, number];
+  selected: boolean;
+  onGrab: (point: [number, number]) => void;
+}) {
+  const screen = area.points.map(([x, y]) => toScreen(x, y));
+  const [cx, cy] = toScreen(...polygonCentroid(area.points));
+  const squareMeters = toSquareMeters(polygonArea(area.points));
+
+  return (
+    <g
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onGrab(area.points[0]);
+      }}
+      style={{ cursor: "move" }}
+    >
+      <polygon
+        points={screen.map((point) => point.join(",")).join(" ")}
+        fill={area.color ?? "#f1efea"}
+        fillOpacity={selected ? 0.9 : 0.6}
+        stroke={selected ? "#2f5d4e" : "#d6d3cc"}
+        strokeWidth={selected ? 2 : 1}
+      />
+      <text
+        x={cx}
+        y={cy}
+        fontSize={13}
+        textAnchor="middle"
+        fill="#45474a"
+        fontFamily="Pretendard, sans-serif"
+        pointerEvents="none"
+      >
+        {area.name}
+      </text>
+      {area.showArea !== false && (
+        <text
+          x={cx}
+          y={cy + 15}
+          fontSize={11}
+          textAnchor="middle"
+          fill="#7b7d80"
+          fontFamily="Pretendard, sans-serif"
+          pointerEvents="none"
+        >
+          {squareMeters.toFixed(1)}㎡ ({(squareMeters / 3.3058).toFixed(1)}평)
+        </text>
+      )}
+    </g>
+  );
 }
 
 function WallShape({
@@ -709,7 +856,9 @@ function DraftShape({
   }
 
   const guided =
-    tool === "polyline" ? points : [points[0], orthogonalize(points[0], points[points.length - 1])];
+    tool === "polyline" || tool === "room"
+      ? points
+      : [points[0], orthogonalize(points[0], points[points.length - 1])];
   const screen = guided.map(([x, y]) => toScreen(x, y));
   const last = guided[guided.length - 1];
   const first = guided[0];
@@ -717,6 +866,14 @@ function DraftShape({
 
   return (
     <g pointerEvents="none">
+      {tool === "room" && guided.length >= 3 && (
+        <polygon
+          points={screen.map((point) => point.join(",")).join(" ")}
+          fill="#2f5d4e"
+          fillOpacity={0.12}
+          stroke="none"
+        />
+      )}
       <polyline
         points={screen.map((point) => point.join(",")).join(" ")}
         fill="none"

@@ -161,6 +161,28 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     parameters: { wallId: "string", openingId: "string" },
   },
   {
+    name: "add_room_area",
+    description:
+      "실(방) 영역을 추가한다. points는 [[x,y],...] 폴리곤 좌표(mm). points를 비우면 방 외곽 전체를 실 하나로 만든다.",
+    parameters: { name: "string", points: "array", color: "string" },
+  },
+  {
+    name: "update_room_area",
+    description: "실의 이름·경계·바닥 마감을 수정한다.",
+    parameters: {
+      areaId: "string",
+      name: "string",
+      points: "array",
+      color: "string",
+      floorMaterialId: "string",
+    },
+  },
+  {
+    name: "delete_room_area",
+    description: "실을 삭제한다.",
+    parameters: { areaId: "string" },
+  },
+  {
     name: "add_annotation",
     description:
       "도면에 치수선·텍스트·폴리라인을 추가한다. type은 dimension|text|polyline, points는 [[x,y],...] 평면 좌표(mm).",
@@ -614,6 +636,49 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       });
       const result = engine.addOpening(wallId, opening);
       return toResult(command, result, "개구부를 추가했습니다.");
+    }
+
+    case "add_room_area": {
+      const name = typeof args.name === "string" ? String(args.name).trim() || "실" : "실";
+      const points = normalizePoints(args.points);
+
+      // 좌표를 주지 않으면 방 외곽을 그대로 실로 잡는다.
+      if (!points) return toResult(command, engine.addAreaFromRoomBounds(name), `${name}을(를) 만들었습니다.`);
+
+      return toResult(
+        command,
+        engine.addArea({
+          id: `area_${Math.random().toString(36).slice(2, 10)}`,
+          name,
+          points,
+          showArea: true,
+          ...(typeof args.color === "string" ? { color: args.color } : {}),
+        }),
+        `${name}을(를) 만들었습니다.`
+      );
+    }
+
+    case "update_room_area": {
+      const areaId = args.areaId as string;
+      if (!areaId) return fail("대상 실이 없습니다.");
+
+      const patch: Record<string, unknown> = {};
+      const points = normalizePoints(args.points);
+      if (points) patch.points = points;
+      if (typeof args.name === "string") {
+        const trimmed = String(args.name).trim();
+        if (trimmed) patch.name = trimmed;
+      }
+      if (typeof args.color === "string") patch.color = args.color;
+      if (typeof args.floorMaterialId === "string") patch.floorMaterialId = args.floorMaterialId;
+
+      return toResult(command, engine.updateArea(areaId, patch), "실을 수정했습니다.");
+    }
+
+    case "delete_room_area": {
+      const areaId = args.areaId as string;
+      if (!areaId) return fail("대상 실이 없습니다.");
+      return toResult(command, engine.deleteArea(areaId), "실을 삭제했습니다.");
     }
 
     case "add_annotation": {

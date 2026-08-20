@@ -13,6 +13,9 @@ import { createProviders } from "@/ai/providers";
 import type { RoomAnalysis } from "@/ai/providers/types";
 import { executeCommand, type ToolExecutionResult, TOOL_DEFINITIONS } from "@/ai/tools";
 import { MATERIAL_MAP } from "@/models/materials";
+import { deriveOpenings } from "@/scene/openings";
+import { rectangleWalls } from "@/scene/geometry";
+import { ROOM_MAP, type RoomId } from "@/config/rooms";
 import { STYLE_PRESET_MAP } from "@/models/styles";
 import { renderMaskSvg } from "@/ai/providers/mock/sceneRaster";
 
@@ -165,9 +168,43 @@ export function analysisToScene(scene: Scene, analysis: RoomAnalysis): Scene {
     .map((id) => MATERIAL_MAP[id])
     .filter(Boolean);
 
+  /*
+   * 분석한 치수로 벽을 다시 세우고, 사진에서 찾은 창·문을 그 벽의 개구부로 옮긴다.
+   * 이걸 하지 않으면 평면도·측면도·3D가 사진과 무관한 빈 사각형 방을 그린다.
+   */
+  const dimensions = analysis.roomDimensions;
+  const thickness = scene.room.walls?.[0]?.thickness;
+  const walls = rectangleWalls(dimensions, thickness);
+
+  const baseRoom = {
+    ...scene.room,
+    type: analysis.roomType,
+    dimensions,
+    walls,
+  };
+
+  const derived = deriveOpenings(baseRoom, objects);
+
+  // 방 전체를 실 하나로 잡아 둔다 — 실명과 면적이 도면에 바로 나오게 한다.
+  const areas = baseRoom.areas?.length
+    ? baseRoom.areas
+    : [
+        {
+          id: `area_${Math.random().toString(36).slice(2, 10)}`,
+          name: ROOM_MAP[analysis.roomType as RoomId]?.label ?? "실",
+          points: [
+            [0, 0],
+            [dimensions.width, 0],
+            [dimensions.width, dimensions.length],
+            [0, dimensions.length],
+          ] as [number, number][],
+          showArea: true,
+        },
+      ];
+
   return {
     ...scene,
-    room: { ...scene.room, type: analysis.roomType, dimensions: analysis.roomDimensions },
+    room: { ...baseRoom, walls: derived.walls, areas },
     objects,
     materials: [...scene.materials, ...extraMaterials],
     styleId: scene.styleId ?? analysis.styleGuess,

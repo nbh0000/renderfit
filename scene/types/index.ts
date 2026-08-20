@@ -209,6 +209,26 @@ export interface Annotation {
   dashed?: boolean;
 }
 
+/**
+ * 실(방) 영역.
+ *
+ * 벽은 "구조"를, 실은 "쓰임"을 나타낸다. 거실·주방·방1처럼 이름과 면적이 붙는 단위라
+ * 평면도에 실명과 면적을 적고 바닥재를 따로 주려면 폴리곤으로 따로 들고 있어야 한다.
+ * 좌표는 벽과 같은 평면 좌표(mm, 좌측 하단 원점)를 쓴다.
+ */
+export interface RoomArea {
+  id: string;
+  name: string;
+  /** 실 경계 폴리곤. 시계/반시계 어느 쪽이든 면적은 절댓값으로 센다 */
+  points: [number, number][];
+  /** 바닥 마감 (materials의 id 또는 자유 표기) */
+  floorMaterialId?: string | null;
+  /** 평면도에서 실을 칠하는 색 */
+  color?: string;
+  /** 평면도에 면적을 적을지 */
+  showArea?: boolean;
+}
+
 export interface RoomSpec {
   type: string;
   /** mm */
@@ -223,6 +243,8 @@ export interface RoomSpec {
   electrical?: ElectricalFixture[];
   /** 치수선·텍스트·폴리라인 등 도면 주석 */
   annotations?: Annotation[];
+  /** 실(방) 영역 — 거실·주방처럼 이름과 면적이 붙는 단위 */
+  areas?: RoomArea[];
 }
 
 export interface CameraSpec {

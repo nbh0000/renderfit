@@ -17,7 +17,7 @@ import type { Job } from "@/lib/queue";
  * 2.5D(화면 좌표 기반 반입체 뷰)는 실제 치수를 담지 못해 도면으로 쓸 수 없어 걷어냈다.
  * 대신 실측 좌표를 그대로 쓰는 평면도·입면도를 두고, 입체는 3D에서만 본다.
  */
-export type ViewMode = "image" | "plan" | "elevation" | "3d";
+export type ViewMode = "image" | "plan" | "elevation" | "3d" | "split";
 export type EditorTool = "select" | "move" | "rotate" | "scale";
 
 /**
@@ -26,7 +26,7 @@ export type EditorTool = "select" | "move" | "rotate" | "scale";
  * 3D 객체 조작 도구(EditorTool)와 분리해 둔다 — 평면도에서는 벽을 긋고 치수를 재는
  * 일이 주가 되고, 3D에서는 가구를 옮기는 일이 주가 되어 필요한 도구가 다르다.
  */
-export type PlanTool = "select" | "wall" | "dimension" | "text" | "polyline";
+export type PlanTool = "select" | "wall" | "room" | "dimension" | "text" | "polyline";
 
 export interface ToolCallResult {
   ok: boolean;

@@ -1,5 +1,6 @@
 import type {
   Annotation,
+  RoomArea,
   ElectricalFixture,
   Scene,
   SceneObject,
@@ -8,7 +9,16 @@ import type {
 } from "@/scene/types";
 import { electricalSpec } from "@/config/electrical";
 import { OBJECT_GROUP_OF } from "@/scene/types";
-import { ensureRoom, pointAlongWall, wallAngle, wallDirection, wallLength } from "@/scene/geometry";
+import {
+  ensureRoom,
+  pointAlongWall,
+  polygonArea,
+  polygonCentroid,
+  toSquareMeters,
+  wallAngle,
+  wallDirection,
+  wallLength,
+} from "@/scene/geometry";
 
 /**
  * CAD 산출물 생성.
@@ -60,6 +70,8 @@ export interface PlanData {
   electrical: ElectricalFixture[];
   /** 사용자가 도면 위에 얹은 치수선·텍스트·폴리라인 */
   annotations: Annotation[];
+  /** 실(방) 영역 — 실명과 면적을 도면에 적는다 */
+  areas: RoomArea[];
   createdAt: string;
 }
 
@@ -110,6 +122,7 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
     objects,
     electrical: room.electrical ?? [],
     annotations: room.annotations ?? [],
+    areas: room.areas ?? [],
     createdAt: new Date().toISOString(),
   };
 }
@@ -395,6 +408,7 @@ export function buildDxf(plan: PlanData): string {
     { name: "E-POWR", color: 5 },
     { name: "E-COMM", color: 3 },
     { name: "A-ANNO", color: 2 },
+    { name: "A-AREA", color: 8 },
   ]);
 
   dxf.section("ENTITIES");
@@ -437,6 +451,17 @@ export function buildDxf(plan: PlanData): string {
     dxf.text(x - 60, y - 45, 90, spec.symbol, spec.layer);
     dxf.text(x - 120, y - 260, 75, `H${Math.round(fixture.height)}`, spec.layer);
     if (fixture.note) dxf.text(x - 120, y - 400, 70, fixture.note, "A-NOTE");
+  }
+
+  // 실(방) 경계와 실명·면적
+  for (const area of plan.areas) {
+    dxf.polygon(area.points, "A-AREA");
+    const [cx, cy] = polygonCentroid(area.points);
+    dxf.text(cx - area.name.length * 70, cy, 150, area.name, "A-AREA");
+    if (area.showArea !== false) {
+      const squareMeters = toSquareMeters(polygonArea(area.points));
+      dxf.text(cx - 300, cy - 220, 105, `${squareMeters.toFixed(1)}m2`, "A-AREA");
+    }
   }
 
   // 사용자 주석
@@ -833,8 +858,35 @@ export function buildPlanSvg(plan: PlanData): string {
     })
     .join("\n");
 
+  /*
+   * 실(방) 영역.
+   * 건축 평면도에서 실명과 면적은 가장 먼저 읽는 정보라 벽보다 아래, 가구보다 아래에 깐다.
+   */
+  const areasSvg = plan.areas
+    .map((area) => {
+      const pts = area.points.map(([x, y]) => `${x.toFixed(1)},${fy(y).toFixed(1)}`).join(" ");
+      const [cx, cy] = polygonCentroid(area.points);
+      const squareMeters = toSquareMeters(polygonArea(area.points));
+
+      return [
+        `  <polygon points="${pts}" fill="${area.color ?? "#f4f2ee"}" stroke="#d6d3cc" stroke-width="10"/>`,
+        `  <text x="${cx.toFixed(1)}" y="${fy(cy).toFixed(1)}" font-size="150" text-anchor="middle" fill="#26231f">${esc(area.name)}</text>`,
+        area.showArea === false
+          ? ""
+          : `  <text x="${cx.toFixed(1)}" y="${(fy(cy) + 170).toFixed(1)}" font-size="105" text-anchor="middle" fill="#666666">${squareMeters.toFixed(1)}㎡ (${(squareMeters / 3.3058).toFixed(1)}평)</text>`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n");
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-margin} ${-margin} ${vbW} ${vbH}" width="1400">
   <rect x="${-margin}" y="${-margin}" width="${vbW}" height="${vbH}" fill="#ffffff"/>
+
+  <!-- 실(방) -->
+  <g font-family="Pretendard, sans-serif" paint-order="stroke" stroke="#ffffff" stroke-width="50" stroke-linejoin="round">
+${areasSvg}
+  </g>
 
   <!-- 가구 (벽보다 아래에 깔아 벽선이 가려지지 않게 한다) -->
 ${objects}

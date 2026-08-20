@@ -24,6 +24,7 @@ import { getStorage } from "@/lib/storage";
 import { generateImages, isMockMode } from "@/lib/image-api";
 import { TOOL_DEFINITIONS } from "@/ai/tools";
 import { GeminiRenderingProvider } from "./rendering";
+import { GeminiVisionProvider } from "./vision";
 import { routeCommand } from "@/ai/router";
 
 /**
@@ -230,8 +231,11 @@ export function createProviders(context: ProviderContext = {}): AIProviders {
     : new GeminiRenderingProvider(generation, mockRendering);
 
   return {
-    // TODO: 실제 vision/segmentation/depth 모델 연결 시 이 자리만 교체한다.
-    vision: new MockVisionProvider(),
+    /*
+     * 공간 분석은 실제 모델을 쓴다 — 사진에서 방 크기와 창·문·가구를 읽어야
+     * 평면도·측면도·3D가 그 사진의 방을 그린다. 키가 없으면 mock으로 물러난다.
+     */
+    vision: isMockMode() ? new MockVisionProvider() : new GeminiVisionProvider(new MockVisionProvider()),
     segmentation: new MockSegmentationProvider(getScene),
     depth: new MockDepthProvider(getScene),
     generation,

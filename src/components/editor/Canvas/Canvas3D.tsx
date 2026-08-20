@@ -542,6 +542,33 @@ function ShadowUpdater({ signature }: { signature: string }) {
  * 조작이 끝나면 원래 해상도로 한 프레임 더 그린다 — 움직일 때는 부드럽게,
  * 멈추면 선명하게.
  */
+/**
+ * 크기 변경 시 한 프레임 다시 그린다.
+ *
+ * frameloop="demand"라 캔버스 크기만 바뀌면 아무도 프레임을 요청하지 않아
+ * 화면이 까맣게 남는다 (평면+3D 분할로 전환할 때).
+ */
+function ResizeRedraw() {
+  const gl = useThree((state) => state.gl);
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    const element = gl.domElement.parentElement;
+    if (!element) {
+      invalidate();
+      return;
+    }
+
+    const observer = new ResizeObserver(() => invalidate());
+    observer.observe(element);
+    invalidate();
+
+    return () => observer.disconnect();
+  }, [gl, invalidate]);
+
+  return null;
+}
+
 function AdaptiveResolution() {
   const setDpr = useThree((state) => state.setDpr);
   const controls = useThree((state) => state.controls) as
@@ -717,6 +744,7 @@ export function Canvas3D() {
         <CameraRig target={target} />
         <ShadowUpdater signature={shadowSignature} />
         <AdaptiveResolution />
+        <ResizeRedraw />
         <PlacementController scene={scene} draft={draft} setDraft={setDraft} />
       </Canvas>
 
