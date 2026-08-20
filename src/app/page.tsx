@@ -27,14 +27,16 @@ const LINKS = [
 const FEATURED_STYLES = ["modern", "nordic", "minimal", "natural-wood", "hotel", "cafe"];
 
 /**
- * 배경 — 짙은 차콜에 포인트 색을 빛처럼만 옅게 얹는다.
- * 색을 넓게 칠하지 않고 헤드라인 뒤에서만 번지게 해 첫인상을 만들고 물러난다.
+ * 배경 — 흰 바탕 위에 회색 음영만 아주 옅게 깐다.
+ *
+ * 색을 쓰지 않고 명도 차이로만 깊이를 만든다. 인테리어 사진이 주인공이라
+ * 배경이 색을 가지면 사진의 색이 흐려진다.
  */
 function GlowBackdrop() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute -top-56 left-1/2 h-[680px] w-[1100px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(63,122,102,0.45),transparent)]" />
-      <div className="absolute -bottom-56 left-[-140px] h-[480px] w-[720px] rounded-full bg-[radial-gradient(closest-side,rgba(150,160,150,0.12),transparent)]" />
+      <div className="absolute -top-64 left-1/2 h-[720px] w-[1200px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(27,28,29,0.055),transparent)]" />
+      <div className="absolute -bottom-56 left-[-160px] h-[480px] w-[760px] rounded-full bg-[radial-gradient(closest-side,rgba(27,28,29,0.035),transparent)]" />
     </div>
   );
 }
@@ -51,12 +53,12 @@ export default async function HomePage() {
   const styles = STYLES.filter((style) => FEATURED_STYLES.includes(style.id));
 
   return (
-    <div className="min-h-dvh bg-night text-white">
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-night/85 backdrop-blur">
+    <div className="min-h-dvh bg-canvas text-ink">
+      <header className="sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-5 sm:px-8">
           <Link
             href="/"
-            className="text-[15px] font-semibold tracking-[0.18em] text-white hover:opacity-70"
+            className="text-[15px] font-semibold tracking-[0.18em] text-ink hover:opacity-60"
           >
             {BRAND.wordmark}
           </Link>
@@ -66,7 +68,7 @@ export default async function HomePage() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="hidden rounded-md px-2.5 py-1.5 text-[12.5px] text-white/60 transition-colors hover:bg-white/10 hover:text-white sm:block"
+                className="hidden rounded-md px-2.5 py-1.5 text-[12.5px] text-muted transition-colors hover:bg-sunken hover:text-ink sm:block"
               >
                 {link.label}
               </Link>
@@ -76,7 +78,7 @@ export default async function HomePage() {
               <form action="/auth/signout" method="post">
                 <button
                   type="submit"
-                  className="rounded-md px-2.5 py-1.5 text-[12.5px] text-white/60 hover:bg-white/10 hover:text-white"
+                  className="rounded-md px-2.5 py-1.5 text-[12.5px] text-muted hover:bg-sunken hover:text-ink"
                 >
                   로그아웃
                 </button>
@@ -84,7 +86,7 @@ export default async function HomePage() {
             ) : (
               <Link
                 href="/login"
-                className="ml-1 rounded-md bg-accent px-3 py-1.5 text-[12.5px] font-medium text-white transition-colors hover:bg-accent-hover"
+                className="ml-1 rounded-md bg-ink px-3 py-1.5 text-[12.5px] font-medium text-white transition-colors hover:opacity-85"
               >
                 로그인
               </Link>
@@ -101,7 +103,7 @@ export default async function HomePage() {
           <StartChat />
 
           <div className="space-y-3">
-            <div className="overflow-hidden rounded-2xl border border-white/12 bg-white/[0.04] p-2 shadow-[0_24px_70px_rgba(0,0,0,0.5)]">
+            <div className="overflow-hidden rounded-2xl border border-line bg-surface p-2 shadow-[0_18px_50px_rgba(27,28,29,0.08)]">
               <BeforeAfterSlider
                 beforeSrc="/showcase/hero-before.jpg"
                 afterSrc="/showcase/hero-after.jpg"
@@ -111,7 +113,7 @@ export default async function HomePage() {
                 className="rounded-xl"
               />
             </div>
-            <p className="text-center text-[11.5px] leading-relaxed text-white/40">
+            <p className="text-center text-[11.5px] leading-relaxed text-muted">
               벽·창문·문의 위치와 카메라 앵글은 그대로 두고 가구와 마감만 바꿉니다.
             </p>
           </div>
@@ -119,18 +121,18 @@ export default async function HomePage() {
       </section>
 
       {/* 스타일 */}
-      <section className="border-t border-white/10">
+      <section className="border-t border-line bg-surface">
         <div className="mx-auto max-w-[1180px] px-5 py-12 sm:px-8">
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="text-[17px] font-semibold tracking-tight">스타일을 고르면 됩니다</h2>
-              <p className="mt-1 text-[13px] text-white/50">
+              <p className="mt-1 text-[13px] text-muted">
                 16가지 중 하나를 고르면 한 번에 4장까지 만들어 비교합니다.
               </p>
             </div>
             <Link
               href="/studio"
-              className="hidden shrink-0 text-[12.5px] text-white/60 hover:text-white sm:block"
+              className="hidden shrink-0 text-[12.5px] text-muted hover:text-ink sm:block"
             >
               전체 보기 →
             </Link>
@@ -141,15 +143,15 @@ export default async function HomePage() {
               <li key={style.id}>
                 <Link
                   href="/studio"
-                  className="group block overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] transition-colors hover:border-white/25"
+                  className="group block overflow-hidden rounded-xl border border-line bg-canvas transition-colors hover:border-line-strong"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={style.thumbnail}
                     alt={style.label}
-                    className="aspect-[4/3] w-full object-cover opacity-90 transition-opacity group-hover:opacity-100"
+                    className="aspect-[4/3] w-full object-cover transition-opacity group-hover:opacity-90"
                   />
-                  <span className="block px-2.5 py-2 text-[12.5px] text-white/75 group-hover:text-white">
+                  <span className="block px-2.5 py-2 text-[12.5px] text-ink-soft group-hover:text-ink">
                     {style.label}
                   </span>
                 </Link>
@@ -160,30 +162,30 @@ export default async function HomePage() {
       </section>
 
       {/* 진행 단계 */}
-      <section className="border-t border-white/10">
+      <section className="border-t border-line">
         <div className="mx-auto max-w-[1180px] px-5 py-12 sm:px-8">
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/studio"
-              className="inline-flex h-11 items-center rounded-lg bg-accent px-5 text-[14px] font-medium text-white transition-colors hover:bg-accent-hover"
+              className="inline-flex h-11 items-center rounded-lg bg-ink px-5 text-[14px] font-medium text-white transition-opacity hover:opacity-85"
             >
               사진 올려서 시작하기
             </Link>
             <Link
               href="/dashboard"
-              className="inline-flex h-11 items-center rounded-lg border border-white/20 px-5 text-[14px] text-white/80 transition-colors hover:border-white/40 hover:text-white"
+              className="inline-flex h-11 items-center rounded-lg border border-line-strong px-5 text-[14px] text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
             >
               실측 도면으로 작업하기
             </Link>
           </div>
 
-          <p className="mt-4 text-center text-[12px] text-white/35">
+          <p className="mt-4 text-center text-[12px] text-muted">
             가입하면 3장을 무료로 만들어 볼 수 있습니다.
           </p>
         </div>
       </section>
 
-      <footer className="border-t border-white/10 px-5 py-5 text-center text-[11.5px] text-white/30 sm:px-8">
+      <footer className="border-t border-line px-5 py-5 text-center text-[11.5px] text-muted sm:px-8">
         생성물은 참고용 시안이며 시공용 도면이 아닙니다.
       </footer>
     </div>
