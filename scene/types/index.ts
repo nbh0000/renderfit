@@ -183,6 +183,32 @@ export interface WallSegment {
   openings: WallOpening[];
 }
 
+/**
+ * 도면 주석.
+ *
+ * 치수선·텍스트·폴리라인은 벽이나 가구가 아니라 "도면에만 존재하는 표기"다.
+ * 시공 도면에서 실제로 필요한 세 가지라 Scene에 함께 저장한다.
+ * 좌표는 벽과 같은 평면 좌표(mm, 방 좌측 하단이 원점)를 쓴다.
+ */
+export type AnnotationType = "dimension" | "text" | "polyline";
+
+export interface Annotation {
+  id: string;
+  type: AnnotationType;
+  /** 치수선은 두 점, 텍스트는 한 점, 폴리라인은 두 점 이상 */
+  points: [number, number][];
+  /** 텍스트 내용. 치수선은 비우면 실제 길이를 자동으로 쓴다 */
+  text?: string;
+  /** 치수선을 선에서 얼마나 띄울지 (mm, 음수면 반대쪽) */
+  offset?: number;
+  /** 글자 크기 (mm 기준 도면 좌표) */
+  fontSize?: number;
+  /** 폴리라인 두께 (mm) */
+  thickness?: number;
+  /** 점선 여부 */
+  dashed?: boolean;
+}
+
 export interface RoomSpec {
   type: string;
   /** mm */
@@ -195,6 +221,8 @@ export interface RoomSpec {
   measuredNote?: string;
   /** 전기·통신 설비 배치 */
   electrical?: ElectricalFixture[];
+  /** 치수선·텍스트·폴리라인 등 도면 주석 */
+  annotations?: Annotation[];
 }
 
 export interface CameraSpec {

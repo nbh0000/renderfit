@@ -20,6 +20,14 @@ import type { Job } from "@/lib/queue";
 export type ViewMode = "image" | "plan" | "elevation" | "3d";
 export type EditorTool = "select" | "move" | "rotate" | "scale";
 
+/**
+ * 평면도에서 쓰는 그리기 도구.
+ *
+ * 3D 객체 조작 도구(EditorTool)와 분리해 둔다 — 평면도에서는 벽을 긋고 치수를 재는
+ * 일이 주가 되고, 3D에서는 가구를 옮기는 일이 주가 되어 필요한 도구가 다르다.
+ */
+export type PlanTool = "select" | "wall" | "dimension" | "text" | "polyline";
+
 export interface ToolCallResult {
   ok: boolean;
   message: string;
@@ -41,6 +49,10 @@ interface EditorState {
   lastMessage: string | null;
   clipboard: SceneObject | null;
   showGrid: boolean;
+  /** 평면도 그리기 도구 */
+  planTool: PlanTool;
+  /** 격자 스냅 간격 (mm). 0이면 스냅하지 않는다 */
+  snapMm: number;
   /** 렌더 결과 미리보기 URL */
   renderUrl: string | null;
   /** 3D 캔버스 캡처 함수 (Canvas3D가 등록) */
@@ -73,6 +85,8 @@ interface EditorState {
   ) => void;
   toggleBackdrop: () => void;
   setZoom: (zoom: number) => void;
+  setPlanTool: (tool: PlanTool) => void;
+  setSnapMm: (snap: number) => void;
   setVariants: (variants: { label: string; imageUrl: string }[] | null) => void;
   applyVariant: (variant: { label: string; imageUrl: string }) => Promise<void>;
   placeAsset: (assetId: string, clientX: number, clientY: number) => Promise<void>;
@@ -112,6 +126,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   lastMessage: null,
   clipboard: null,
   showGrid: true,
+  planTool: "select",
+  snapMm: 100,
   renderUrl: null,
   viewportCapture: null,
   viewportExport: null,
@@ -150,6 +166,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setViewportRaycast: (viewportRaycast) => set({ viewportRaycast }),
   toggleBackdrop: () => set((state) => ({ showBackdrop: !state.showBackdrop })),
   setZoom: (zoom) => set({ zoom: Math.min(3, Math.max(0.4, zoom)) }),
+  setPlanTool: (planTool) => set({ planTool }),
+  setSnapMm: (snapMm) => set({ snapMm: Math.max(0, snapMm) }),
   setVariants: (variants) => set({ variants }),
 
   /** 고른 시안을 장면에 반영한다 */

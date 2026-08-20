@@ -10,6 +10,8 @@ import { VariantCompare } from "./VariantCompare";
 import { Canvas2D } from "./Canvas/Canvas2D";
 import { Canvas3D } from "./Canvas/Canvas3D";
 import { DrawingView } from "./Drawings/DrawingView";
+import { PlanEditor } from "./Plan/PlanEditor";
+import { FurnitureTable } from "./Furniture/FurnitureTable";
 import { LayersPanel } from "./Layers/LayersPanel";
 import { PropertiesPanel } from "./Properties/PropertiesPanel";
 import { RoomPanel } from "./Room/RoomPanel";
@@ -25,7 +27,7 @@ export function EditorShell({ project }: { project: DesignProject }) {
   const renderUrl = useEditorStore((state) => state.renderUrl);
   const setRenderUrl = useEditorStore((state) => state.setRenderUrl);
   const placeAsset = useEditorStore((state) => state.placeAsset);
-  const [rightTab, setRightTab] = useState<"layers" | "properties" | "room" | "agent">("agent");
+  const [rightTab, setRightTab] = useState<"layers" | "properties" | "room" | "furniture" | "agent">("agent");
 
   useEffect(() => {
     init(project);
@@ -61,8 +63,10 @@ export function EditorShell({ project }: { project: DesignProject }) {
         >
           {!ready ? null : viewMode === "3d" ? (
             <Canvas3D />
-          ) : viewMode === "plan" || viewMode === "elevation" ? (
-            <DrawingView mode={viewMode} />
+          ) : viewMode === "plan" ? (
+            <PlanEditor />
+          ) : viewMode === "elevation" ? (
+            <DrawingView mode="elevation" />
           ) : (
             <Canvas2D />
           )}
@@ -120,6 +124,7 @@ export function EditorShell({ project }: { project: DesignProject }) {
                 { id: "agent", label: "AI 도우미" },
                 { id: "properties", label: "속성" },
                 { id: "room", label: "공간·치수" },
+                { id: "furniture", label: "가구 목록" },
                 { id: "layers", label: "레이어" },
               ] as const
             ).map((tab) => (
@@ -151,6 +156,8 @@ export function EditorShell({ project }: { project: DesignProject }) {
               <LayersPanel />
             ) : rightTab === "room" ? (
               <RoomPanel />
+            ) : rightTab === "furniture" ? (
+              <FurnitureTable />
             ) : (
               <PropertiesPanel />
             )}

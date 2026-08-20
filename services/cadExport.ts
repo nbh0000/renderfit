@@ -1,4 +1,5 @@
 import type {
+  Annotation,
   ElectricalFixture,
   Scene,
   SceneObject,
@@ -57,6 +58,8 @@ export interface PlanData {
   objects: PlanObject[];
   /** 전기·통신 설비 (도면 E-* 레이어) */
   electrical: ElectricalFixture[];
+  /** 사용자가 도면 위에 얹은 치수선·텍스트·폴리라인 */
+  annotations: Annotation[];
   createdAt: string;
 }
 
@@ -106,6 +109,7 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
     roomHeight: room.dimensions.height,
     objects,
     electrical: room.electrical ?? [],
+    annotations: room.annotations ?? [],
     createdAt: new Date().toISOString(),
   };
 }
@@ -390,6 +394,7 @@ export function buildDxf(plan: PlanData): string {
     { name: "A-GLAZ", color: 4 },
     { name: "E-POWR", color: 5 },
     { name: "E-COMM", color: 3 },
+    { name: "A-ANNO", color: 2 },
   ]);
 
   dxf.section("ENTITIES");
@@ -432,6 +437,33 @@ export function buildDxf(plan: PlanData): string {
     dxf.text(x - 60, y - 45, 90, spec.symbol, spec.layer);
     dxf.text(x - 120, y - 260, 75, `H${Math.round(fixture.height)}`, spec.layer);
     if (fixture.note) dxf.text(x - 120, y - 400, 70, fixture.note, "A-NOTE");
+  }
+
+  // 사용자 주석
+  for (const annotation of plan.annotations) {
+    if (annotation.type === "text") {
+      const [x, y] = annotation.points[0];
+      dxf.text(x, y, annotation.fontSize ?? 110, annotation.text ?? "", "A-ANNO");
+      continue;
+    }
+
+    for (let i = 0; i < annotation.points.length - 1; i += 1) {
+      const [x1, y1] = annotation.points[i];
+      const [x2, y2] = annotation.points[i + 1];
+      dxf.line(x1, y1, x2, y2, "A-ANNO");
+    }
+
+    if (annotation.type === "dimension") {
+      const [a, b] = annotation.points;
+      const length = Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]));
+      dxf.text(
+        (a[0] + b[0]) / 2,
+        (a[1] + b[1]) / 2 + 60,
+        annotation.fontSize ?? 96,
+        annotation.text || String(length),
+        "A-ANNO"
+      );
+    }
   }
 
   // 가구·설비 footprint + 라벨
@@ -771,6 +803,36 @@ export function buildPlanSvg(plan: PlanData): string {
     })
     .join("\n");
 
+  /*
+   * 사용자 주석.
+   * 편집기에서 얹은 그대로 도면에도 나와야 한다 — 화면과 산출물이 다르면 도면을 믿을 수 없다.
+   */
+  const annotations = plan.annotations
+    .map((annotation) => {
+      const pts = annotation.points.map(([x, y]) => [x, fy(y)] as [number, number]);
+
+      if (annotation.type === "text") {
+        const [x, y] = pts[0];
+        return `  <text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${annotation.fontSize ?? 110}" fill="#26231f">${esc(annotation.text ?? "")}</text>`;
+      }
+
+      if (annotation.type === "polyline") {
+        return `  <polyline points="${pts.map((point) => point.map((value) => value.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="#26231f" stroke-width="${annotation.thickness ?? 20}"${annotation.dashed ? ' stroke-dasharray="80 50"' : ""}/>`;
+      }
+
+      const [[x1, y1], [x2, y2]] = pts;
+      const [a, b] = annotation.points;
+      const length = Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]));
+
+      return [
+        `  <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#8a8a8a" stroke-width="12"/>`,
+        `  <circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="26" fill="#8a8a8a"/>`,
+        `  <circle cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="26" fill="#8a8a8a"/>`,
+        `  <text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y1 + y2) / 2 - 60).toFixed(1)}" font-size="${annotation.fontSize ?? 96}" text-anchor="middle" fill="#26231f">${esc(annotation.text || String(length))}</text>`,
+      ].join("\n");
+    })
+    .join("\n");
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-margin} ${-margin} ${vbW} ${vbH}" width="1400">
   <rect x="${-margin}" y="${-margin}" width="${vbW}" height="${vbH}" fill="#ffffff"/>
 
@@ -783,6 +845,11 @@ ${wallsSvg}
   <!-- 전기 · 통신 -->
   <g font-family="Pretendard, sans-serif">
 ${electrical}
+  </g>
+
+  <!-- 사용자 주석 -->
+  <g font-family="Pretendard, sans-serif">
+${annotations}
   </g>
 
   <!-- 실 이름 · 면적 -->

@@ -1,4 +1,5 @@
 import type {
+  Annotation,
   ElectricalFixture,
   Material,
   RoomSpec,
@@ -21,6 +22,14 @@ import {
   wallLength,
 } from "../geometry";
 import { deriveOpenings, rescaleOpenings } from "../openings";
+
+/** 주석 종류별 undo 라벨 */
+const ANNOTATION_LABEL: Record<string, string> = {
+  dimension: "치수선 추가",
+  text: "텍스트 추가",
+  polyline: "폴리라인 추가",
+};
+
 import { arrangeObjects, placeObject } from "../placement";
 import { applyOperation, OPERATION_LABEL } from "../operations";
 import { validateOperation, type ValidationResult } from "../validation";
@@ -604,6 +613,55 @@ export class SceneEngine {
 
     const result = this.setWalls(walls, `사진 속 창·문 ${added}개 반영`);
     return { ...result, added, skipped };
+  }
+
+  /* ───────────────────────── 도면 주석 ───────────────────────── */
+
+  private getAnnotations(): Annotation[] {
+    return this.scene.room.annotations ?? [];
+  }
+
+  addAnnotation(annotation: Annotation): CommitResult {
+    const invalid = this.validateAnnotation(annotation);
+    if (invalid) return { ok: false, error: invalid };
+    return this.commitRoom(
+      { annotations: [...this.getAnnotations(), annotation] },
+      ANNOTATION_LABEL[annotation.type] ?? "주석 추가"
+    );
+  }
+
+  updateAnnotation(id: string, patch: Partial<Annotation>): CommitResult {
+    const list = this.getAnnotations();
+    const target = list.find((item) => item.id === id);
+    if (!target) return { ok: false, error: "주석을 찾을 수 없습니다." };
+
+    const next = { ...target, ...patch, id: target.id, type: target.type };
+    const invalid = this.validateAnnotation(next);
+    if (invalid) return { ok: false, error: invalid };
+
+    return this.commitRoom(
+      { annotations: list.map((item) => (item.id === id ? next : item)) },
+      "주석 수정"
+    );
+  }
+
+  deleteAnnotation(id: string): CommitResult {
+    const list = this.getAnnotations();
+    if (!list.some((item) => item.id === id)) {
+      return { ok: false, error: "주석을 찾을 수 없습니다." };
+    }
+    return this.commitRoom({ annotations: list.filter((item) => item.id !== id) }, "주석 삭제");
+  }
+
+  private validateAnnotation(annotation: Annotation): string | null {
+    const needed = annotation.type === "text" ? 1 : 2;
+    if (annotation.points.length < needed) {
+      return `${ANNOTATION_LABEL[annotation.type]}에는 점이 ${needed}개 이상 필요합니다.`;
+    }
+    if (annotation.type === "text" && !annotation.text?.trim()) {
+      return "텍스트 내용을 입력해 주세요.";
+    }
+    return null;
   }
 
   /* ─────────────────────── 전기 · 통신 설비 ─────────────────────── */

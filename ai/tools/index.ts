@@ -1,4 +1,19 @@
 import { ELECTRICAL_MAP } from "@/config/electrical";
+
+/** [[x,y],...] 형태만 받아들인다 — 잘못된 좌표가 Scene에 들어가면 도면이 깨진다 */
+function normalizePoints(value: unknown): [number, number][] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+
+  const points: [number, number][] = [];
+  for (const item of value) {
+    if (!Array.isArray(item) || item.length < 2) return null;
+    const [x, y] = item;
+    if (typeof x !== "number" || typeof y !== "number") return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    points.push([Math.round(x), Math.round(y)]);
+  }
+  return points;
+}
 import type { ElectricalKind } from "@/scene/types";
 import type { StructuredCommand, ToolDefinition } from "@/ai/providers/types";
 import type { Asset, SceneObject } from "@/scene/types";
@@ -144,6 +159,29 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "delete_opening",
     description: "개구부를 제거한다.",
     parameters: { wallId: "string", openingId: "string" },
+  },
+  {
+    name: "add_annotation",
+    description:
+      "도면에 치수선·텍스트·폴리라인을 추가한다. type은 dimension|text|polyline, points는 [[x,y],...] 평면 좌표(mm).",
+    parameters: {
+      type: "string",
+      points: "array",
+      text: "string",
+      offset: "number",
+      fontSize: "number",
+      thickness: "number",
+    },
+  },
+  {
+    name: "update_annotation",
+    description: "주석의 위치·내용을 수정한다.",
+    parameters: { annotationId: "string", points: "array", text: "string", offset: "number" },
+  },
+  {
+    name: "delete_annotation",
+    description: "주석을 삭제한다.",
+    parameters: { annotationId: "string" },
   },
   {
     name: "derive_openings",
@@ -576,6 +614,50 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       });
       const result = engine.addOpening(wallId, opening);
       return toResult(command, result, "개구부를 추가했습니다.");
+    }
+
+    case "add_annotation": {
+      const type = args.type as "dimension" | "text" | "polyline";
+      if (!["dimension", "text", "polyline"].includes(type)) {
+        return fail("주석 종류가 올바르지 않습니다.");
+      }
+
+      const points = normalizePoints(args.points);
+      if (!points) return fail("좌표가 올바르지 않습니다.");
+
+      return toResult(
+        command,
+        engine.addAnnotation({
+          id: `an_${Math.random().toString(36).slice(2, 10)}`,
+          type,
+          points,
+          ...(typeof args.text === "string" ? { text: args.text } : {}),
+          ...(typeof args.offset === "number" ? { offset: args.offset } : {}),
+          ...(typeof args.fontSize === "number" ? { fontSize: args.fontSize } : {}),
+          ...(typeof args.thickness === "number" ? { thickness: args.thickness } : {}),
+        }),
+        "주석을 추가했습니다."
+      );
+    }
+
+    case "update_annotation": {
+      const annotationId = args.annotationId as string;
+      if (!annotationId) return fail("대상 주석이 없습니다.");
+
+      const patch: Record<string, unknown> = {};
+      const points = normalizePoints(args.points);
+      if (points) patch.points = points;
+      if (typeof args.text === "string") patch.text = args.text;
+      if (typeof args.offset === "number") patch.offset = args.offset;
+      if (typeof args.fontSize === "number") patch.fontSize = args.fontSize;
+
+      return toResult(command, engine.updateAnnotation(annotationId, patch), "주석을 수정했습니다.");
+    }
+
+    case "delete_annotation": {
+      const annotationId = args.annotationId as string;
+      if (!annotationId) return fail("대상 주석이 없습니다.");
+      return toResult(command, engine.deleteAnnotation(annotationId), "주석을 삭제했습니다.");
     }
 
     case "derive_openings": {
