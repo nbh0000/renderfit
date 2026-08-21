@@ -53,6 +53,11 @@ interface EditorState {
   planTool: PlanTool;
   /** 격자 스냅 간격 (mm). 0이면 스냅하지 않는다 */
   snapMm: number;
+  /**
+   * 지금 편집 중인 층.
+   * null이면 Scene의 첫 번째(기준) 층을 쓴다 — 층을 나누지 않은 프로젝트를 위한 기본값이다.
+   */
+  activeLevelId: string | null;
   /** 렌더 결과 미리보기 URL */
   renderUrl: string | null;
   /** 3D 캔버스 캡처 함수 (Canvas3D가 등록) */
@@ -87,6 +92,7 @@ interface EditorState {
   setZoom: (zoom: number) => void;
   setPlanTool: (tool: PlanTool) => void;
   setSnapMm: (snap: number) => void;
+  setActiveLevel: (levelId: string | null) => void;
   setVariants: (variants: { label: string; imageUrl: string }[] | null) => void;
   applyVariant: (variant: { label: string; imageUrl: string }) => Promise<void>;
   placeAsset: (assetId: string, clientX: number, clientY: number) => Promise<void>;
@@ -128,6 +134,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   showGrid: true,
   planTool: "select",
   snapMm: 100,
+  activeLevelId: null,
   renderUrl: null,
   viewportCapture: null,
   viewportExport: null,
@@ -168,6 +175,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setZoom: (zoom) => set({ zoom: Math.min(3, Math.max(0.4, zoom)) }),
   setPlanTool: (planTool) => set({ planTool }),
   setSnapMm: (snapMm) => set({ snapMm: Math.max(0, snapMm) }),
+  // 층을 바꾸면 이전 층의 선택은 의미가 없다.
+  setActiveLevel: (activeLevelId) => set({ activeLevelId, selectedIds: [] }),
   setVariants: (variants) => set({ variants }),
 
   /** 고른 시안을 장면에 반영한다 */

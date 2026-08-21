@@ -11,6 +11,7 @@ import { Canvas2D } from "./Canvas/Canvas2D";
 import { Canvas3D } from "./Canvas/Canvas3D";
 import { DrawingView } from "./Drawings/DrawingView";
 import { PlanEditor } from "./Plan/PlanEditor";
+import { LevelTabs } from "./Plan/LevelTabs";
 import { FurnitureTable } from "./Furniture/FurnitureTable";
 import { LayersPanel } from "./Layers/LayersPanel";
 import { PropertiesPanel } from "./Properties/PropertiesPanel";
@@ -70,6 +71,7 @@ export function EditorShell({ project }: { project: DesignProject }) {
              * 화면을 위아래로 나눠 둘 다 띄운다.
              */
             <div className="flex h-full flex-col">
+              <LevelTabs />
               <div className="min-h-0 flex-1 border-b border-line">
                 <PlanEditor />
               </div>
@@ -78,7 +80,12 @@ export function EditorShell({ project }: { project: DesignProject }) {
               </div>
             </div>
           ) : viewMode === "plan" ? (
-            <PlanEditor />
+            <div className="flex h-full flex-col">
+              <LevelTabs />
+              <div className="min-h-0 flex-1">
+                <PlanEditor />
+              </div>
+            </div>
           ) : viewMode === "elevation" ? (
             <DrawingView mode="elevation" />
           ) : (

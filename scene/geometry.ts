@@ -1,4 +1,4 @@
-import type { RoomSpec, WallOpening, WallSegment } from "./types";
+import type { RoomSpec, WallOpening, WallSegment, Level } from "./types";
 
 /**
  * 평면 기하 계산.
@@ -379,4 +379,51 @@ export function pointInPolygon(point: [number, number], polygon: [number, number
 /** ㎟ → ㎡ */
 export function toSquareMeters(areaMm2: number): number {
   return areaMm2 / 1_000_000;
+}
+
+/* ─────────────────────────────── 층 ─────────────────────────────── */
+
+/** 기준층 id — 층을 나누기 전에 만들어진 데이터가 속하는 곳 */
+export const BASE_LEVEL_ID = "level_base";
+
+/**
+ * 층 목록을 항상 하나 이상으로 만들어 돌려준다.
+ *
+ * 기존 프로젝트에는 층 개념이 없으므로, 비어 있으면 방 높이를 쓰는 기준층 하나를 만든다.
+ * 이렇게 해야 화면과 도면이 "층이 없는 경우"를 따로 처리하지 않아도 된다.
+ */
+export function levelsOf(room: RoomSpec): Level[] {
+  if (room.levels && room.levels.length > 0) {
+    return [...room.levels].sort((a, b) => a.elevation - b.elevation);
+  }
+
+  return [
+    {
+      id: BASE_LEVEL_ID,
+      name: "1층",
+      elevation: 0,
+      height: room.dimensions.height,
+      visible: true,
+    },
+  ];
+}
+
+/** 요소가 어느 층에 속하는지 — 값이 없으면 기준층 */
+export function levelIdOf(item: { levelId?: string }, levels: Level[]): string {
+  return item.levelId ?? levels[0]?.id ?? BASE_LEVEL_ID;
+}
+
+/** 특정 층에 속한 것만 고른다 */
+export function onLevel<T extends { levelId?: string }>(
+  items: T[],
+  levelId: string,
+  levels: Level[]
+): T[] {
+  return items.filter((item) => levelIdOf(item, levels) === levelId);
+}
+
+/** 그 층 바로 아래 층 (평면도에서 옅게 비추는 참조용) */
+export function levelBelow(levels: Level[], levelId: string): Level | null {
+  const index = levels.findIndex((level) => level.id === levelId);
+  return index > 0 ? levels[index - 1] : null;
 }

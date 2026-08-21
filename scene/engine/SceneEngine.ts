@@ -1,5 +1,6 @@
 import type {
   Annotation,
+  Level,
   RoomArea,
   ElectricalFixture,
   Material,
@@ -18,6 +19,7 @@ import {
   DEFAULT_WALL_THICKNESS,
   ensureRoom,
   fitObjectsToRoom,
+  levelsOf,
   polygonArea,
   rectangleWalls,
   validateOpening,
@@ -615,6 +617,95 @@ export class SceneEngine {
 
     const result = this.setWalls(walls, `사진 속 창·문 ${added}개 반영`);
     return { ...result, added, skipped };
+  }
+
+  /* ─────────────────────────────── 층 ─────────────────────────────── */
+
+  getLevels(): Level[] {
+    return levelsOf(this.scene.room);
+  }
+
+  /**
+   * 층 추가.
+   *
+   * 바로 아래 층 위에 얹는 게 기본이다 — 층을 만들 때마다 높이를 계산하게 하면
+   * 복층 하나 만드는 데도 손이 많이 간다.
+   */
+  addLevel(input: { name?: string; height?: number; elevation?: number } = {}): CommitResult {
+    const levels = this.getLevels();
+    const top = levels[levels.length - 1];
+    const height = input.height ?? top.height;
+    const elevation = input.elevation ?? top.elevation + top.height;
+
+    if (height <= 0) return { ok: false, error: "층 높이는 0보다 커야 합니다." };
+
+    const level: Level = {
+      id: `level_${Math.random().toString(36).slice(2, 10)}`,
+      name: input.name?.trim() || `${levels.length + 1}층`,
+      elevation,
+      height,
+      visible: true,
+    };
+
+    return this.commitRoom({ levels: [...levels, level] }, `${level.name} 추가`);
+  }
+
+  updateLevel(id: string, patch: Partial<Level>): CommitResult {
+    const levels = this.getLevels();
+    const target = levels.find((level) => level.id === id);
+    if (!target) return { ok: false, error: "층을 찾을 수 없습니다." };
+
+    const next = { ...target, ...patch, id: target.id };
+    if (next.height <= 0) return { ok: false, error: "층 높이는 0보다 커야 합니다." };
+    if (!next.name.trim()) return { ok: false, error: "층 이름을 입력해 주세요." };
+
+    return this.commitRoom(
+      { levels: levels.map((level) => (level.id === id ? next : level)) },
+      "층 수정"
+    );
+  }
+
+  /**
+   * 층 삭제.
+   *
+   * 그 층에 놓인 벽·실·가구도 함께 사라진다 — 남겨 두면 어느 층에도 속하지 않은
+   * 요소가 되어 도면에 유령처럼 남는다. 마지막 층은 지울 수 없다.
+   */
+  deleteLevel(id: string): CommitResult {
+    const levels = this.getLevels();
+    if (levels.length <= 1) return { ok: false, error: "마지막 층은 지울 수 없습니다." };
+    if (!levels.some((level) => level.id === id)) {
+      return { ok: false, error: "층을 찾을 수 없습니다." };
+    }
+
+    const remaining = levels.filter((level) => level.id !== id);
+    const fallback = remaining[0].id;
+    const belongsHere = (item: { levelId?: string }) => (item.levelId ?? levels[0].id) === id;
+
+    const room = ensureRoom(this.scene.room);
+    const patch: Partial<RoomSpec> = {
+      levels: remaining,
+      walls: (room.walls ?? []).filter((wall) => !belongsHere(wall)),
+      areas: (room.areas ?? []).filter((area) => !belongsHere(area)),
+      annotations: (room.annotations ?? []).filter((item) => !belongsHere(item)),
+      electrical: (room.electrical ?? []).filter((item) => !belongsHere(item)),
+    };
+
+    // 기준층을 지우면 남은 층 중 첫 번째가 기준층 자리를 이어받는다.
+    const objects = this.scene.objects
+      .filter((object) => !belongsHere(object))
+      .map((object) => (object.levelId === id ? { ...object, levelId: fallback } : object));
+
+    const before: Record<string, unknown> = {
+      room: Object.fromEntries(
+        (Object.keys(patch) as (keyof RoomSpec)[]).map((key) => [key, room[key]])
+      ),
+      objects: this.scene.objects,
+    };
+
+    return this.commit(
+      this.makeOperation("RESIZE_ROOM", undefined, before, { room: patch, objects }, "층 삭제")
+    );
   }
 
   /* ─────────────────────────── 실(방) 영역 ─────────────────────────── */

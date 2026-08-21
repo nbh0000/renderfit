@@ -90,6 +90,8 @@ export interface SceneObject {
   id: string;
   name: string;
   type: ObjectType;
+  /** 속한 층. 없으면 기준층 */
+  levelId?: string;
   category: string;
   transform: Transform;
   dimensions: Dimensions;
@@ -112,6 +114,26 @@ export interface SceneObject {
   /** 레이어 정렬 순서 (클수록 앞) */
   order: number;
   metadata: Record<string, unknown>;
+}
+
+/**
+ * 층.
+ *
+ * 복층·다락처럼 위아래로 겹치는 공간을 다루려면 벽과 실이 "몇 층의 것인지" 알아야 한다.
+ * 평면도는 한 층만 진하게 그리고 아래층을 옅게 비춰 주며, 3D는 높이만큼 쌓아 올린다.
+ *
+ * elevation은 바닥 레벨(mm)이고, height는 그 층의 천장고다.
+ * 기존 데이터에는 층이 없으므로, levelId가 없는 요소는 모두 기준층에 속한 것으로 본다.
+ */
+export interface Level {
+  id: string;
+  name: string;
+  /** 기준면에서 이 층 바닥까지 (mm) */
+  elevation: number;
+  /** 이 층의 천장고 (mm) */
+  height: number;
+  /** 평면도·3D에서 감출지 */
+  visible?: boolean;
 }
 
 /** 문 종류 — 평면도 기호가 달라진다 */
@@ -162,6 +184,8 @@ export interface ElectricalFixture {
   id: string;
   name: string;
   kind: ElectricalKind;
+  /** 속한 층. 없으면 기준층 */
+  levelId?: string;
   /** 벽에 붙는 설비의 벽 id. 천장 조명처럼 벽이 없으면 null */
   wallId: string | null;
   /** 벽 시작점에서의 거리 (mm). wallId가 있을 때 쓴다 */
@@ -178,6 +202,8 @@ export interface ElectricalFixture {
 export interface WallSegment {
   id: string;
   name: string;
+  /** 속한 층. 없으면 기준층 */
+  levelId?: string;
   /** 평면 좌표 (mm), 방 좌측 하단이 원점 */
   start: [number, number];
   end: [number, number];
@@ -199,6 +225,8 @@ export type AnnotationType = "dimension" | "text" | "polyline";
 export interface Annotation {
   id: string;
   type: AnnotationType;
+  /** 속한 층. 없으면 기준층 */
+  levelId?: string;
   /** 치수선은 두 점, 텍스트는 한 점, 폴리라인은 두 점 이상 */
   points: [number, number][];
   /** 텍스트 내용. 치수선은 비우면 실제 길이를 자동으로 쓴다 */
@@ -223,6 +251,8 @@ export interface Annotation {
 export interface RoomArea {
   id: string;
   name: string;
+  /** 속한 층. 없으면 기준층 */
+  levelId?: string;
   /** 실 경계 폴리곤. 시계/반시계 어느 쪽이든 면적은 절댓값으로 센다 */
   points: [number, number][];
   /** 바닥 마감 (materials의 id 또는 자유 표기) */
@@ -249,6 +279,8 @@ export interface RoomSpec {
   annotations?: Annotation[];
   /** 실(방) 영역 — 거실·주방처럼 이름과 면적이 붙는 단위 */
   areas?: RoomArea[];
+  /** 층 목록. 비어 있으면 기준층 하나만 있는 것으로 본다 */
+  levels?: Level[];
 }
 
 export interface CameraSpec {

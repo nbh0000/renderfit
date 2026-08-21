@@ -5,6 +5,9 @@ import { useEditorStore } from "@/lib/editor/store";
 import { electricalSpec } from "@/config/electrical";
 import {
   ensureRoom,
+  levelBelow,
+  levelsOf,
+  onLevel,
   pointAlongWall,
   polygonArea,
   polygonCentroid,
@@ -71,6 +74,7 @@ export function PlanEditor() {
   const setPlanTool = useEditorStore((state) => state.setPlanTool);
   const showGrid = useEditorStore((state) => state.showGrid);
   const snapMm = useEditorStore((state) => state.snapMm);
+  const activeLevelId = useEditorStore((state) => state.activeLevelId);
 
   const view = usePlanViewport();
   const { toScreen, toPlan, containerRef, viewport } = view;
@@ -84,22 +88,52 @@ export function PlanEditor() {
 
   const sceneRoom = scene?.room;
   const room = useMemo(() => (sceneRoom ? ensureRoom(sceneRoom) : null), [sceneRoom]);
-  const walls = useMemo(() => room?.walls ?? [], [room]);
-  const areas = useMemo(() => room?.areas ?? [], [room]);
-  const annotations = useMemo(() => room?.annotations ?? [], [room]);
-  const fixtures = useMemo(() => room?.electrical ?? [], [room]);
 
-  const objects = useMemo(
-    () =>
-      (scene?.objects ?? []).filter(
-        (object) =>
-          object.visibility &&
-          object.type !== "wall" &&
-          object.type !== "floor" &&
-          object.type !== "ceiling"
-      ),
-    [scene?.objects]
+  /*
+   * 층 필터.
+   * 지금 층의 것만 편집 대상으로 두고, 바로 아래 층은 참조용으로 옅게 깐다.
+   * 복층에서 위층 벽을 아래층 벽에 맞춰 세울 때 이 밑그림이 없으면 감으로 그리게 된다.
+   */
+  const levels = useMemo(() => (room ? levelsOf(room) : []), [room]);
+  const currentLevelId = activeLevelId ?? levels[0]?.id ?? null;
+  const below = useMemo(
+    () => (currentLevelId ? levelBelow(levels, currentLevelId) : null),
+    [levels, currentLevelId]
   );
+
+  const walls = useMemo(
+    () => (currentLevelId ? onLevel(room?.walls ?? [], currentLevelId, levels) : []),
+    [room, currentLevelId, levels]
+  );
+  const areas = useMemo(
+    () => (currentLevelId ? onLevel(room?.areas ?? [], currentLevelId, levels) : []),
+    [room, currentLevelId, levels]
+  );
+  const annotations = useMemo(
+    () => (currentLevelId ? onLevel(room?.annotations ?? [], currentLevelId, levels) : []),
+    [room, currentLevelId, levels]
+  );
+  const fixtures = useMemo(
+    () => (currentLevelId ? onLevel(room?.electrical ?? [], currentLevelId, levels) : []),
+    [room, currentLevelId, levels]
+  );
+
+  /** 아래층 벽 — 밑그림으로만 쓴다 (선택도 편집도 되지 않는다) */
+  const ghostWalls = useMemo(
+    () => (below ? onLevel(room?.walls ?? [], below.id, levels) : []),
+    [below, room, levels]
+  );
+
+  const objects = useMemo(() => {
+    const visible = (scene?.objects ?? []).filter(
+      (object) =>
+        object.visibility &&
+        object.type !== "wall" &&
+        object.type !== "floor" &&
+        object.type !== "ceiling"
+    );
+    return currentLevelId ? onLevel(visible, currentLevelId, levels) : visible;
+  }, [scene?.objects, currentLevelId, levels]);
 
   const roomWidthMm = room?.dimensions.width;
   const roomLengthMm = room?.dimensions.length;
@@ -187,11 +221,12 @@ export function PlanEditor() {
         y1: Math.round(from[1]),
         x2: Math.round(to[0]),
         y2: Math.round(to[1]),
+        ...(currentLevelId ? { levelId: currentLevelId } : {}),
       });
       if (!result.ok) setHint(result.message);
       return result.ok;
     },
-    [runTool]
+    [runTool, currentLevelId]
   );
 
   const commitArea = useCallback(
@@ -202,9 +237,17 @@ export function PlanEditor() {
       }
       const name = window.prompt("실 이름", suggested ?? "거실")?.trim();
       if (!name) return;
-      setHint((await runTool("add_room_area", { name, points })).message);
+      setHint(
+        (
+          await runTool("add_room_area", {
+            name,
+            points,
+            ...(currentLevelId ? { levelId: currentLevelId } : {}),
+          })
+        ).message
+      );
     },
-    [runTool]
+    [runTool, currentLevelId]
   );
 
   const commitAnnotation = useCallback(
@@ -213,9 +256,18 @@ export function PlanEditor() {
       points: [number, number][],
       extra?: Record<string, unknown>
     ) => {
-      setHint((await runTool("add_annotation", { type, points, ...extra })).message);
+      setHint(
+        (
+          await runTool("add_annotation", {
+            type,
+            points,
+            ...(currentLevelId ? { levelId: currentLevelId } : {}),
+            ...extra,
+          })
+        ).message
+      );
     },
-    [runTool]
+    [runTool, currentLevelId]
   );
 
   /* ────────────────────────── 드래그 시작 ────────────────────────── */
@@ -677,6 +729,25 @@ export function PlanEditor() {
 
           {showGrid && <Grid view={view} />}
           <RoomOutline width={roomWidth} length={roomLength} toScreen={toScreen} />
+
+          {/* 아래층 밑그림 */}
+          {ghostWalls.map((wall) => {
+            const [x1, y1] = toScreen(wall.start[0], wall.start[1]);
+            const [x2, y2] = toScreen(wall.end[0], wall.end[1]);
+            return (
+              <line
+                key={`ghost-${wall.id}`}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke="#26231f"
+                strokeOpacity={0.14}
+                strokeWidth={Math.max(2, wall.thickness * viewport.scale)}
+                pointerEvents="none"
+              />
+            );
+          })}
 
           {areas.map((area) => (
             <AreaShape

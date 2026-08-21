@@ -8,7 +8,15 @@ import { useEditorStore } from "@/lib/editor/store";
 import type { Scene, SceneObject } from "@/scene/types";
 import { FurnitureMesh } from "./FurnitureMesh";
 import { woodTexture, paintTexture } from "./textures";
-import { ensureRoom, pointAlongWall, wallAngle, wallLength, wallSpans } from "@/scene/geometry";
+import {
+  ensureRoom,
+  levelIdOf,
+  levelsOf,
+  pointAlongWall,
+  wallAngle,
+  wallLength,
+  wallSpans,
+} from "@/scene/geometry";
 
 /**
  * 3D 뷰.
@@ -169,6 +177,13 @@ function RoomShell({ scene }: { scene: Scene }) {
 
   const walls = room.walls ?? [];
 
+  /*
+   * 층.
+   * 각 층의 벽을 그 층 바닥 높이에 올려 세운다. 층이 하나뿐인 프로젝트는
+   * 기준층 하나만 나오므로 예전과 똑같이 보인다.
+   */
+  const levels = useMemo(() => levelsOf(room), [room]);
+
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -182,10 +197,28 @@ function RoomShell({ scene }: { scene: Scene }) {
         <meshStandardMaterial map={wallMap} color={wallColor} roughness={0.95} />
       </mesh>
 
-      {/* 실측 벽체 — 개구부(문·창)로 끊긴 구간만 실제로 세운다 */}
-      {walls.map((wall) => (
-        <WallMesh key={wall.id} wall={wall} room={room} color={wallColor} map={wallMap} />
-      ))}
+      {/* 실측 벽체 — 층마다 바닥 높이에 올려 세운다 */}
+      {levels.map((level) => {
+        if (level.visible === false) return null;
+        const onThisLevel = walls.filter((wall) => levelIdOf(wall, levels) === level.id);
+        if (onThisLevel.length === 0) return null;
+
+        return (
+          <group key={level.id} position={[0, level.elevation * MM, 0]}>
+            {/* 2층부터는 바닥판을 깔아 준다 — 없으면 가구가 허공에 뜬 것처럼 보인다 */}
+            {level.elevation > 0 && (
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]} receiveShadow>
+                <planeGeometry args={[width, length]} />
+                <meshStandardMaterial map={floorMap} color={floorColor} roughness={0.6} />
+              </mesh>
+            )}
+
+            {onThisLevel.map((wall) => (
+              <WallMesh key={wall.id} wall={wall} room={room} color={wallColor} map={wallMap} />
+            ))}
+          </group>
+        );
+      })}
 
       <mesh position={[0, height, 0]} rotation={[Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[width, length]} />
@@ -704,13 +737,23 @@ export function Canvas3D() {
         {backdropOn && backdropUrl && <GeneratedBackdrop scene={scene} url={backdropUrl} />}
 
         {objects.map((object) => (
-          <ObjectMesh
+          <group
             key={object.id}
-            scene={scene}
-            object={object}
-            draft={draft}
-            onDragStart={onDragStart}
-          />
+            // 가구는 자기 층 바닥 위에 놓인다.
+            position={[
+              0,
+              (levelsOf(scene.room).find((level) => level.id === object.levelId)?.elevation ?? 0) *
+                MM,
+              0,
+            ]}
+          >
+            <ObjectMesh
+              scene={scene}
+              object={object}
+              draft={draft}
+              onDragStart={onDragStart}
+            />
+          </group>
         ))}
 
         {/*

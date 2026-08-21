@@ -66,6 +66,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       widthMm: "number",
       heightMm: "number",
       depthMm: "number",
+      levelId: "string",
     },
   },
   {
@@ -136,7 +137,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "add_wall",
     description: "벽을 추가한다. 좌표는 평면 mm.",
-    parameters: { x1: "number", y1: "number", x2: "number", y2: "number", thickness: "number" },
+    parameters: { x1: "number", y1: "number", x2: "number", y2: "number", thickness: "number" , levelId: "string" },
   },
   {
     name: "update_wall",
@@ -171,10 +172,25 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     parameters: { wallId: "string", openingId: "string" },
   },
   {
+    name: "add_level",
+    description: "층을 추가한다. 비우면 맨 위 층 위에 같은 높이로 얹는다.",
+    parameters: { name: "string", height: "number", elevation: "number" },
+  },
+  {
+    name: "update_level",
+    description: "층의 이름·높이·바닥 레벨을 수정한다.",
+    parameters: { levelId: "string", name: "string", height: "number", elevation: "number", visible: "boolean" },
+  },
+  {
+    name: "delete_level",
+    description: "층을 삭제한다. 그 층의 벽·실·가구도 함께 사라진다.",
+    parameters: { levelId: "string" },
+  },
+  {
     name: "add_room_area",
     description:
       "실(방) 영역을 추가한다. points는 [[x,y],...] 폴리곤 좌표(mm). points를 비우면 방 외곽 전체를 실 하나로 만든다.",
-    parameters: { name: "string", points: "array", color: "string" },
+    parameters: { name: "string", points: "array", color: "string" , levelId: "string" },
   },
   {
     name: "update_room_area",
@@ -203,6 +219,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       offset: "number",
       fontSize: "number",
       thickness: "number",
+      levelId: "string",
     },
   },
   {
@@ -231,6 +248,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       offset: "number",
       height: "number",
       name: "string",
+      levelId: "string",
     },
   },
   {
@@ -435,6 +453,8 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
         if (material) engine.addMaterial(material);
       }
 
+      if (typeof args.levelId === "string") object.levelId = String(args.levelId);
+
       const result = engine.addObject(object);
       return toResult(command, result, `${asset.name}을(를) 추가했습니다.`, object.id);
     }
@@ -607,6 +627,7 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
     }
 
     case "add_wall": {
+      const levelId = typeof args.levelId === "string" ? String(args.levelId) : undefined;
       const wall = createWall({
         start: [Number(args.x1 ?? 0), Number(args.y1 ?? 0)],
         end: [Number(args.x2 ?? 0), Number(args.y2 ?? 0)],
@@ -614,7 +635,7 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
         height: scene.room.dimensions.height,
         name: (args.name as string) ?? "벽",
       });
-      const result = engine.addWall(wall);
+      const result = engine.addWall(levelId ? { ...wall, levelId } : wall);
       return toResult(command, result, "벽을 추가했습니다.");
     }
 
@@ -670,6 +691,37 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       return toResult(command, result, "개구부를 추가했습니다.");
     }
 
+    case "add_level": {
+      return toResult(
+        command,
+        engine.addLevel({
+          name: typeof args.name === "string" ? String(args.name) : undefined,
+          height: typeof args.height === "number" ? args.height : undefined,
+          elevation: typeof args.elevation === "number" ? args.elevation : undefined,
+        }),
+        "층을 추가했습니다."
+      );
+    }
+
+    case "update_level": {
+      const levelId = args.levelId as string;
+      if (!levelId) return fail("대상 층이 없습니다.");
+
+      const patch: Record<string, unknown> = {};
+      if (typeof args.name === "string") patch.name = String(args.name);
+      if (typeof args.height === "number") patch.height = args.height;
+      if (typeof args.elevation === "number") patch.elevation = args.elevation;
+      if (typeof args.visible === "boolean") patch.visible = args.visible;
+
+      return toResult(command, engine.updateLevel(levelId, patch), "층을 수정했습니다.");
+    }
+
+    case "delete_level": {
+      const levelId = args.levelId as string;
+      if (!levelId) return fail("대상 층이 없습니다.");
+      return toResult(command, engine.deleteLevel(levelId), "층을 삭제했습니다.");
+    }
+
     case "add_room_area": {
       const name = typeof args.name === "string" ? String(args.name).trim() || "실" : "실";
       const points = normalizePoints(args.points);
@@ -684,6 +736,7 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
           name,
           points,
           showArea: true,
+          ...(typeof args.levelId === "string" ? { levelId: String(args.levelId) } : {}),
           ...(typeof args.color === "string" ? { color: args.color } : {}),
         }),
         `${name}을(를) 만들었습니다.`
@@ -728,6 +781,7 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
           id: `an_${Math.random().toString(36).slice(2, 10)}`,
           type,
           points,
+          ...(typeof args.levelId === "string" ? { levelId: String(args.levelId) } : {}),
           ...(typeof args.text === "string" ? { text: args.text } : {}),
           ...(typeof args.offset === "number" ? { offset: args.offset } : {}),
           ...(typeof args.fontSize === "number" ? { fontSize: args.fontSize } : {}),
@@ -775,6 +829,7 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       const wallId = typeof args.wallId === "string" && args.wallId ? args.wallId : null;
       const result = engine.addFixture({
         id: `fx_${Math.random().toString(36).slice(2, 10)}`,
+        ...(typeof args.levelId === "string" ? { levelId: String(args.levelId) } : {}),
         name: typeof args.name === "string" && args.name ? args.name : spec.label,
         kind,
         wallId,
