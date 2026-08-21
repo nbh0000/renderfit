@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DesignProject } from "@/scene/types";
 import { useEditorStore } from "@/lib/editor/store";
 import { STYLE_PRESETS } from "@/models/styles";
-import { Toolbar } from "./Toolbar";
+import { Ribbon } from "./Ribbon";
 import { CanvasControls } from "./CanvasControls";
 import { VariantCompare } from "./VariantCompare";
 import { Canvas2D } from "./Canvas/Canvas2D";
@@ -41,12 +41,19 @@ export function EditorShell({ project }: { project: DesignProject }) {
 
   return (
     <div className="flex h-dvh flex-col bg-canvas">
-      <Toolbar />
+      <Ribbon />
 
       <div className="flex min-h-0 flex-1">
         {/* 좌측: 에셋/재질/스타일/조명/AI */}
-        <aside className="hidden w-[240px] shrink-0 border-r border-line bg-surface lg:block">
-          <AssetsPanel />
+        <aside className="hidden w-[260px] shrink-0 flex-col border-r border-line bg-surface lg:flex">
+          <div className="min-h-0 flex-1">
+            <AssetsPanel />
+          </div>
+
+          {/* 가구 목록 — 카탈로그 바로 아래에 두어 고른 것이 쌓이는 게 보이게 한다 */}
+          <div className="h-[38%] min-h-[150px] shrink-0 overflow-auto border-t border-line">
+            <FurnitureTable />
+          </div>
         </aside>
 
         {/* 중앙 캔버스 */}
@@ -145,7 +152,6 @@ export function EditorShell({ project }: { project: DesignProject }) {
                 { id: "agent", label: "AI 도우미" },
                 { id: "properties", label: "속성" },
                 { id: "room", label: "공간·치수" },
-                { id: "furniture", label: "가구 목록" },
                 { id: "layers", label: "레이어" },
               ] as const
             ).map((tab) => (
@@ -177,8 +183,6 @@ export function EditorShell({ project }: { project: DesignProject }) {
               <LayersPanel />
             ) : rightTab === "room" ? (
               <RoomPanel />
-            ) : rightTab === "furniture" ? (
-              <FurnitureTable />
             ) : (
               <PropertiesPanel />
             )}

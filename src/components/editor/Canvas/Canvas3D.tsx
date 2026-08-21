@@ -705,7 +705,7 @@ export function Canvas3D() {
   const backdropOn = showBackdrop && Boolean(backdropUrl);
 
   return (
-    <div className="h-full w-full bg-[#000000]">
+    <div className="h-full w-full bg-[linear-gradient(#e9e8e5,#cfcdc8)]">
       <Canvas
         shadows
         // 가만히 두면 프레임을 그리지 않는다. 카메라 조작·드래그·상태 변경 때만 렌더한다.
@@ -792,7 +792,7 @@ export function Canvas3D() {
       </Canvas>
 
       <div className="absolute bottom-3 left-3 flex flex-wrap gap-2">
-        <span className="rounded bg-black/45 px-2 py-1 text-[11px] text-white/70">
+        <span className="rounded border border-line bg-surface/90 px-2 py-1 text-[11px] text-muted shadow-sm">
           객체를 끌어서 배치 · 빈 곳 드래그로 회전 · 휠 확대
         </span>
         <button
@@ -801,7 +801,7 @@ export function Canvas3D() {
           disabled={!backdropUrl}
           className={[
             "rounded px-2 py-1 text-[11px] transition-colors disabled:opacity-50",
-            backdropOn ? "bg-accent text-white" : "bg-black/45 text-white/70 hover:bg-black/60",
+            backdropOn ? "bg-accent text-white" : "border border-line bg-surface/90 text-muted hover:text-ink",
           ].join(" ")}
         >
           {backdropUrl

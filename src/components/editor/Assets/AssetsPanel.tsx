@@ -51,10 +51,25 @@ export function AssetsPanel() {
   );
 }
 
+/** 분류 목록 — 이름과 순서를 여기서 관리한다 */
+const CATEGORIES: { id: string; label: string }[] = [
+  { id: "sofa", label: "소파" },
+  { id: "chair", label: "의자" },
+  { id: "table", label: "테이블" },
+  { id: "bed", label: "침대" },
+  { id: "cabinet", label: "수납" },
+  { id: "lamp", label: "조명" },
+  { id: "appliance", label: "가전" },
+  { id: "rug", label: "러그" },
+  { id: "plant", label: "식물" },
+  { id: "decoration", label: "소품" },
+];
+
 function AssetsTab() {
   const [query, setQuery] = useState("");
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState<string | null>("sofa");
   const runTool = useEditorStore((state) => state.runTool);
 
   useEffect(() => {
@@ -62,10 +77,11 @@ function AssetsTab() {
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
+        // 검색어가 없으면 전체를 받아 분류별로 나눈다.
         const response = await fetch("/api/assets/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query, limit: 24 }),
+          body: JSON.stringify({ query, limit: query ? 24 : 200 }),
         });
         const data = (await response.json()) as { assets: Asset[] };
         if (!cancelled) setAssets(data.assets ?? []);
@@ -80,15 +96,24 @@ function AssetsTab() {
     };
   }, [query]);
 
+  const grouped = useMemo(() => {
+    const map = new Map<string, Asset[]>();
+    for (const asset of assets) {
+      const list = map.get(asset.category) ?? [];
+      list.push(asset);
+      map.set(asset.category, list);
+    }
+    return map;
+  }, [assets]);
+
+  const searching = query.trim().length > 0;
+
   return (
     <div className="p-2">
-      <p className="mb-1.5 text-[10.5px] leading-relaxed text-muted">
-        클릭하면 장면에 추가되고, 3D 뷰로 끌어다 놓으면 그 자리에 배치됩니다.
-      </p>
       <input
         type="search"
         value={query}
-        placeholder="예: 따뜻한 베이지 소파"
+        placeholder="가구 검색 (예: 베이지 소파)"
         onChange={(event) => setQuery(event.target.value)}
         className="mb-2 h-8 w-full rounded-md border border-line bg-surface px-2 text-[12px]"
       />
@@ -97,38 +122,88 @@ function AssetsTab() {
         <p className="py-6 text-center text-[12px] text-muted">불러오는 중…</p>
       ) : assets.length === 0 ? (
         <p className="py-6 text-center text-[12px] text-muted">검색 결과가 없습니다.</p>
+      ) : searching ? (
+        <AssetGrid assets={assets} onAdd={runTool} />
       ) : (
-        <ul className="grid grid-cols-2 gap-1.5">
-          {assets.map((asset) => (
-            <li key={asset.id}>
-              <button
-                type="button"
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData("text/asset-id", asset.id);
-                  event.dataTransfer.effectAllowed = "copy";
-                }}
-                onClick={() => runTool("add_object", { assetId: asset.id, type: asset.type, name: asset.name })}
-                className="group w-full cursor-grab rounded-md border border-line p-1 text-left transition-colors hover:border-line-strong hover:bg-sunken active:cursor-grabbing"
-                title={`${asset.name} — 클릭해서 추가하거나 3D 뷰로 끌어다 놓으세요`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={asset.thumbnailUrl ?? ""}
-                  alt=""
-                  className="aspect-square w-full rounded bg-sunken object-cover"
-                  loading="lazy"
-                />
-                <p className="mt-1 truncate text-[11px]">{asset.name}</p>
-                <p className="truncate text-[10px] text-muted">
-                  {asset.dimensions.width}×{asset.dimensions.depth}mm
-                </p>
-              </button>
-            </li>
-          ))}
+        <ul className="space-y-0.5">
+          {CATEGORIES.map((category) => {
+            const items = grouped.get(category.id) ?? [];
+            if (items.length === 0) return null;
+            const expanded = open === category.id;
+
+            return (
+              <li key={category.id}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(expanded ? null : category.id)}
+                  className="flex w-full items-center justify-between rounded px-1.5 py-1.5 text-left text-[12px] hover:bg-sunken"
+                >
+                  <span className={expanded ? "font-medium text-ink" : "text-ink-soft"}>
+                    {category.label}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10.5px] text-muted">
+                    {items.length}
+                    <span className={expanded ? "rotate-90" : ""}>›</span>
+                  </span>
+                </button>
+
+                {expanded && (
+                  <div className="pb-1.5 pt-1">
+                    <AssetGrid assets={items} onAdd={runTool} />
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
+
+      <p className="mt-2 text-[10.5px] leading-relaxed text-muted">
+        클릭하면 장면에 추가되고, 3D 뷰로 끌어다 놓으면 그 자리에 배치됩니다.
+      </p>
     </div>
+  );
+}
+
+function AssetGrid({
+  assets,
+  onAdd,
+}: {
+  assets: Asset[];
+  onAdd: (tool: string, args: Record<string, unknown>) => unknown;
+}) {
+  return (
+    <ul className="grid grid-cols-2 gap-1.5">
+      {assets.map((asset) => (
+        <li key={asset.id}>
+          <button
+            type="button"
+            draggable
+            onDragStart={(event) => {
+              event.dataTransfer.setData("text/asset-id", asset.id);
+              event.dataTransfer.effectAllowed = "copy";
+            }}
+            onClick={() =>
+              onAdd("add_object", { assetId: asset.id, type: asset.type, name: asset.name })
+            }
+            className="group w-full cursor-grab rounded-md border border-line p-1 text-left transition-colors hover:border-line-strong hover:bg-sunken active:cursor-grabbing"
+            title={`${asset.name} — 클릭해서 추가하거나 3D 뷰로 끌어다 놓으세요`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={asset.thumbnailUrl ?? ""}
+              alt=""
+              className="aspect-square w-full rounded bg-sunken object-cover"
+              loading="lazy"
+            />
+            <p className="mt-1 truncate text-[11px]">{asset.name}</p>
+            <p className="truncate text-[10px] text-muted">
+              {asset.dimensions.width}×{asset.dimensions.depth}mm
+            </p>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 

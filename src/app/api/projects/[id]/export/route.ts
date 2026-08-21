@@ -3,6 +3,7 @@ import { loadProject } from "@/services/projectService";
 import { sceneToJSON } from "@/scene/serialization";
 import { renderSceneToSvg } from "@/ai/providers/mock/sceneRaster";
 import { buildDxf, buildPlanSvg, toPlanData } from "@/services/cadExport";
+import { buildElevationSvg } from "@/services/elevationExport";
 
 /**
  * Export.
@@ -53,6 +54,30 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   if (format === "plan") {
     const plan = toPlanData(scene, loaded.project.name);
     return new Response(buildPlanSvg(plan), {
+      headers: { "Content-Type": "image/svg+xml; charset=utf-8" },
+    });
+  }
+
+  /*
+   * 입면도.
+   * wall 파라미터로 벽을 고르고, 없으면 개구부가 가장 많은 벽을 준다 —
+   * 창·문이 있는 벽이 시공에서 가장 먼저 필요한 입면이다.
+   */
+  if (format === "elevation") {
+    const plan = toPlanData(scene, loaded.project.name);
+    const walls = plan.walls;
+    if (walls.length === 0) {
+      return new Response("벽이 없어 입면도를 만들 수 없습니다.", { status: 400 });
+    }
+
+    const wanted = url.searchParams.get("wall");
+    const wall =
+      walls.find((item) => item.id === wanted) ??
+      [...walls].sort(
+        (a, b) => (b.openings?.length ?? 0) - (a.openings?.length ?? 0)
+      )[0];
+
+    return new Response(buildElevationSvg({ plan, wall }), {
       headers: { "Content-Type": "image/svg+xml; charset=utf-8" },
     });
   }
