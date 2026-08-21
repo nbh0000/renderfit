@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { BRAND } from "@/config/brand";
 import { useEditorStore, type PlanTool, type ViewMode } from "@/lib/editor/store";
+import { Icon, type IconName } from "./icons";
 
 /**
  * 리본 툴바.
@@ -15,6 +16,7 @@ import { useEditorStore, type PlanTool, type ViewMode } from "@/lib/editor/store
 
 interface Action {
   label: string;
+  icon?: IconName;
   hint?: string;
   onClick?: () => void;
   href?: string;
@@ -53,16 +55,18 @@ export function Ribbon() {
   /** 그리기 도구는 평면도가 보이는 모드에서만 의미가 있다 */
   const drawing = viewMode === "plan" || viewMode === "split";
 
-  const draw = (id: PlanTool, label: string, hint: string): Action => ({
+  const draw = (id: PlanTool, label: string, icon: IconName, hint: string): Action => ({
     label,
+    icon,
     hint,
     active: drawing && planTool === id,
     disabled: !drawing,
     onClick: () => setPlanTool(id),
   });
 
-  const view = (id: ViewMode, label: string): Action => ({
+  const view = (id: ViewMode, label: string, icon: IconName): Action => ({
     label,
+    icon,
     active: viewMode === id,
     onClick: () => setViewMode(id),
   });
@@ -103,12 +107,13 @@ export function Ribbon() {
             <Button
               action={{
                 label: "저장",
+                icon: "save",
                 onClick: () => void saveVersion(`v${new Date().toLocaleTimeString("ko-KR")}`),
               }}
             />
             <div className="relative">
               <Button
-                action={{ label: "내보내기", onClick: () => setExportOpen((value) => !value) }}
+                action={{ label: "내보내기", icon: "export", onClick: () => setExportOpen((value) => !value) }}
               />
               {exportOpen && (
                 <ExportMenu projectId={projectId} onClose={() => setExportOpen(false)} />
@@ -117,12 +122,13 @@ export function Ribbon() {
           </Group>
 
           <Group title="그리기">
-            <Button action={draw("wall", "벽", "두 점을 찍어 이어 그립니다")} />
-            <Button action={draw("room", "실", "모서리를 찍고 더블클릭으로 닫습니다")} />
-            <Button action={draw("polyline", "폴리라인", "여러 점을 찍고 더블클릭")} />
+            <Button action={draw("wall", "벽", "wall", "두 점을 찍어 이어 그립니다")} />
+            <Button action={draw("room", "실", "room", "모서리를 찍고 더블클릭으로 닫습니다")} />
+            <Button action={draw("polyline", "폴리라인", "polyline", "여러 점을 찍고 더블클릭")} />
             <Button
               action={{
                 label: "자동 배치",
+                icon: "arrange",
                 hint: "가구를 벽에 맞춰 겹치지 않게 정리합니다",
                 onClick: () => void runTool("arrange_objects"),
               }}
@@ -131,35 +137,36 @@ export function Ribbon() {
 
           <Group title="편집">
             <Button
-              action={{ label: "↶", hint: "실행 취소 (Ctrl+Z)", disabled: !canUndo, onClick: () => void undo() }}
+              action={{ label: "취소", icon: "undo", hint: "실행 취소 (Ctrl+Z)", disabled: !canUndo, onClick: () => void undo() }}
             />
             <Button
               action={{
-                label: "↷",
+                label: "다시",
+                icon: "redo",
                 hint: "다시 실행 (Ctrl+Shift+Z)",
                 disabled: !canRedo,
                 onClick: () => void redo(),
               }}
             />
-            <Button action={draw("select", "선택", "클릭·드래그로 고르고 옮깁니다")} />
+            <Button action={draw("select", "선택", "select", "클릭·드래그로 고르고 옮깁니다")} />
           </Group>
 
           <Group title="주석">
-            <Button action={draw("dimension", "치수선", "시작 → 끝 → 띄울 위치")} />
-            <Button action={draw("text", "글자", "클릭한 자리에 문구")} />
+            <Button action={draw("dimension", "치수선", "dimension", "시작 → 끝 → 띄울 위치")} />
+            <Button action={draw("text", "글자", "text", "클릭한 자리에 문구")} />
           </Group>
 
           <Group title="보기">
-            <Button action={view("image", "이미지")} />
-            <Button action={view("plan", "평면도")} />
-            <Button action={view("elevation", "측면도")} />
-            <Button action={view("3d", "3D")} />
-            <Button action={view("split", "평면+3D")} />
+            <Button action={view("image", "이미지", "image")} />
+            <Button action={view("plan", "평면도", "plan")} />
+            <Button action={view("elevation", "측면도", "elevation")} />
+            <Button action={view("3d", "3D", "cube")} />
+            <Button action={view("split", "평면+3D", "split")} />
           </Group>
 
           <Group title="보조">
             <Button
-              action={{ label: "격자", active: showGrid, onClick: toggleGrid }}
+              action={{ label: "격자", icon: "grid", active: showGrid, onClick: toggleGrid }}
             />
             <label className="flex items-center gap-1 rounded border border-line px-1.5 py-1 text-[11px] text-muted">
               스냅
@@ -178,9 +185,9 @@ export function Ribbon() {
           </Group>
 
           <Group title="렌더" last>
-            <Button action={{ label: "미리보기", onClick: () => void startJob("/render/preview") }} />
+            <Button action={{ label: "미리보기", icon: "preview", onClick: () => void startJob("/render/preview") }} />
             <Button
-              action={{ label: "렌더", primary: true, onClick: () => void startJob("/render/final") }}
+              action={{ label: "렌더", icon: "render", primary: true, onClick: () => void startJob("/render/final") }}
             />
           </Group>
         </div>
@@ -220,7 +227,7 @@ function Button({ action }: { action: Action }) {
       disabled={action.disabled}
       title={action.hint ? `${action.label} — ${action.hint}` : action.label}
       className={[
-        "h-7 rounded-md px-2.5 text-[12px] transition-colors disabled:opacity-30",
+        "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors disabled:opacity-30",
         action.primary
           ? "bg-accent font-medium text-white hover:bg-accent-hover"
           : action.active
@@ -228,6 +235,7 @@ function Button({ action }: { action: Action }) {
             : "border border-line text-ink-soft hover:bg-sunken",
       ].join(" ")}
     >
+      {action.icon && <Icon name={action.icon} />}
       {action.label}
     </button>
   );

@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { useEditorStore } from "@/lib/editor/store";
 import type { Scene, SceneObject } from "@/scene/types";
 import { FurnitureMesh } from "./FurnitureMesh";
+import { NavGizmo, type GizmoHandlers } from "./NavGizmo";
 import { woodTexture, paintTexture } from "./textures";
 import {
   ensureRoom,
@@ -602,6 +603,69 @@ function ResizeRedraw() {
   return null;
 }
 
+/**
+ * 기즈모 연결.
+ *
+ * OrbitControls는 Canvas 안에만 있고 기즈모는 바깥 HTML이라, 조작 함수를
+ * 만들어 부모에게 올려 준다. 구면 좌표를 직접 돌려야 카메라가 대상 주위를
+ * 자연스럽게 도는데, OrbitControls의 내부 각도를 그대로 읽어 쓴다.
+ */
+function GizmoBridge({
+  target,
+  onReady,
+}: {
+  target: [number, number, number];
+  onReady: (handlers: GizmoHandlers | null) => void;
+}) {
+  const camera = useThree((state) => state.camera);
+  const invalidate = useThree((state) => state.invalidate);
+  const controls = useThree((state) => state.controls) as
+    | { target: THREE.Vector3; update: () => void }
+    | null;
+
+  useEffect(() => {
+    if (!controls) return;
+
+    const center = () => controls.target ?? new THREE.Vector3(...target);
+
+    const apply = (change: (spherical: THREE.Spherical) => void) => {
+      const focus = center();
+      const offset = camera.position.clone().sub(focus);
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+
+      change(spherical);
+
+      // 바닥 아래로 내려가거나 정수리를 넘지 않게 막는다.
+      spherical.phi = Math.min(Math.PI / 2.05, Math.max(0.12, spherical.phi));
+      spherical.radius = Math.min(14, Math.max(1.2, spherical.radius));
+
+      camera.position.copy(focus.clone().add(new THREE.Vector3().setFromSpherical(spherical)));
+      camera.lookAt(focus);
+      controls.update();
+      invalidate();
+    };
+
+    const handlers: GizmoHandlers = {
+      orbit: (dTheta, dPhi) =>
+        apply((spherical) => {
+          spherical.theta += dTheta;
+          spherical.phi += dPhi;
+        }),
+      dolly: (delta) => apply((spherical) => (spherical.radius *= 1 - delta)),
+      reset: () =>
+        apply((spherical) => {
+          spherical.theta = 0;
+          spherical.phi = Math.PI / 2.6;
+        }),
+    };
+
+    onReady(handlers);
+    return () => onReady(null);
+  }, [camera, controls, invalidate, onReady, target]);
+
+  return null;
+}
+
 function AdaptiveResolution() {
   const setDpr = useThree((state) => state.setDpr);
   const controls = useThree((state) => state.controls) as
@@ -665,6 +729,7 @@ export function Canvas3D() {
   const toggleBackdrop = useEditorStore((state) => state.toggleBackdrop);
 
   const [draft, setDraft] = useState<DragState | null>(null);
+  const [gizmo, setGizmo] = useState<GizmoHandlers | null>(null);
 
   const roomLength = (scene?.room?.dimensions.length ?? 6000) * MM;
   const roomHeight = (scene?.room?.dimensions.height ?? 2700) * MM;
@@ -787,11 +852,14 @@ export function Canvas3D() {
         <CameraRig target={target} />
         <ShadowUpdater signature={shadowSignature} />
         <AdaptiveResolution />
+        <GizmoBridge target={target} onReady={setGizmo} />
         <ResizeRedraw />
         <PlacementController scene={scene} draft={draft} setDraft={setDraft} />
       </Canvas>
 
-      <div className="absolute bottom-3 left-3 flex flex-wrap gap-2">
+      <NavGizmo handlers={gizmo} />
+
+      <div className="absolute bottom-3 left-[172px] flex flex-wrap gap-2">
         <span className="rounded border border-line bg-surface/90 px-2 py-1 text-[11px] text-muted shadow-sm">
           객체를 끌어서 배치 · 빈 곳 드래그로 회전 · 휠 확대
         </span>

@@ -10,8 +10,8 @@ import { STYLE_PRESETS } from "@/models/styles";
 type Tab = "assets" | "external" | "materials" | "styles" | "lighting" | "ai";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "assets", label: "에셋" },
-  { id: "external", label: "무료 모델" },
+  { id: "assets", label: "가구" },
+  { id: "external", label: "무료" },
   { id: "materials", label: "재질" },
   { id: "styles", label: "스타일" },
   { id: "lighting", label: "조명" },
@@ -23,14 +23,14 @@ export function AssetsPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 gap-0.5 border-b border-line px-2 py-1.5">
+      <div className="scrollbar-slim flex shrink-0 gap-0.5 overflow-x-auto border-b border-line px-2 py-1.5">
         {TABS.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => setTab(item.id)}
             className={[
-              "rounded-md px-2 py-1 text-[11.5px] transition-colors",
+              "shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[11.5px] transition-colors",
               tab === item.id ? "bg-sunken font-medium text-ink" : "text-muted hover:text-ink",
             ].join(" ")}
           >
