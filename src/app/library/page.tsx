@@ -9,6 +9,9 @@ import { getViewer } from "@/lib/auth";
 import { fetchRecentJobs } from "@/lib/jobs/read";
 import { listJobs } from "@/lib/job-store";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { extractUserRequest } from "@/lib/prompt";
+import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
+import { PromptDetails } from "@/components/PromptDetails";
 import type { GenerationJob } from "@/lib/types";
 
 export const metadata: Metadata = {
@@ -76,21 +79,42 @@ export default async function LibraryPage() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {/* 어떤 지시로 만든 결과인지 함께 남긴다 */}
+                <PromptDetails
+                  userRequest={extractUserRequest(job.prompt)}
+                  fullPrompt={job.prompt}
+                  className="mb-2"
+                />
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {job.results.map((result, index) => (
                     <figure
                       key={result.id}
                       className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface"
                     >
-                      <div className="aspect-[4/3] bg-sunken">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={result.url}
-                          alt={`시안 ${index + 1}`}
-                          loading="lazy"
-                          className="h-full w-full object-cover"
+                      {/*
+                        원본이 남아 있으면 전/후 비교로 보여 준다.
+                        시안만 있으면 "무엇이 어떻게 달라졌는지"를 기억에 의존해야 한다.
+                      */}
+                      {job.sourceImageUrl ? (
+                        <BeforeAfterSlider
+                          beforeSrc={job.sourceImageUrl}
+                          afterSrc={result.url}
+                          beforeLabel="올린 사진"
+                          afterLabel={`시안 ${index + 1}`}
                         />
-                      </div>
+                      ) : (
+                        <div className="aspect-[4/3] bg-sunken">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={result.url}
+                            alt={`시안 ${index + 1}`}
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      )}
+
                       <figcaption className="flex items-center justify-between border-t border-line px-2 py-1.5 text-[11.5px] text-muted">
                         <span>시안 {index + 1}</span>
                         <a

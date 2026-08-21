@@ -87,7 +87,9 @@ describe("프롬프트 반영", () => {
   it("넓어질수록 허용 가구 규모가 커진다", () => {
     expect(furnitureScaleGuide(12)).toContain("1600mm");
     expect(furnitureScaleGuide(30)).toContain("50%");
-    expect(furnitureScaleGuide(200)).toContain("구역을 나눠");
+    expect(furnitureScaleGuide(200)).toContain("구역으로 나눠");
+    // 가장 큰 구간에도 제약이 있어야 한다 — 예전에는 비어 있었다
+    expect(furnitureScaleGuide(200)).toContain("60%");
   });
 
   it("가구 규모 지시에 특정 가구 이름을 강제하지 않는다", () => {

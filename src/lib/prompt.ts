@@ -2,7 +2,7 @@ import { getMode, STRUCTURE_LOCK } from "@/config/modes";
 import { getRoom } from "@/config/rooms";
 import { getStyle } from "@/config/styles";
 import { RESOLUTION_MAP } from "@/config/plans";
-import { buildSpaceFragment } from "./space";
+import { buildSpaceFragment, describeSpaceSize, sizeFromText } from "./space";
 import type { GenerationSettings, MaterialSpec } from "./types";
 
 /**
@@ -54,8 +54,24 @@ export function buildPrompt(settings: GenerationSettings): string {
    * "공간 비우기"에 이 문단을 붙이면 "가구를 모두 제거한다"와
    * "공간이 비어 보이지 않게 채운다"가 한 프롬프트 안에서 충돌한다.
    */
-  const space = mode.placesFurniture ? buildSpaceFragment(settings.size) : "";
+  /*
+   * 직접 지시에 평수가 적혀 있으면 그쪽을 쓴다.
+   *
+   * "8평에 맞게 해줘"라고 써 놓고 공간 크기 입력은 45평이 남아 있는 경우가 많다.
+   * 그대로 두면 한 프롬프트에 45평과 8평이 같이 들어가 모델이 어느 쪽도 못 따른다.
+   * 방금 쓴 문장이 최신 의도라고 보고 그 값을 채택하되, 무엇을 골랐는지 밝혀 둔다.
+   */
+  const written = sizeFromText(settings.customPrompt);
+  const effectiveSize = written ?? settings.size;
+
+  const space = mode.placesFurniture ? buildSpaceFragment(effectiveSize) : "";
   if (space) lines.push(...space.split("\n"));
+
+  if (written && settings.size) {
+    lines.push(
+      `요청 문장에 적힌 ${describeSpaceSize(written)}을(를) 기준으로 한다. 다른 면적이 언급되더라도 이 값을 따른다.`
+    );
+  }
 
   /*
    * 사용자가 직접 쓴 요청은 맨 앞(구조 보존 원칙 바로 다음)에 놓는다.
@@ -87,3 +103,24 @@ export function buildPrompt(settings: GenerationSettings): string {
 }
 
 export { FLOORPLAN_DISCLAIMER, FLOORPLAN_PROMPT_TEMPLATE } from "@/config/modes";
+
+/**
+ * 저장된 프롬프트에서 사용자가 직접 쓴 요청만 뽑아낸다.
+ *
+ * 사용자 입력을 따로 컬럼에 담아 두지 않았지만, buildPrompt가 "사용자 요청: "이라는
+ * 고정된 머리말로 넣기 때문에 프롬프트 문자열에서 되찾을 수 있다.
+ * 이렇게 하면 마이그레이션 없이 예전 작업에서도 보인다.
+ */
+export function extractUserRequest(prompt: string | null | undefined): string | null {
+  if (!prompt) return null;
+
+  for (const marker of ["사용자 요청: ", "추가 요청: "]) {
+    const line = prompt.split("\n").find((item) => item.startsWith(marker));
+    if (line) {
+      const text = line.slice(marker.length).trim();
+      if (text) return text;
+    }
+  }
+
+  return null;
+}

@@ -7,6 +7,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { bumpViewCount, getPublicResult, memoryGetGallery, type GalleryItem } from "@/lib/gallery";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { GalleryDeleteButton } from "@/components/gallery/GalleryDeleteButton";
+import { PromptDetails } from "@/components/PromptDetails";
+import { extractUserRequest } from "@/lib/prompt";
 import { ROOM_MAP } from "@/config/rooms";
 import { STYLE_MAP } from "@/config/styles";
 import { BRAND } from "@/config/brand";
@@ -116,6 +118,13 @@ export default async function GalleryDetailPage({
             <img src={item.imageUrl} alt={item.title} className="w-full object-cover" />
           )}
         </div>
+
+        {/* 어떤 지시로 만든 시안인지 — 갤러리를 보는 사람에게 가장 궁금한 정보다 */}
+        <PromptDetails
+          userRequest={extractUserRequest(item.prompt)}
+          fullPrompt={item.prompt}
+          className="mt-4"
+        />
 
         <p className="mt-5 text-[14px] leading-relaxed text-ink-soft">
           {roomLabel} 공간을 {styleLabel} 스타일로 바꾼 시안입니다. 벽·창문·문의 위치와 카메라 앵글은

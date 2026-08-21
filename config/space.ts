@@ -67,7 +67,7 @@ export const FURNITURE_SCALE_TIERS: { maxM2: number; guide: string }[] = [
   {
     maxM2: Number.POSITIVE_INFINITY,
     guide:
-      "구역을 나눠 배치할 수 있다. 다만 한 구역에 같은 용도의 가구를 중복해서 놓지 않는다.",
+      "거실·다이닝처럼 용도가 다른 구역으로 나눠 배치한다. 한 구역에 같은 용도의 가구를 중복해서 놓지 않는다. 사진에서 가장 큰 가구 하나의 폭이 마주 보이는 벽 폭의 60%를 넘지 않게 하고, 가구가 바닥 면적의 55%를 넘게 차지하지 않게 한다.",
   },
 ];
 

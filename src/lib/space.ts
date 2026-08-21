@@ -142,3 +142,35 @@ export function toRoomDimensions(size: SpaceSize): {
 function trimNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
+
+/**
+ * 사용자가 쓴 문장에서 면적을 읽어 낸다.
+ *
+ * "8평에 맞는 디자인해줘"처럼 직접 지시에 평수를 적는 경우가 많다.
+ * 이때 공간 크기 입력은 예전 값(예: 45평)이 그대로 남아 있어서,
+ * 한 프롬프트 안에 45평과 8평이 같이 들어가 모델이 어느 쪽을 따를지 알 수 없게 된다.
+ * 그래서 문장에 적힌 값을 찾아 우선 적용한다 — 방금 쓴 쪽이 최신 의도다.
+ */
+export function sizeFromText(text: string | null | undefined): SpaceSize | null {
+  if (!text) return null;
+
+  // "8평", "12 평", "8.5평"
+  const pyeong = /(\d+(?:\.\d+)?)\s*평/.exec(text);
+  if (pyeong) {
+    const value = Number(pyeong[1]);
+    if (value >= SPACE_LIMITS.minPyeong && value <= SPACE_LIMITS.maxPyeong) {
+      return { unit: "pyeong", pyeong: value };
+    }
+  }
+
+  // "26㎡", "26 m2", "26제곱미터"
+  const squareMeters = /(\d+(?:\.\d+)?)\s*(?:㎡|m2|m²|제곱미터)/i.exec(text);
+  if (squareMeters) {
+    const value = m2ToPyeong(Number(squareMeters[1]));
+    if (value >= SPACE_LIMITS.minPyeong && value <= SPACE_LIMITS.maxPyeong) {
+      return { unit: "pyeong", pyeong: Math.round(value * 10) / 10 };
+    }
+  }
+
+  return null;
+}

@@ -60,14 +60,33 @@ export default async function GalleryPage() {
             {items.map((item) => (
               <li key={item.slug}>
                 <Link href={`/gallery/${encodeURIComponent(item.slug)}`} className="group block">
-                  <span className="block overflow-hidden rounded-[var(--radius-card)] border border-line bg-sunken">
+                  <span className="relative block overflow-hidden rounded-[var(--radius-card)] border border-line bg-sunken">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={item.imageUrl}
                       alt={item.title}
                       loading="lazy"
-                      className="aspect-[4/3] w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                      className="aspect-[4/3] w-full object-cover"
                     />
+
+                    {/*
+                      원본이 함께 공개된 항목은 마우스를 올리면 올린 사진으로 바뀐다.
+                      목록에서도 무엇이 어떻게 달라졌는지 바로 가늠할 수 있다.
+                    */}
+                    {item.beforeUrl && (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.beforeUrl}
+                          alt={`${item.title} 원본`}
+                          loading="lazy"
+                          className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                        />
+                        <span className="absolute left-1.5 top-1.5 rounded bg-ink/70 px-1.5 py-0.5 text-[10px] text-white">
+                          전 · 후
+                        </span>
+                      </>
+                    )}
                   </span>
                   <p className="mt-1.5 text-[13px] font-medium">{item.title}</p>
                   <p className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-muted">

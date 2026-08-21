@@ -21,6 +21,8 @@ export interface GalleryItem {
   beforeUrl: string | null;
   /** 지금 보는 사람이 이 항목을 내릴 수 있는지 */
   canDelete: boolean;
+  /** 생성에 쓰인 전체 프롬프트 — 어떤 지시로 만든 결과인지 보여 준다 */
+  prompt: string | null;
 }
 
 /**
@@ -57,7 +59,7 @@ const memory: Map<string, GalleryItem> =
   globalRef.__interiorGallery ?? (globalRef.__interiorGallery = new Map());
 
 export function memoryPublish(
-  item: Omit<GalleryItem, "slug" | "title" | "viewCount" | "canDelete">
+  item: Omit<GalleryItem, "slug" | "title" | "viewCount" | "canDelete" | "prompt">
 ): GalleryItem {
   const base = buildSlug(item.roomId, item.styleId);
   let slug = base;
@@ -70,6 +72,7 @@ export function memoryPublish(
     title: buildTitle(item.roomId, item.styleId),
     viewCount: 0,
     canDelete: true,
+    prompt: null,
   };
   memory.set(slug, record);
   return record;
@@ -95,18 +98,18 @@ interface PublicRow {
   view_count: number | null;
   before_path: string | null;
   user_id: string;
-  generation_jobs: { room_id: string; style_id: string } | null;
+  generation_jobs: { room_id: string; style_id: string; prompt?: string | null } | null;
 }
 
 const PUBLIC_SELECT =
-  "slug, storage_path, width, height, created_at, author_name, view_count, before_path, user_id, generation_jobs!inner (room_id, style_id)";
+  "slug, storage_path, width, height, created_at, author_name, view_count, before_path, user_id, generation_jobs!inner (room_id, style_id, prompt)";
 
 /**
  * 갤러리 컬럼(author_name·view_count·before_path)이 아직 없는 DB에서도 동작하도록
  * 예전 컬럼만으로 다시 조회한다. 마이그레이션 전에는 작성자·조회수만 비어 보인다.
  */
 const LEGACY_SELECT =
-  "slug, storage_path, width, height, created_at, user_id, generation_jobs!inner (room_id, style_id)";
+  "slug, storage_path, width, height, created_at, user_id, generation_jobs!inner (room_id, style_id, prompt)";
 
 /** 42703 = undefined_column */
 function isMissingColumn(error: { code?: string } | null): boolean {
@@ -133,6 +136,7 @@ function toItem(supabase: SupabaseClient, row: PublicRow, viewerId?: string | nu
       ? supabase.storage.from(RESULTS_BUCKET).getPublicUrl(row.before_path).data.publicUrl
       : null,
     canDelete: Boolean(viewerId && viewerId === row.user_id),
+    prompt: row.generation_jobs?.prompt ?? null,
   };
 }
 
