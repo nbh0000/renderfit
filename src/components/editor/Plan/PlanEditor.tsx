@@ -124,16 +124,30 @@ export function PlanEditor() {
     [below, room, levels]
   );
 
+  /** 벽 개구부로 옮겨진 창·문은 가구로 또 그리지 않는다 */
+  const convertedIds = useMemo(
+    () =>
+      new Set(
+        (room?.walls ?? [])
+          .flatMap((wall) => wall.openings ?? [])
+          .map((opening) => opening.id)
+          .filter((id) => id.startsWith("op_auto_"))
+          .map((id) => id.replace("op_auto_", ""))
+      ),
+    [room]
+  );
+
   const objects = useMemo(() => {
     const visible = (scene?.objects ?? []).filter(
       (object) =>
         object.visibility &&
         object.type !== "wall" &&
         object.type !== "floor" &&
-        object.type !== "ceiling"
+        object.type !== "ceiling" &&
+        !convertedIds.has(object.id)
     );
     return currentLevelId ? onLevel(visible, currentLevelId, levels) : visible;
-  }, [scene?.objects, currentLevelId, levels]);
+  }, [scene?.objects, currentLevelId, levels, convertedIds]);
 
   const roomWidthMm = room?.dimensions.width;
   const roomLengthMm = room?.dimensions.length;

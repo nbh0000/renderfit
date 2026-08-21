@@ -15,7 +15,21 @@ import type { SceneObject } from "@/scene/types";
  *   입력하면 그 값이 우선한다.
  */
 
-const DEFAULT_MODEL = "gemini-3.1-flash";
+/*
+ * 사용할 모델 후보.
+ *
+ * 앞에서부터 시도하고 실패하면 다음으로 넘어간다. 최신 모델은 "high demand"로
+ * 503을 자주 돌려주는데, 한 모델만 박아 두면 그때마다 분석이 통째로 죽는다.
+ * (실제로 존재하지 않는 모델 이름을 박아 두는 바람에 분석이 늘 mock으로
+ *  떨어지고 있었다 — 그래서 사진을 바꿔도 도면이 그대로였다.)
+ */
+const MODEL_CANDIDATES = [
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
+  "gemini-flash-latest",
+  "gemini-3-flash-preview",
+  "gemini-3.1-flash-lite",
+];
 
 /** 모델이 돌려줄 수 있는 객체 종류 — Scene 타입과 1:1로 맞춘다 */
 const OBJECT_TYPES: SceneObject["type"][] = [
@@ -62,7 +76,19 @@ const RESPONSE_SCHEMA = {
           material: { type: "string" },
           confidence: { type: "number" },
         },
-        required: ["type", "name", "x", "y", "width", "height", "depthRatio"],
+        // 치수를 필수로 두지 않으면 모델이 자주 비워 보낸다 — 도면에는 mm가 있어야 한다.
+        required: [
+          "type",
+          "name",
+          "x",
+          "y",
+          "width",
+          "height",
+          "depthRatio",
+          "widthMm",
+          "heightMm",
+          "depthMm",
+        ],
       },
     },
   },
@@ -140,8 +166,10 @@ function lightVector(from: string | undefined): [number, number, number] {
   }
 }
 
-export function visionModel(): string {
-  return process.env.GEMINI_VISION_MODEL || DEFAULT_MODEL;
+/** 환경변수로 고정하면 그 모델만 쓴다 */
+export function visionModels(): string[] {
+  const pinned = process.env.GEMINI_VISION_MODEL;
+  return pinned ? [pinned] : MODEL_CANDIDATES;
 }
 
 export class GeminiVisionProvider implements VisionProvider {
@@ -150,38 +178,61 @@ export class GeminiVisionProvider implements VisionProvider {
   constructor(private readonly fallback: VisionProvider) {}
 
   async analyzeRoom(image: ImageRef): Promise<RoomAnalysis> {
-    try {
-      const payload = await loadImage(image.url);
-      if (!payload) return this.fallback.analyzeRoom(image);
-
-      const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-
-      const response = await ai.models.generateContent({
-        model: visionModel(),
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: PROMPT },
-              { inlineData: { mimeType: payload.mimeType, data: payload.data } },
-            ],
-          },
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA as never,
-        },
-      });
-
-      const text = response.text;
-      if (!text) return this.fallback.analyzeRoom(image);
-
-      return toAnalysis(JSON.parse(text) as RawAnalysis);
-    } catch {
-      // 분석이 실패해도 편집기는 열려야 한다. 기본 배치로 물러난다.
+    const payload = await loadImage(image.url);
+    if (!payload) {
+      console.warn("[vision] 이미지를 읽지 못해 기본 배치로 대체합니다:", image.url);
       return this.fallback.analyzeRoom(image);
     }
+
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+    const errors: string[] = [];
+
+    for (const model of visionModels()) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: PROMPT },
+                { inlineData: { mimeType: payload.mimeType, data: payload.data } },
+              ],
+            },
+          ],
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: RESPONSE_SCHEMA as never,
+          },
+        });
+
+        const text = response.text;
+        if (!text) {
+          errors.push(`${model}: 빈 응답`);
+          continue;
+        }
+
+        const analysis = toAnalysis(JSON.parse(text) as RawAnalysis);
+        console.info(
+          `[vision] ${model}로 분석했습니다 — ${analysis.roomType} ${analysis.roomDimensions.width}×${analysis.roomDimensions.length}mm, 객체 ${analysis.objects.length}개`
+        );
+        return analysis;
+      } catch (error) {
+        errors.push(`${model}: ${error instanceof Error ? error.message.slice(0, 120) : "실패"}`);
+      }
+    }
+
+    /*
+     * 여기까지 왔다는 건 모든 모델이 실패했다는 뜻이다.
+     * 조용히 넘어가면 "사진을 바꿔도 도면이 그대로"인 상태가 그대로 유지되므로
+     * 반드시 로그로 남긴다.
+     */
+    console.error(
+      "[vision] 공간 분석 실패 — 기본 배치로 대체합니다.\n  " + errors.join("\n  ")
+    );
+    return this.fallback.analyzeRoom(image);
   }
 }
 
