@@ -14,6 +14,7 @@ import {
 import { NumberField } from "../shared/NumberField";
 import { ElectricalPanel } from "./ElectricalPanel";
 import { FinishPanel } from "./FinishPanel";
+import { CalibrateBox } from "./CalibrateBox";
 
 /**
  * 공간 패널 — 실측 치수 입력 + 벽·개구부 편집.
@@ -123,6 +124,13 @@ export function RoomPanel() {
           면적 {floorArea(room.dimensions).toFixed(1)}㎡ (
           {(floorArea(room.dimensions) / 3.3058).toFixed(1)}평)
         </p>
+
+        {/* 세 변을 다 재기 전에, 한 변만으로 전체를 맞추는 지름길 */}
+        {!room.measured && (
+          <div className="mt-2">
+            <CalibrateBox />
+          </div>
+        )}
 
         <div className="mt-2 flex gap-1">
           <button

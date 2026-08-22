@@ -242,6 +242,12 @@ function Button({ action }: { action: Action }) {
 }
 
 function ExportMenu({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  /*
+   * DXF는 실측을 확정해야 열린다.
+   * 서버도 막지만, 눌러 본 뒤에 거절당하는 것보다 왜 못 쓰는지 먼저 보여 주는 편이 낫다.
+   */
+  const measured = useEditorStore((state) => Boolean(state.scene?.room?.measured));
+
   const item = (href: string, label: string, newTab?: boolean) => (
     <a
       key={href}
@@ -260,7 +266,16 @@ function ExportMenu({ projectId, onClose }: { projectId: string; onClose: () => 
       onMouseLeave={onClose}
     >
       <p className="px-2 pb-1 pt-1.5 text-[10.5px] font-medium text-muted">도면 · CAD</p>
-      {item(`/api/projects/${projectId}/export?format=dxf`, "평면도 (DXF · mm)")}
+      {measured ? (
+        item(`/api/projects/${projectId}/export?format=dxf`, "평면도 (DXF · mm)")
+      ) : (
+        <div className="rounded px-2 py-1.5">
+          <p className="text-[12px] text-muted">평면도 (DXF · mm)</p>
+          <p className="mt-0.5 text-[10.5px] leading-relaxed text-muted">
+            공간 패널에서 한 변의 실제 길이를 넣어 축척을 맞추면 열립니다.
+          </p>
+        </div>
+      )}
       {item(`/api/projects/${projectId}/export?format=plan`, "치수 평면도 (SVG)", true)}
       {item(`/api/projects/${projectId}/export?format=elevation`, "입면도 (SVG)", true)}
 

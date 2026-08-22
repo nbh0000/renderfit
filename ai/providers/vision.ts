@@ -416,6 +416,16 @@ function lightVector(from: string | undefined): [number, number, number] {
   }
 }
 
+/**
+ * 같은 사진에는 같은 도면이 나와야 한다.
+ *
+ * 기본값(temperature ~1)으로 두면 같은 사진을 두 번 분석했을 때 방 면적이
+ * 60㎡와 81㎡로 갈리고 의자 수가 8개와 17개로 갈렸다. 정확도 이전에 신뢰의 문제다 —
+ * 다시 눌러서 값이 바뀌면 사용자는 어느 쪽도 믿지 않는다.
+ * 측량은 창작이 아니므로 무작위성을 완전히 끈다.
+ */
+const DETERMINISTIC = { temperature: 0, topP: 1, seed: 7 } as const;
+
 /** 환경변수로 고정하면 그 모델만 쓴다 */
 export function visionModels(): string[] {
   const pinned = process.env.GEMINI_VISION_MODEL;
@@ -453,6 +463,7 @@ export class GeminiVisionProvider implements VisionProvider {
             },
           ],
           config: {
+            ...DETERMINISTIC,
             responseMimeType: "application/json",
             responseSchema: PLAN_SCHEMA as never,
           },
@@ -771,7 +782,11 @@ export async function estimateFurniture(description: string): Promise<EstimatedF
       const response = await ai.models.generateContent({
         model,
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { responseMimeType: "application/json", responseSchema: SIZE_SCHEMA as never },
+        config: {
+          ...DETERMINISTIC,
+          responseMimeType: "application/json",
+          responseSchema: SIZE_SCHEMA as never,
+        },
       });
 
       const text = response.text;

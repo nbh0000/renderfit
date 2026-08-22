@@ -491,6 +491,73 @@ export class SceneEngine {
     );
   }
 
+  /**
+   * 한 변의 실제 길이로 평면 전체를 비례 보정한다.
+   *
+   * 사진에서 읽은 치수는 비례는 꽤 맞는데 절대 크기가 흔들린다 — 같은 사진에서
+   * 방 면적이 60㎡와 81㎡로 갈렸다. 그래서 모든 치수를 AI에게 맞히게 하는 대신,
+   * 사람이 줄자로 잰 한 변만 받아 나머지를 그 비율로 끌어당긴다.
+   *
+   * 가구는 크기를 바꾸지 않는다 — 제품 규격이라 방 크기와 달리 따로 확정된 값이고,
+   * 위치는 정규화 좌표라 방이 커지면 알아서 따라 벌어진다.
+   */
+  calibrateScale(wallId: string, actualMm: number): CommitResult {
+    const room = ensureRoom(this.scene.room);
+    const wall = (room.walls ?? []).find((item) => item.id === wallId);
+    if (!wall) return { ok: false, error: "기준으로 삼을 벽을 찾을 수 없습니다." };
+
+    const current = wallLength(wall);
+    if (current <= 0) return { ok: false, error: "길이가 0인 벽은 기준이 될 수 없습니다." };
+    if (!Number.isFinite(actualMm) || actualMm < 300 || actualMm > 100000) {
+      return { ok: false, error: "실제 길이를 300~100000mm 사이로 입력해 주세요." };
+    }
+
+    const k = actualMm / current;
+    if (Math.abs(k - 1) < 0.001) {
+      return { ok: false, error: "이미 그 길이입니다." };
+    }
+
+    const mm = (value: number) => Math.round(value * k);
+
+    return this.commitRoom(
+      {
+        dimensions: {
+          width: mm(room.dimensions.width),
+          length: mm(room.dimensions.length),
+          // 천장고는 사람이 서서 재기 쉬워 따로 입력받는다 — 여기서 건드리지 않는다.
+          height: room.dimensions.height,
+        },
+        walls: (room.walls ?? []).map((item) => ({
+          ...item,
+          start: [mm(item.start[0]), mm(item.start[1])] as [number, number],
+          end: [mm(item.end[0]), mm(item.end[1])] as [number, number],
+          openings: (item.openings ?? []).map((opening) => ({
+            ...opening,
+            offset: mm(opening.offset),
+            width: mm(opening.width),
+          })),
+        })),
+        areas: (room.areas ?? []).map((area) => ({
+          ...area,
+          points: area.points.map(([x, y]) => [mm(x), mm(y)] as [number, number]),
+        })),
+        annotations: (room.annotations ?? []).map((annotation) => ({
+          ...annotation,
+          points: annotation.points.map(([x, y]) => [mm(x), mm(y)] as [number, number]),
+        })),
+        electrical: (room.electrical ?? []).map((fixture) => ({
+          ...fixture,
+          offset: mm(fixture.offset),
+          point: fixture.point
+            ? ([mm(fixture.point[0]), mm(fixture.point[1])] as [number, number])
+            : undefined,
+        })),
+        measured: true,
+      },
+      `축척 보정 (×${k.toFixed(3)})`
+    );
+  }
+
   /** 실측 치수 입력 — 벽이 자동 생성된 직사각형이면 새 치수로 다시 만든다 */
   setRoomDimensions(
     dimensions: Partial<RoomSpec["dimensions"]>,

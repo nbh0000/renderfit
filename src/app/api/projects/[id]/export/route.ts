@@ -41,6 +41,23 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     });
   }
 
+  /*
+   * DXF는 실측을 확정한 뒤에만 내보낸다.
+   *
+   * AI가 읽은 치수는 추정값이라 같은 사진에서도 흔들린다. SVG에는 고지 문구가
+   * 그림 안에 찍혀 있지만 DXF는 CAD로 열리는 순간 그냥 "도면"이 된다 —
+   * 손에 들어간 파일의 주석을 읽는 사람은 없다.
+   */
+  if (format === "dxf" && !scene.room.measured) {
+    return Response.json(
+      {
+        error:
+          "실측을 확정한 뒤에 DXF를 내보낼 수 있습니다. 공간 패널에서 한 변의 실제 길이를 넣어 축척을 맞춰 주세요.",
+      },
+      { status: 409 }
+    );
+  }
+
   if (format === "dxf") {
     const plan = toPlanData(scene, loaded.project.name);
     return new Response(buildDxf(plan), {

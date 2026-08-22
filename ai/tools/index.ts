@@ -135,6 +135,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     parameters: { width: "number", length: "number", height: "number", measured: "boolean" },
   },
   {
+    name: "calibrate_scale",
+    description: "벽 하나의 실제 길이를 받아 평면 전체의 축척을 맞춘다.",
+    parameters: { wallId: "string", actualMm: "number" },
+  },
+  {
     name: "set_dimensions",
     description: "객체의 실측 치수를 입력한다 (mm).",
     parameters: { objectId: "string", width: "number", height: "number", depth: "number" },
@@ -635,6 +640,13 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
         }
       );
       return toResult(command, result, "방 치수를 반영했습니다.");
+    }
+
+    case "calibrate_scale": {
+      const wallId = args.wallId as string;
+      const actualMm = Number(args.actualMm);
+      const result = engine.calibrateScale(wallId, actualMm);
+      return toResult(command, result, "실측 길이에 맞춰 도면 축척을 보정했습니다.");
     }
 
     case "set_dimensions": {
