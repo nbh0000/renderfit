@@ -13,3 +13,7 @@ tsconfig.tsbuildinfo
 
 # 로컬 데모 모드 저장소 (프로젝트 JSON · 업로드 파일)
 .data
+
+# Poly Haven CC0 메시 — 빌드 때 scripts/assets/polyhaven.mjs가 받아 온다 (76MB)
+/public/models/
+/public/textures/

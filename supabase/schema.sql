@@ -137,6 +137,23 @@ drop policy if exists "작업 수정은 본인만" on public.generation_jobs;
 create policy "작업 수정은 본인만" on public.generation_jobs
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+/*
+ * 갤러리는 결과에 딸린 작업에서 방 종류·스타일·프롬프트를 읽어 온다(inner join).
+ * 작업이 본인에게만 보이면 그 조인이 비어서, 공개한 시안도 방문자에게는 안 보인다.
+ * 그래서 "공개된 결과가 달린 작업"만 예외로 열어 둔다 — 상세 페이지에서 이미
+ * 공개하고 있는 정보(방·스타일·프롬프트)와 범위가 같다.
+ */
+drop policy if exists "공개된 시안의 작업은 누구나" on public.generation_jobs;
+create policy "공개된 시안의 작업은 누구나" on public.generation_jobs
+  for select using (
+    exists (
+      select 1
+        from public.generation_results r
+       where r.job_id = generation_jobs.id
+         and r.is_public = true
+    )
+  );
+
 /* ────────────────────────── generation_results ──────────────────────── */
 
 create table if not exists public.generation_results (
@@ -155,6 +172,8 @@ create table if not exists public.generation_results (
   -- 갤러리 노출용 — 공개 시점에 채운다 (profiles는 본인만 조회 가능해 조인할 수 없다)
   author_name text,
   view_count integer not null default 0,
+  -- 좋아요 합계 — gallery_likes 트리거가 맞춰 준다 (좋아요순 정렬에 쓴다)
+  like_count integer not null default 0,
   -- 갤러리 전/후 비교에 쓸 원본 사본(공개 버킷) 경로
   before_path text,
   created_at timestamptz not null default now()
@@ -163,6 +182,7 @@ create table if not exists public.generation_results (
 create index if not exists generation_results_job_idx on public.generation_results (job_id, position);
 create index if not exists generation_results_public_idx on public.generation_results (is_public, created_at desc);
 create index if not exists generation_results_views_idx on public.generation_results (is_public, view_count desc);
+create index if not exists generation_results_likes_idx on public.generation_results (is_public, like_count desc);
 
 alter table public.generation_results enable row level security;
 
@@ -188,7 +208,7 @@ returns integer
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_count integer;
 begin
@@ -199,9 +219,112 @@ begin
 
   return coalesce(v_count, 0);
 end;
-$;
+$$;
 
 grant execute on function public.increment_gallery_view(text) to anon, authenticated;
+
+/* ─────────────────────────── 갤러리 좋아요 ─────────────────────────── */
+
+create table if not exists public.gallery_likes (
+  result_id uuid not null references public.generation_results (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (result_id, user_id)
+);
+
+create index if not exists gallery_likes_user_idx on public.gallery_likes (user_id);
+
+alter table public.gallery_likes enable row level security;
+
+/*
+ * 누가 무엇을 좋아하는지는 남에게 보이지 않는다.
+ * 화면에 필요한 건 "내가 눌렀는지"와 합계뿐이고, 합계는 결과 행(like_count)에 있다.
+ */
+drop policy if exists "좋아요 조회는 본인만" on public.gallery_likes;
+create policy "좋아요 조회는 본인만" on public.gallery_likes
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "좋아요 등록은 본인만" on public.gallery_likes;
+create policy "좋아요 등록은 본인만" on public.gallery_likes
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "좋아요 취소는 본인만" on public.gallery_likes;
+create policy "좋아요 취소는 본인만" on public.gallery_likes
+  for delete using (auth.uid() = user_id);
+
+/* 좋아요순 정렬을 위해 합계를 결과 행에 들고 있는다 — 트리거가 맞춰 준다 */
+create or replace function public.sync_gallery_like_count()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'INSERT' then
+    update public.generation_results
+       set like_count = like_count + 1
+     where id = new.result_id;
+    return new;
+  end if;
+
+  update public.generation_results
+     set like_count = greatest(0, like_count - 1)
+   where id = old.result_id;
+  return old;
+end;
+$$;
+
+drop trigger if exists gallery_likes_count on public.gallery_likes;
+create trigger gallery_likes_count
+  after insert or delete on public.gallery_likes
+  for each row execute function public.sync_gallery_like_count();
+
+/*
+ * 좋아요 토글.
+ * 눌렸으면 취소하고 아니면 등록한 뒤, 바뀐 상태와 합계를 함께 돌려준다.
+ */
+create or replace function public.toggle_gallery_like(p_slug text)
+returns table (liked boolean, like_count integer)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_result uuid;
+  v_liked boolean;
+begin
+  if auth.uid() is null then
+    raise exception 'AUTH_REQUIRED';
+  end if;
+
+  select id into v_result
+    from public.generation_results
+   where slug = p_slug and is_public = true;
+
+  if v_result is null then
+    raise exception 'NOT_FOUND';
+  end if;
+
+  select exists (
+    select 1 from public.gallery_likes
+     where result_id = v_result and user_id = auth.uid()
+  ) into v_liked;
+
+  if v_liked then
+    delete from public.gallery_likes
+     where result_id = v_result and user_id = auth.uid();
+  else
+    insert into public.gallery_likes (result_id, user_id) values (v_result, auth.uid());
+  end if;
+
+  return query
+    select (not v_liked), r.like_count
+      from public.generation_results r
+     where r.id = v_result;
+end;
+$$;
+
+grant execute on function public.toggle_gallery_like(text) to authenticated;
 
 /* ───────────────────────────── 크레딧 함수 ──────────────────────────── */
 

@@ -318,3 +318,87 @@ async function mockGenerate(
     };
   });
 }
+
+/* ─────────────────── 가구 한 점 만들기 (텍스트 → 이미지) ─────────────────── */
+
+/**
+ * 설명만으로 가구 이미지를 한 장 만든다.
+ *
+ * 편집기가 이 이미지를 3D 씬에 세워 쓰기 때문에, 방 사진을 만드는 것과 요구가 완전히 다르다.
+ *  - 배경이 순백이어야 한다 — 3D에서 흰 픽셀을 지워 실루엣만 남기기 때문이다
+ *  - 물체가 잘리지 않고 정면에서 보여야 한다 — 잘린 사진을 세우면 다리가 없는 의자가 된다
+ *  - 그림자·바닥면이 없어야 한다 — 3D가 자기 그림자를 따로 만든다
+ */
+const PRODUCT_PROMPT = [
+  "Create a product photograph of a single piece of furniture, described below.",
+  "",
+  "Strict requirements:",
+  "- Pure white background (#FFFFFF), completely uniform, no gradient, no floor, no wall, no room.",
+  "- No shadow of any kind, no reflection, no pedestal.",
+  "- The entire object must be visible and centred, viewed straight from the front, slightly above eye level.",
+  "- Nothing must be cropped — leave a small margin on every side.",
+  "- One object only. No props, no people, no text, no watermark, no dimension labels.",
+  "- Even, neutral studio lighting so the real colour of the material is visible.",
+].join("\n");
+
+/**
+ * 만들 가구.
+ * 텍스트만 넣으므로 편집 API가 아니라 순수 생성 호출이다 (참조 이미지가 없다).
+ */
+export async function generateProductImage(description: string, size = 1024): Promise<GeneratedImage> {
+  if (isMockMode()) {
+    const svg = roomSceneSvg({
+      width: size,
+      height: size,
+      tone: "#B79A78",
+      seed: description,
+      caption: description.slice(0, 20),
+      subCaption: "mock 가구",
+    });
+    return { data: Buffer.from(svg, "utf8"), mimeType: "image/svg+xml", width: size, height: size };
+  }
+
+  const { GoogleGenAI } = await import("@google/genai");
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+  const parts = [{ text: `${PRODUCT_PROMPT}\n\nFurniture: ${description}` }];
+
+  // 정사각이라야 3D에서 세울 때 실루엣이 한쪽으로 눌리지 않는다.
+  const configs: Record<string, unknown>[] = [
+    { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "1:1", imageSize: "1K" } },
+    { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "1:1" } },
+    { responseModalities: ["IMAGE"] },
+  ];
+
+  let lastError = "이미지를 만들지 못했습니다.";
+
+  for (const config of configs) {
+    try {
+      const response = await ai.models.generateContent({
+        model: imageModel(),
+        contents: [{ role: "user", parts }],
+        config,
+      });
+
+      const inline = response.candidates
+        ?.flatMap((candidate) => candidate.content?.parts ?? [])
+        .find((part) => part.inlineData?.data)?.inlineData;
+
+      if (!inline?.data) {
+        lastError = "모델이 이미지를 돌려주지 않았습니다.";
+        continue;
+      }
+
+      return {
+        data: Buffer.from(inline.data, "base64"),
+        mimeType: inline.mimeType ?? "image/png",
+        width: size,
+        height: size,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message.slice(0, 160) : lastError;
+    }
+  }
+
+  throw new Error(lastError);
+}

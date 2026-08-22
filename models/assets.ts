@@ -1,4 +1,5 @@
 import type { Asset, ObjectType } from "@/scene/types";
+import { POLYHAVEN_EXTRA, POLYHAVEN_MODELS } from "./polyhaven.generated";
 
 /**
  * 가구 에셋 라이브러리.
@@ -32,7 +33,7 @@ function asset(
   };
 }
 
-export const ASSETS: Asset[] = [
+const BASE_ASSETS: Asset[] = [
   // ── Sofa ──
   asset("asset_sofa_beige_3", "3인용 베이지 소파", "sofa", "sofa", ["modern", "warm", "scandinavian"], [2200, 850, 950], ["소파", "sofa", "beige", "베이지", "3인용", "fabric", "warm"], "box", ["mat_beige_fabric"]),
   asset("asset_sofa_grey_2", "2인용 그레이 소파", "sofa", "sofa", ["modern", "minimal"], [1600, 800, 900], ["소파", "sofa", "grey", "그레이", "2인용", "fabric"], "box", ["mat_grey_fabric"]),
@@ -148,7 +149,44 @@ export const ASSETS: Asset[] = [
   asset("asset_projector_screen", "빔 스크린", "tv", "appliance", ["minimal", "contemporary"], [2000, 1200, 40], ["빔", "프로젝터", "스크린", "projector"], "plane", ["mat_white_paint"]),
 ];
 
-export const ASSET_MAP: Record<string, Asset> = Object.fromEntries(ASSETS.map((a) => [a.id, a]));
+/**
+ * 내려받은 CC0 메시를 카탈로그에 입힌다 (scripts/assets/polyhaven.mjs).
+ *
+ * 치수도 모델의 실제 경계 상자로 바꾼다. 손으로 적어 둔 mm를 그대로 두면
+ * 3D는 모델을 그 상자에 욱여넣어 보여 주는데, 평면도의 발자국과 눈에 보이는 형태가
+ * 서로 어긋난다 — 도면과 3D가 같은 가구를 그려야 한다.
+ */
+function withModels(assets: Asset[]): Asset[] {
+  const extra: Asset[] = POLYHAVEN_EXTRA.map((item) => ({
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    type: item.type,
+    style: item.style,
+    dimensions: item.dimensions,
+    thumbnailUrl: `/api/assets/thumbnail/${item.id}`,
+    modelUrl: item.modelUrl,
+    primitive: "box",
+    materials: item.materials,
+    tags: item.tags,
+    embedding: null,
+  }));
+
+  const dressed = assets.map((asset) => {
+    const model = POLYHAVEN_MODELS[asset.id];
+    return model
+      ? { ...asset, modelUrl: model.modelUrl, dimensions: model.dimensions }
+      : asset;
+  });
+
+  return [...dressed, ...extra];
+}
+
+export const ASSETS: Asset[] = withModels(BASE_ASSETS);
+
+export const ASSET_MAP: Record<string, Asset> = Object.fromEntries(
+  ASSETS.map((a) => [a.id, a])
+);
 
 /**
  * 키워드 기반 에셋 검색.

@@ -21,7 +21,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   if (isSupabaseConfigured()) {
     const supabase = await createServerSupabase();
-    if (supabase) items = await listPublicResults(supabase, 500);
+    if (supabase) items = await listPublicResults(supabase, { limit: 500 });
   } else {
     items = memoryListGallery();
   }

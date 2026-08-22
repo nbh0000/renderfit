@@ -7,6 +7,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { bumpViewCount, getPublicResult, memoryGetGallery, type GalleryItem } from "@/lib/gallery";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { GalleryDeleteButton } from "@/components/gallery/GalleryDeleteButton";
+import { LikeButton } from "@/components/gallery/LikeButton";
 import { PromptDetails } from "@/components/PromptDetails";
 import { extractUserRequest } from "@/lib/prompt";
 import { ROOM_MAP } from "@/config/rooms";
@@ -102,6 +103,10 @@ export default async function GalleryDetailPage({
           <span>{new Date(item.createdAt).toLocaleDateString("ko-KR")}</span>
 
           {item.canDelete && <GalleryDeleteButton slug={item.slug} />}
+        </div>
+
+        <div className="mt-4">
+          <LikeButton slug={item.slug} likeCount={item.likeCount} liked={item.likedByViewer} />
         </div>
 
         <div className="mt-5 overflow-hidden rounded-[var(--radius-card)] border border-line bg-sunken">

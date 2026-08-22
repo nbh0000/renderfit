@@ -25,10 +25,15 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const check = validateImageFile(file);
   if (!check.ok) return Response.json({ error: check.message }, { status: 400 });
 
+  // 도면은 사진과 분석 방식이 다르다 — 무엇을 올렸는지 함께 받아 Scene에 남긴다.
+  const kindField = form.get("kind");
+  const kind = kindField === "floorplan" ? "floorplan" : "photo";
+
   const project = await attachImage(loaded, {
     buffer: Buffer.from(await file.arrayBuffer()),
     mimeType: file.type,
     name: file.name,
+    kind,
   });
 
   return Response.json({ imageUrl: project.scene.source.imageUrl, project });

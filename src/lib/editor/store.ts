@@ -3,12 +3,16 @@
 import { create } from "zustand";
 import type { DesignProject, Scene, SceneObject } from "@/scene/types";
 import type { Job } from "@/lib/queue";
+import { SceneEngine } from "@/scene/engine/SceneEngine";
+import { executeCommand } from "@/ai/tools";
 
 /**
  * Editor 상태.
  *
- * Scene 조작 로직은 절대 여기에 두지 않는다 — 서버의 Scene Engine이 유일한 진실이고,
- * 이 스토어는 "무엇을 보여줄지"와 "무엇을 호출할지"만 관리한다.
+ * 서버의 Scene Engine이 여전히 유일한 진실이다. 다만 편집 한 번에 왕복 한 번을
+ * 기다리게 하면 지우기·놓기가 눈에 띄게 굼떠서, 같은 엔진을 브라우저에서도 한 번
+ * 돌려 화면을 먼저 바꾸고 서버 응답이 오면 그 값으로 맞춘다(낙관적 편집).
+ * Scene 조작 로직 자체는 여기에 두지 않는다 — 양쪽이 같은 모듈을 부른다.
  */
 
 /**
@@ -96,6 +100,8 @@ interface EditorState {
   setVariants: (variants: { label: string; imageUrl: string }[] | null) => void;
   applyVariant: (variant: { label: string; imageUrl: string }) => Promise<void>;
   placeAsset: (assetId: string, clientX: number, clientY: number) => Promise<void>;
+  /** 설명으로 가구를 만들어 씬에 넣는다 (이미지 생성 → 3D 배치) */
+  generateAsset: (description: string) => Promise<{ ok: boolean; message: string }>;
 
   runTool: (tool: string, args?: Record<string, unknown>) => Promise<ToolCallResult>;
   undo: () => Promise<void>;
@@ -106,6 +112,44 @@ interface EditorState {
   startJob: (path: string, body?: unknown) => Promise<Job | null>;
   saveVersion: (label: string) => Promise<void>;
   reload: () => Promise<void>;
+}
+
+/**
+ * operation 요청은 한 번에 하나씩만 보낸다.
+ *
+ * 서버는 요청마다 프로젝트를 새로 읽어 연산을 얹고 저장한다. 그래서 빠르게 연달아
+ * 지우면 두 요청이 같은 이전 상태를 읽고 마지막 것만 남아 — 지운 것이 되살아난다.
+ * 화면은 낙관적 편집으로 이미 즉시 반응하므로, 전송만 줄 세워도 체감은 그대로다.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+/** 아직 응답을 기다리는 요청 수. 0이 될 때만 서버 Scene으로 화면을 맞춘다. */
+let inFlight = 0;
+
+/**
+ * 같은 연산을 브라우저에서 미리 돌려 본다.
+ *
+ * 서버와 완전히 같은 모듈(executeCommand)을 쓰므로 결과가 어긋나지 않는다.
+ * 실패하거나 지원하지 않는 연산이면 null을 돌려주고 조용히 서버만 기다린다.
+ */
+function previewTool(
+  scene: Scene,
+  tool: string,
+  args: Record<string, unknown>
+): { scene: Scene; selectObjectId?: string } | null {
+  try {
+    const engine = new SceneEngine(scene);
+    const result = executeCommand(engine, {
+      tool,
+      arguments: args,
+      explanation: "",
+      confidence: 1,
+    });
+    if (!result.ok) return null;
+    return { scene: engine.getScene(), selectObjectId: result.selectObjectId };
+  } catch {
+    return null;
+  }
 }
 
 async function postJSON(url: string, body?: unknown) {
@@ -220,28 +264,96 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  /** Scene operation 실행 — 모든 편집은 이 경로를 지난다 */
-  runTool: async (tool, args = {}) => {
+  /**
+   * 설명 → 가구.
+   *
+   * 이미지 생성이 몇 초 걸려서 낙관적으로 미리 넣을 수가 없다 —
+   * 무엇을 넣을지(크기·모양)를 응답 전에는 알 수 없기 때문이다. 대신 진행 중임을 알린다.
+   */
+  generateAsset: async (description) => {
     const { projectId } = get();
-    const { ok, data } = await postJSON(`/api/projects/${projectId}/operations`, {
-      tool,
-      arguments: args,
-    });
+    set({ busy: "가구를 만들고 있습니다..." });
+
+    const { ok, data } = await postJSON(
+      `/api/projects/${projectId}/generate-asset`,
+      { description }
+    );
 
     if (!ok) {
-      const message = (data.error as string) ?? "실행에 실패했습니다.";
-      set({ lastMessage: message });
+      const message = (data.error as string) ?? "가구를 만들지 못했습니다.";
+      set({ busy: null, lastMessage: message });
       return { ok: false, message };
     }
 
-    const result = data.result as { message?: string; selectObjectId?: string } | undefined;
+    const message = `${data.name as string}을(를) 만들었습니다.`;
     set({
       scene: data.scene as Scene,
       canUndo: Boolean(data.canUndo),
       canRedo: Boolean(data.canRedo),
-      lastMessage: result?.message ?? null,
-      ...(result?.selectObjectId ? { selectedIds: [result.selectObjectId] } : {}),
+      busy: null,
+      lastMessage: message,
+      ...(data.objectId ? { selectedIds: [data.objectId as string] } : {}),
     });
+
+    return { ok: true, message };
+  },
+
+  /** Scene operation 실행 — 모든 편집은 이 경로를 지난다 */
+  runTool: async (tool, args = {}) => {
+    const { projectId, scene } = get();
+
+    // 1) 브라우저에서 먼저 돌려 화면을 즉시 바꾼다.
+    const preview = previewTool(scene, tool, args);
+    if (preview) {
+      set({
+        scene: preview.scene,
+        ...(preview.selectObjectId ? { selectedIds: [preview.selectObjectId] } : {}),
+      });
+    }
+
+    // 2) 서버에는 줄을 세워 하나씩 보낸다.
+    inFlight += 1;
+    const request = queue.then(() =>
+      postJSON(`/api/projects/${projectId}/operations`, { tool, arguments: args })
+    );
+    queue = request.catch(() => undefined);
+
+    let ok = false;
+    let data: Record<string, unknown> = {};
+    try {
+      ({ ok, data } = await request);
+    } catch {
+      ok = false;
+      data = {};
+    } finally {
+      inFlight -= 1;
+    }
+
+    if (!ok) {
+      const message = (data.error as string) ?? "실행에 실패했습니다.";
+      set({ lastMessage: message });
+      // 낙관적으로 바꿔 둔 화면이 서버와 어긋났다 — 서버 상태로 되돌린다.
+      if (preview) await get().reload();
+      return { ok: false, message };
+    }
+
+    const result = data.result as { message?: string; selectObjectId?: string } | undefined;
+
+    /*
+     * 아직 보낼 것이 남아 있으면 서버 Scene을 덮어쓰지 않는다.
+     * 덮어쓰면 뒤이어 낙관적으로 반영해 둔 편집이 잠깐 되살아났다가 다시 사라진다.
+     */
+    set(
+      inFlight > 0
+        ? { canUndo: Boolean(data.canUndo), canRedo: Boolean(data.canRedo) }
+        : {
+            scene: data.scene as Scene,
+            canUndo: Boolean(data.canUndo),
+            canRedo: Boolean(data.canRedo),
+            lastMessage: result?.message ?? null,
+            ...(result?.selectObjectId ? { selectedIds: [result.selectObjectId] } : {}),
+          }
+    );
 
     return { ok: true, message: result?.message ?? "", selectObjectId: result?.selectObjectId };
   },

@@ -100,6 +100,13 @@ export interface SceneObject {
   assetId: string | null;
   /** 외부 3D 모델(glTF/GLB) URL — 없으면 primitive로 그린다 */
   modelUrl?: string | null;
+  /**
+   * AI가 만들어 낸 가구 이미지.
+   *
+   * 메시가 없는 가구를 3D에 세울 때 쓴다 — 흰 배경을 지운 실루엣을 판으로 세운다.
+   * modelUrl(진짜 메시)이 있으면 그쪽이 우선이다.
+   */
+  imageUrl?: string | null;
   /** CC-BY 등 저작자 표시가 필요한 모델의 표기 문구 */
   attribution?: string | null;
   materialId: string | null;
@@ -281,6 +288,14 @@ export interface RoomSpec {
   areas?: RoomArea[];
   /** 층 목록. 비어 있으면 기준층 하나만 있는 것으로 본다 */
   levels?: Level[];
+  /**
+   * 면 마감재 (바닥·벽·천장).
+   *
+   * 예전에는 Scene에 담긴 재질 중 "floor" 태그가 붙은 것을 아무거나 골라 썼다.
+   * 그래서 벽지를 바꾸면 바닥이 같이 바뀌기도 했다. 어느 면에 무엇을 발랐는지
+   * 여기에 분명히 적어 둔다.
+   */
+  finishes?: { floor?: string | null; wall?: string | null; ceiling?: string | null };
 }
 
 export interface CameraSpec {
@@ -318,6 +333,8 @@ export interface Material {
   normalMapUrl?: string | null;
   heightMapUrl?: string | null;
   textureUrl?: string | null;
+  /** AO·거칠기·금속감이 한 장에 든 맵 (R=AO, G=roughness, B=metallic) */
+  armMapUrl?: string | null;
   /** 텍스처 반복 스케일 */
   scale: number;
   tags: string[];
@@ -328,9 +345,19 @@ export interface RenderSettings {
   quality: "preview" | "final";
 }
 
+/** 올린 원본이 무엇인지 — 분석 방식이 달라진다 */
+export type SourceKind = "photo" | "floorplan";
+
 /** 업로드 원본 + AI 분석 산출물 */
 export interface SceneSource {
   imageUrl: string | null;
+  /**
+   * 사진인지 도면인지.
+   *
+   * 공간 분석 프롬프트가 완전히 달라진다 — 사진은 원근에서 치수를 역산해야 하지만
+   * 도면은 벽 선과 치수가 이미 그려져 있어 그대로 읽으면 된다. 없으면 사진으로 본다.
+   */
+  kind?: SourceKind;
   generatedImageUrl: string | null;
   depthMapUrl: string | null;
   segmentationUrl: string | null;

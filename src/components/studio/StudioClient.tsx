@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { MODES, MODE_MAP, type ModeId } from "@/config/modes";
 import { ROOMS, type RoomId } from "@/config/rooms";
 import { STYLES, type StyleId } from "@/config/styles";
@@ -75,6 +76,48 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
 
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [running, setRunning] = useState(false);
+  const [openingEditor, setOpeningEditor] = useState(false);
+  const router = useRouter();
+  /**
+   * 올린 도면을 편집기로 보낸다.
+   *
+   * 스튜디오 결과는 AI가 도면을 보고 그린 그림이라 치수가 보장되지 않는다.
+   * 편집기는 도면에서 벽·개구부를 읽어 Scene을 세우므로 실제 치수를 지킨다 —
+   * 같은 원본을 새 프로젝트로 올려 주고 넘긴다. 분석은 편집기가 알아서 시작한다.
+   */
+  const openInEditor = useCallback(async () => {
+    if (!source) return;
+    setOpeningEditor(true);
+
+    try {
+      const created = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: source.file.name || "도면 프로젝트" }),
+      });
+      const project = await created.json();
+      if (!created.ok) throw new Error(project.error ?? "프로젝트를 만들지 못했습니다.");
+
+      const form = new FormData();
+      form.append("image", source.file);
+      form.append("kind", "floorplan");
+
+      const uploaded = await fetch(`/api/projects/${project.project.id}/images`, {
+        method: "POST",
+        body: form,
+      });
+      if (!uploaded.ok) {
+        const data = await uploaded.json().catch(() => ({}));
+        throw new Error(data.error ?? "도면을 올리지 못했습니다.");
+      }
+
+      router.push(`/editor/${project.project.id}`);
+    } catch (err) {
+      setOpeningEditor(false);
+      toast(err instanceof Error ? err.message : "편집기로 보내지 못했습니다.", "error");
+    }
+  }, [router, source, toast]);
+
   const [floorplan, setFloorplan] = useState<{ open: boolean; url: string | null; loading: boolean }>(
     { open: false, url: null, loading: false }
   );
@@ -456,6 +499,9 @@ export function StudioClient({ local, initialAccount, user, initialModeId }: Stu
             // "이 결과로 다시 생성" — 그 결과를 만든 설정 그대로 재실행한다.
             onRegenerate={() => void generate(job?.settings)}
             onFloorplan={requestFloorplan}
+            // 도면을 올렸을 때만 — 사진은 이미 편집기 쪽 흐름이 따로 있다.
+            onOpenInEditor={mode.inputType === "floorplan" ? openInEditor : undefined}
+            openingEditor={openingEditor}
           />
         </section>
       </main>

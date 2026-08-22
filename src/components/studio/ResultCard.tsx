@@ -13,6 +13,9 @@ interface Props {
   onRegenerate: () => void;
   onDownload: () => void;
   onFloorplan: () => void;
+  /** 올린 원본을 편집기로 보내 도면대로 다시 세운다. 도면을 올렸을 때만 준다 */
+  onOpenInEditor?: () => void;
+  openingEditor?: boolean;
   onPublish: () => void;
   /** 공개된 경우 생성된 갤러리 slug */
   publishedSlug?: string | null;
@@ -27,6 +30,8 @@ export function ResultCard({
   onRegenerate,
   onDownload,
   onFloorplan,
+  onOpenInEditor,
+  openingEditor,
   onPublish,
   publishedSlug,
   publishing,
@@ -76,6 +81,21 @@ export function ResultCard({
           />
           <CardAction onClick={onRegenerate} label="다시 생성" />
         </div>
+        {/*
+          이 시안은 AI가 도면을 보고 그린 그림이라 치수가 보장되지 않는다.
+          도면대로 세우려면 편집기(도면 → 벽·개구부 → 3D)로 보내야 한다.
+        */}
+        {onOpenInEditor && (
+          <button
+            type="button"
+            onClick={onOpenInEditor}
+            disabled={openingEditor}
+            className="mt-1 w-full rounded-md border border-accent bg-accent-soft px-2 py-1.5 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
+          >
+            {openingEditor ? "편집기로 보내는 중…" : "편집기에서 도면대로 다시 만들기"}
+          </button>
+        )}
+
         <div className="mt-1 flex gap-1">
           <button
             type="button"

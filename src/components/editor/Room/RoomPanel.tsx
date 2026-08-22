@@ -13,6 +13,7 @@ import {
 } from "@/scene/geometry";
 import { NumberField } from "../shared/NumberField";
 import { ElectricalPanel } from "./ElectricalPanel";
+import { FinishPanel } from "./FinishPanel";
 
 /**
  * 공간 패널 — 실측 치수 입력 + 벽·개구부 편집.
@@ -249,6 +250,11 @@ export function RoomPanel() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section>
+        <h3 className="mb-1.5 text-[11.5px] font-semibold text-ink">마감재</h3>
+        <FinishPanel />
       </section>
 
       <section>

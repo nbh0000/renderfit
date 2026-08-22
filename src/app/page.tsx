@@ -4,7 +4,11 @@ import { BRAND } from "@/config/brand";
 import { STYLES } from "@/config/styles";
 import { StartChat } from "@/components/StartChat";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
+import { GalleryMarquee, type GalleryMarqueeItem } from "@/components/gallery/GalleryMarquee";
 import { getViewer } from "@/lib/auth";
+import { createServerSupabase } from "@/lib/supabase/server";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { listPublicResults, memoryListGallery, styleBlurb, type GalleryItem } from "@/lib/gallery";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
@@ -25,6 +29,39 @@ const LINKS = [
 
 /** 첫 화면에 노출할 스타일 — 자주 찾는 순서 */
 const FEATURED_STYLES = ["modern", "nordic", "minimal", "natural-wood", "hotel", "cafe"];
+
+/**
+ * 메인 갤러리 띠에 태울 개수.
+ *
+ * 열마다 사본을 한 벌 더 쓰므로 실제 이미지 수는 이 값의 두 배가 된다.
+ * 첫 화면 무게를 생각해 넉넉히 흐를 만큼만 가져온다.
+ */
+const GALLERY_PREVIEW_COUNT = 12;
+
+/** 공개된 시안을 띠에 쓸 형태로 추린다. 없거나 못 읽으면 섹션 자체를 접는다. */
+async function loadGalleryPreview(): Promise<GalleryMarqueeItem[]> {
+  let items: GalleryItem[] = [];
+
+  if (isSupabaseConfigured()) {
+    const supabase = await createServerSupabase();
+    if (supabase) items = await listPublicResults(supabase, { limit: GALLERY_PREVIEW_COUNT });
+  } else {
+    items = memoryListGallery().slice(0, GALLERY_PREVIEW_COUNT);
+  }
+
+  return items.map((item) => ({
+    slug: item.slug,
+    imageUrl: item.imageUrl,
+    roomLabel: item.roomLabel,
+    styleLabel: item.styleLabel,
+    blurb: styleBlurb(item.styleId),
+    authorName: item.authorName,
+    viewCount: item.viewCount,
+    likeCount: item.likeCount,
+    width: item.width,
+    height: item.height,
+  }));
+}
 
 /**
  * 배경 — 흰 바탕 위에 회색 음영만 아주 옅게 깐다.
@@ -48,7 +85,7 @@ function GlowBackdrop() {
  * 다만 첫 동작은 여전히 챗 하나다.
  */
 export default async function HomePage() {
-  const viewer = await getViewer();
+  const [viewer, galleryItems] = await Promise.all([getViewer(), loadGalleryPreview()]);
   const authed = Boolean(viewer.userId);
   const styles = STYLES.filter((style) => FEATURED_STYLES.includes(style.id));
 
@@ -119,6 +156,27 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* 갤러리 — 공개된 시안이 있을 때만 띄운다 */}
+      {galleryItems.length > 0 && (
+        <section className="border-t border-line">
+          <div className="mx-auto max-w-[1180px] px-5 pt-12 sm:px-8">
+            <div className="flex items-end justify-between gap-4">
+              <h2 className="text-[17px] font-semibold tracking-tight">갤러리</h2>
+              <Link
+                href="/gallery"
+                className="hidden shrink-0 text-[12.5px] text-muted hover:text-ink sm:block"
+              >
+                전체 보기 →
+              </Link>
+            </div>
+          </div>
+
+          <div className="mx-auto mt-6 max-w-[1180px] px-5 pb-12 sm:px-8">
+            <GalleryMarquee items={galleryItems} />
+          </div>
+        </section>
+      )}
 
       {/* 스타일 */}
       <section className="border-t border-line bg-surface">

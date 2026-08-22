@@ -3,7 +3,15 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { listPublicResults, memoryListGallery, type GalleryItem } from "@/lib/gallery";
+import { LikeButton } from "@/components/gallery/LikeButton";
+import {
+  GALLERY_SORTS,
+  listPublicResults,
+  memoryListGallery,
+  parseSort,
+  type GalleryItem,
+  type GallerySort,
+} from "@/lib/gallery";
 import { BRAND } from "@/config/brand";
 import { getViewer } from "@/lib/auth";
 
@@ -20,20 +28,25 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function GalleryPage() {
-  const viewer = await getViewer();
-  let items: GalleryItem[] = [];
-
+async function loadItems(sort: GallerySort, viewerId: string | null): Promise<GalleryItem[]> {
   if (isSupabaseConfigured()) {
     const supabase = await createServerSupabase();
-    if (supabase) items = await listPublicResults(supabase);
-  } else {
-    items = memoryListGallery();
+    return supabase ? listPublicResults(supabase, { sort, viewerId }) : [];
   }
+  return memoryListGallery(sort);
+}
+
+export default async function GalleryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string }>;
+}) {
+  const [viewer, params] = await Promise.all([getViewer(), searchParams]);
+  const sort = parseSort(params.sort);
+  const items = await loadItems(sort, viewer.userId);
 
   return (
     <AppShell active="gallery" authed={Boolean(viewer.userId)}>
-
       <main className="mx-auto max-w-[1100px] px-4 py-10 sm:px-6">
         <h1 className="serif-display text-[26px] leading-tight sm:text-[30px]">
           인테리어 시안 갤러리
@@ -41,6 +54,28 @@ export default async function GalleryPage() {
         <p className="mt-2 max-w-lg text-[14px] leading-relaxed text-ink-soft">
           사용자가 공개에 동의한 시안만 모았습니다. 방 종류와 스타일로 살펴보세요.
         </p>
+
+        {/* 정렬 — 링크라서 주소를 그대로 공유할 수 있다 */}
+        <nav aria-label="정렬" className="mt-5 flex gap-1.5">
+          {GALLERY_SORTS.map((option) => {
+            const active = option.id === sort;
+            return (
+              <Link
+                key={option.id}
+                href={option.id === "recent" ? "/gallery" : `/gallery?sort=${option.id}`}
+                aria-current={active ? "page" : undefined}
+                className={[
+                  "rounded-full border px-3 py-1.5 text-[12.5px] transition-colors",
+                  active
+                    ? "border-ink bg-ink text-white"
+                    : "border-line text-muted hover:border-line-strong hover:text-ink",
+                ].join(" ")}
+              >
+                {option.label}
+              </Link>
+            );
+          })}
+        </nav>
 
         {items.length === 0 ? (
           <div className="mt-8 flex min-h-[240px] flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-line-strong bg-surface/60 px-6 text-center">
@@ -58,8 +93,8 @@ export default async function GalleryPage() {
         ) : (
           <ul className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {items.map((item) => (
-              <li key={item.slug}>
-                <Link href={`/gallery/${encodeURIComponent(item.slug)}`} className="group block">
+              <li key={item.slug} className="group">
+                <Link href={`/gallery/${encodeURIComponent(item.slug)}`} className="block">
                   <span className="relative block overflow-hidden rounded-[var(--radius-card)] border border-line bg-sunken">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -89,12 +124,26 @@ export default async function GalleryPage() {
                     )}
                   </span>
                   <p className="mt-1.5 text-[13px] font-medium">{item.title}</p>
-                  <p className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-muted">
-                    <span className="truncate">{item.authorName}</span>
-                    <span aria-hidden>·</span>
-                    <span className="shrink-0">조회 {item.viewCount.toLocaleString("ko-KR")}</span>
-                  </p>
                 </Link>
+
+                {/*
+                  좋아요 버튼은 링크 밖에 둔다 — 링크 안에 버튼을 넣으면
+                  누를 때마다 상세 페이지로 함께 넘어간다.
+                */}
+                <div className="mt-1 flex items-center justify-between gap-2 text-[11.5px] text-muted">
+                  <span className="truncate">
+                    {item.authorName}
+                    <span aria-hidden> · </span>
+                    조회 {item.viewCount.toLocaleString("ko-KR")}
+                  </span>
+                  <LikeButton
+                    slug={item.slug}
+                    likeCount={item.likeCount}
+                    liked={item.likedByViewer}
+                    compact
+                    className="shrink-0"
+                  />
+                </div>
               </li>
             ))}
           </ul>

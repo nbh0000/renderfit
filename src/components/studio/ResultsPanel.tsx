@@ -18,6 +18,9 @@ interface Props {
   estimatedSeconds?: number;
   onRegenerate: () => void;
   onFloorplan: (result: GenerationJob["results"][number]) => void;
+  /** 도면을 올렸을 때만 준다 — 원본 도면을 편집기로 보내 도면대로 다시 세운다 */
+  onOpenInEditor?: () => void;
+  openingEditor?: boolean;
 }
 
 export function ResultsPanel({
@@ -28,6 +31,8 @@ export function ResultsPanel({
   estimatedSeconds,
   onRegenerate,
   onFloorplan,
+  onOpenInEditor,
+  openingEditor,
 }: Props) {
   const { toast } = useToast();
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
@@ -137,6 +142,8 @@ export function ResultsPanel({
             onDownload={() => void download(result)}
             onRegenerate={onRegenerate}
             onFloorplan={() => onFloorplan(result)}
+            onOpenInEditor={onOpenInEditor}
+            openingEditor={openingEditor}
             onPublish={() => void publish(result)}
             publishedSlug={published[result.id] ?? null}
             publishing={publishing === result.id}

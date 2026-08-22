@@ -1,11 +1,12 @@
 import type { Material } from "@/scene/types";
+import { TEXTURED_MATERIALS, type TexturedMaterial } from "./materials.generated";
 
 /**
  * 기본 PBR 재질 카탈로그.
  * 3D 뷰에서는 그대로 MeshStandardMaterial 파라미터로 쓰이고,
  * 2.5D 뷰에서는 baseColor가 오버레이 색으로 쓰인다.
  */
-export const DEFAULT_MATERIALS: Material[] = [
+const FLAT_MATERIALS: Material[] = [
   {
     id: "mat_white_paint",
     name: "화이트 페인트",
@@ -160,6 +161,24 @@ export const DEFAULT_MATERIALS: Material[] = [
     tags: ["plant", "green", "식물"],
   },
 ];
+
+/**
+ * 마감재 카탈로그.
+ *
+ * 사진 텍스처가 있는 것(scripts/assets/textures.mjs가 받아 온 CC0 PBR)을 앞에 둔다 —
+ * 재질 고르기 화면에서 결이 보이는 쪽이 먼저 나와야 고를 맛이 난다.
+ * 색만 있는 기본 재질은 뒤에 남겨 둔다 (텍스처를 못 받은 환경에서도 비지 않는다).
+ */
+export const DEFAULT_MATERIALS: Material[] = [...TEXTURED_MATERIALS, ...FLAT_MATERIALS];
+
+/** 면에 바를 수 있는 마감재 — 재질 고르기 화면이 이 값으로 탭을 나눈다 */
+export type MaterialSurface = TexturedMaterial["surface"][number];
+
+export function materialsForSurface(surface: MaterialSurface): Material[] {
+  const textured = TEXTURED_MATERIALS.filter((material) => material.surface.includes(surface));
+  const flat = FLAT_MATERIALS.filter((material) => material.tags.includes(surface));
+  return [...textured, ...flat];
+}
 
 export const MATERIAL_MAP: Record<string, Material> = Object.fromEntries(
   DEFAULT_MATERIALS.map((m) => [m.id, m])

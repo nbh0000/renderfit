@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ExternalAssetsTab } from "./ExternalAssetsTab";
+import { GenerateAssetBox } from "./GenerateAssetBox";
 import { useEditorStore, useSelectedObject } from "@/lib/editor/store";
 import type { Asset } from "@/scene/types";
 import { DEFAULT_MATERIALS } from "@/models/materials";
@@ -117,6 +118,10 @@ function AssetsTab() {
         onChange={(event) => setQuery(event.target.value)}
         className="mb-2 h-8 w-full rounded-md border border-line bg-surface px-2 text-[12px]"
       />
+
+      <div className="mb-2">
+        <GenerateAssetBox />
+      </div>
 
       {loading ? (
         <p className="py-6 text-center text-[12px] text-muted">불러오는 중…</p>

@@ -43,7 +43,7 @@ export function defaultLights(): SceneLight[] {
   ];
 }
 
-export function createEmptyScene(roomType = "living_room"): Scene {
+export function createEmptyScene(roomType = "living-room"): Scene {
   return {
     sceneId: createId("scene"),
     version: 1,

@@ -19,6 +19,9 @@ import {
   wallDirection,
   wallLength,
 } from "@/scene/geometry";
+import { openingObjectIds } from "@/scene/openings";
+import { planCenter } from "@/scene/placement";
+import { ROOM_MAP, type RoomId } from "@/config/rooms";
 
 /**
  * CAD 산출물 생성.
@@ -89,17 +92,8 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
   const roomWidth = room.dimensions.width;
   const roomLength = room.dimensions.length;
 
-  /*
-   * 이미 벽 개구부로 옮겨진 창·문은 가구로 다시 그리지 않는다.
-   * 둘 다 그리면 평면도에 창문이 두 개로 보인다 — 벽에 뚫린 것 하나, 바닥에 놓인 것 하나.
-   */
-  const convertedIds = new Set(
-    (room.walls ?? [])
-      .flatMap((wall) => wall.openings ?? [])
-      .map((opening) => opening.id)
-      .filter((id) => id.startsWith("op_auto_"))
-      .map((id) => id.replace("op_auto_", ""))
-  );
+  // 이미 벽 개구부로 옮겨진 창·문은 가구로 다시 그리지 않는다.
+  const convertedIds = openingObjectIds(room);
 
   const objects: PlanObject[] = scene.objects
     .filter((object) => object.visibility)
@@ -109,8 +103,7 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
     .filter((object) => !convertedIds.has(object.id))
     .map((object: SceneObject) => {
       // screen.x(0~1) → 방 가로 위치, depth(0~1, 클수록 안쪽) → 방 세로 위치
-      const cx = (object.screen.x + object.screen.width / 2) * roomWidth;
-      const cy = object.depth * roomLength;
+      const { cx, cy } = planCenter(object.screen, object.depth, room);
 
       return {
         id: object.id,
@@ -126,7 +119,8 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
 
   return {
     projectName,
-    roomType: room.type,
+    // 도면에는 사람이 읽는 이름을 적는다 — 분석기가 준 id("bedroom")가 그대로 찍히면 안 된다.
+    roomType: ROOM_MAP[room.type as RoomId]?.label ?? room.type,
     walls: room.walls ?? [],
     measured: Boolean(room.measured),
     roomWidth,

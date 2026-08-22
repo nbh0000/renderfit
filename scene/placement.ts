@@ -24,6 +24,87 @@ const WALL_HUGGING = new Set(["sofa", "bed", "cabinet", "tv", "appliance", "desk
 /** 배치 규칙을 적용하지 않는 것 (공간 자체 / 천장에 달리는 것) */
 const SKIP = new Set(["wall", "floor", "ceiling", "window", "door", "lamp", "decoration"]);
 
+/**
+ * 바닥에 깔리는 것 — 다른 가구와 겹쳐도 정상이다.
+ * 러그는 침대·소파 밑에 깔리므로 충돌로 보면 엉뚱한 곳으로 밀려난다.
+ */
+const FLAT = new Set(["rug"]);
+
+/* ───────────────── 좌표 규칙 (정규화 ↔ 평면 mm ↔ 3D 월드 m) ───────────────── */
+
+/**
+ * 정규화 좌표(screen.x·depth) → 평면 중심(mm, 좌측 하단 원점).
+ *
+ * 평면도·입면도·3D·개구부 추출이 모두 이 한 규칙을 따라야 한다.
+ * 예전에는 뷰마다 따로 계산해서, 같은 물체가 평면도와 3D에서 다른 자리에 있었다.
+ */
+export function planCenter(
+  screen: { x: number; width: number },
+  depth: number,
+  room: RoomSpec
+): { cx: number; cy: number } {
+  return {
+    cx: (screen.x + screen.width / 2) * room.dimensions.width,
+    cy: depth * room.dimensions.length,
+  };
+}
+
+/**
+ * 평면 중심(mm) → 3D 월드의 x·z (m).
+ * 3D는 방 중심이 원점이고, 안쪽(depth가 큰 쪽)이 -z다.
+ */
+export function worldXZ(center: { cx: number; cy: number }, room: RoomSpec): [number, number] {
+  return [
+    (center.cx - room.dimensions.width / 2) / 1000,
+    (room.dimensions.length / 2 - center.cy) / 1000,
+  ];
+}
+
+/** 물체가 바닥·벽·천장 중 어디에 붙는지 */
+export type Mounting = "floor" | "wall" | "ceiling";
+
+/**
+ * 붙는 자리를 정한다.
+ *
+ * 조명은 종류만으로는 천장등인지 스탠드인지 알 수 없어서 사진 속 세로 위치로 가른다 —
+ * 천장등은 사진 위쪽에, 플로어 스탠드는 아래쪽에 찍힌다.
+ * 이 판단이 없으면 천장등이 방 한가운데 바닥에 놓인 상자로 그려진다.
+ */
+export function mountingOf(object: SceneObject): Mounting {
+  // 평면 분석이 붙는 자리를 직접 알려 준 경우엔 추측하지 않는다.
+  const declared = object.metadata?.mounting;
+  if (declared === "floor" || declared === "wall" || declared === "ceiling") return declared;
+
+  if (object.type === "window" || object.type === "door") return "wall";
+  if (object.type === "tv" || object.type === "decoration") return "wall";
+  if (object.type === "lamp") {
+    return object.screen.y + object.screen.height / 2 < 0.35 ? "ceiling" : "floor";
+  }
+  return "floor";
+}
+
+/** 벽에 걸린 것이 바닥에 처박히지 않도록 두는 최소 높이 (mm) */
+const MIN_WALL_MOUNT_MM = 300;
+
+/**
+ * 바닥에서 물체 중심까지의 높이 (mm).
+ * 벽에 걸리는 것은 사진 속 세로 위치를, 천장에 매다는 것은 천장고를 따른다.
+ */
+export function mountHeight(object: SceneObject, room: RoomSpec): number {
+  const height = object.dimensions.height * object.transform.scale[1];
+
+  switch (mountingOf(object)) {
+    case "wall": {
+      const fromPhoto = (1 - (object.screen.y + object.screen.height / 2)) * room.dimensions.height;
+      return Math.max(MIN_WALL_MOUNT_MM, fromPhoto);
+    }
+    case "ceiling":
+      return Math.max(0, room.dimensions.height - height / 2);
+    default:
+      return height / 2;
+  }
+}
+
 export interface Footprint {
   /** 중심 (mm) */
   cx: number;
@@ -35,9 +116,6 @@ export interface Footprint {
 
 /** 회전을 반영한 평면 점유 영역 */
 export function footprintOf(object: SceneObject, room: RoomSpec): Footprint {
-  const roomWidth = room.dimensions.width;
-  const roomLength = room.dimensions.length;
-
   const width = object.dimensions.width * object.transform.scale[0];
   const depth = object.dimensions.depth * object.transform.scale[2];
 
@@ -45,8 +123,7 @@ export function footprintOf(object: SceneObject, room: RoomSpec): Footprint {
   const quarter = Math.round((((object.screen.rotation % 360) + 360) % 360) / 90) % 2;
 
   return {
-    cx: (object.screen.x + object.screen.width / 2) * roomWidth,
-    cy: object.depth * roomLength,
+    ...planCenter(object.screen, object.depth, room),
     width: quarter === 0 ? width : depth,
     depth: quarter === 0 ? depth : width,
   };
@@ -164,7 +241,10 @@ export function placeObject(
   if (!object || SKIP.has(object.type)) return null;
 
   const others = scene.objects
-    .filter((other) => other.id !== objectId && other.visibility && !SKIP.has(other.type))
+    .filter(
+      (other) =>
+        other.id !== objectId && other.visibility && !SKIP.has(other.type) && !FLAT.has(other.type)
+    )
     .map((other) => footprintOf(other, room));
 
   let footprint = footprintOf(object, room);
@@ -188,7 +268,8 @@ export function placeObject(
     footprint = snapToWall(footprint, room, side);
   }
 
-  footprint = slideUntilFree(footprint, others, room, side);
+  // 러그는 가구 밑에 깔리는 것이 정상이라 비켜 놓지 않는다.
+  if (!FLAT.has(object.type)) footprint = slideUntilFree(footprint, others, room, side);
   footprint = clampToRoom(footprint, room);
 
   return {

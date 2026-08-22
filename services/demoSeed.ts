@@ -1,4 +1,4 @@
-import type { DesignProject, SceneObject } from "@/scene/types";
+import type { DesignProject, RoomSpec, SceneObject } from "@/scene/types";
 import { SceneEngine, createId, createSceneObject } from "@/scene/engine/SceneEngine";
 import { createEmptyScene, createVersion } from "@/scene/serialization";
 import { getProjectRepository } from "@/lib/db";
@@ -6,6 +6,7 @@ import { getStorage } from "@/lib/storage";
 import { renderSceneToSvg } from "@/ai/providers/mock/sceneRaster";
 import { ASSET_MAP } from "@/models/assets";
 import { MATERIAL_MAP } from "@/models/materials";
+import { planCenter, worldXZ } from "@/scene/placement";
 
 /**
  * Demo Mode 시드.
@@ -29,8 +30,18 @@ const JAPANDI_LIVING_ROOM: Placement[] = [
   { assetId: "asset_floor_lamp", name: "플로어 램프", screen: { x: 0.87, y: 0.32, width: 0.06, height: 0.32 }, depth: 0.6 },
 ];
 
+/** 시드 배치의 월드 좌표 (m) — screen.x·depth가 가리키는 자리와 같아야 한다 */
+function worldPosition(
+  placement: Placement,
+  heightMm: number,
+  room: RoomSpec
+): [number, number, number] {
+  const [x, z] = worldXZ(planCenter(placement.screen, placement.depth, room), room);
+  return [x, heightMm / 2000, z];
+}
+
 export async function seedDemoProject(ownerId: string | null): Promise<DesignProject> {
-  const scene = createEmptyScene("living_room");
+  const scene = createEmptyScene("living-room");
   const engine = new SceneEngine({ ...scene, styleId: "japandi" });
 
   // 창문은 구조물이므로 잠가 둔다 (실수로 옮기지 않도록).
@@ -72,7 +83,7 @@ export async function seedDemoProject(ownerId: string | null): Promise<DesignPro
           dimensions: asset.dimensions,
           screen: { ...placement.screen, rotation: 0 },
           transform: {
-            position: [(placement.screen.x - 0.5) * 5, 0, (1 - placement.depth) * 4],
+            position: worldPosition(placement, asset.dimensions.height, scene.room),
             rotation: [0, 0, 0],
             scale: [1, 1, 1],
           },

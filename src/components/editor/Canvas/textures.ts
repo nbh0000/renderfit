@@ -146,6 +146,36 @@ export function paintTexture(baseColor: string, repeat = 3): THREE.Texture {
 }
 
 /** 재질 태그로 알맞은 텍스처를 고른다 */
+/**
+ * 실제 사진 텍스처.
+ *
+ * 절차적 텍스처는 색만 다른 면을 만들어 냈다 — 마루와 타일이 같아 보였다.
+ * 마감재에 사진이 붙어 있으면(scripts/assets/textures.mjs) 그것을 우선 쓴다.
+ * repeatMeters는 텍스처 한 장이 덮는 실제 크기라, 면의 크기에 맞춰 반복 수를 정한다.
+ */
+const fileCache = new Map<string, THREE.Texture>();
+
+export function imageTexture(
+  url: string,
+  options: { srgb?: boolean; repeat?: number } = {}
+): THREE.Texture | undefined {
+  if (typeof document === "undefined") return undefined;
+
+  const { srgb = true, repeat = 1 } = options;
+  const key = `${url}:${srgb}:${repeat}`;
+  const hit = fileCache.get(key);
+  if (hit) return hit;
+
+  const texture = new THREE.TextureLoader().load(url);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeat, repeat);
+  texture.anisotropy = 8;
+  if (srgb) texture.colorSpace = THREE.SRGBColorSpace;
+
+  fileCache.set(key, texture);
+  return texture;
+}
+
 export function textureForMaterial(
   baseColor: string,
   tags: string[] = []
@@ -166,4 +196,51 @@ export function textureForMaterial(
     return paintTexture(baseColor, 2);
   }
   return undefined;
+}
+
+/**
+ * 흰 배경을 지운 텍스처.
+ *
+ * AI로 만든 가구 이미지는 순백 배경 위에 물체 하나만 있다. 그대로 판에 붙이면
+ * 흰 사각형이 방 한가운데 서 있게 되므로, 배경에 가까운 픽셀의 알파를 0으로 만든다.
+ * 가장자리는 부드럽게 깎아 실루엣이 톱니처럼 보이지 않게 한다.
+ */
+export function cutoutTexture(url: string): THREE.Texture | undefined {
+  if (typeof document === "undefined") return undefined;
+
+  const key = `cutout:${url}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+
+  // 먼저 빈 텍스처를 만들어 캐시에 넣고, 이미지가 오면 채운다 (렌더를 막지 않는다).
+  const { canvas, ctx } = makeCanvas(1024);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  cache.set(key, texture);
+
+  const image = new Image();
+  image.crossOrigin = "anonymous";
+  image.onerror = () => console.warn("[3d] 가구 이미지를 불러오지 못했습니다:", url);
+  image.onload = () => {
+    const size = canvas.width;
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(image, 0, 0, size, size);
+
+    const frame = ctx.getImageData(0, 0, size, size);
+    const pixels = frame.data;
+
+    for (let i = 0; i < pixels.length; i += 4) {
+      const min = Math.min(pixels[i], pixels[i + 1], pixels[i + 2]);
+      // 240 이상이면 배경, 214~240은 가장자리로 보고 서서히 지운다.
+      if (min >= 240) pixels[i + 3] = 0;
+      else if (min > 214) pixels[i + 3] = Math.round(((240 - min) / 26) * 255);
+    }
+
+    ctx.putImageData(frame, 0, 0);
+    texture.needsUpdate = true;
+  };
+  image.src = url;
+
+  return texture;
 }

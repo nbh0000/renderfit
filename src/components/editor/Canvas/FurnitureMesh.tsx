@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Component, Suspense, useMemo, type ReactNode } from "react";
 import { RoundedBox, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import type { Material, SceneObject } from "@/scene/types";
-import { textureForMaterial } from "./textures";
+import { cutoutTexture, imageTexture, textureForMaterial } from "./textures";
 
 /**
  * 가구 지오메트리.
@@ -21,15 +21,33 @@ export interface MeshProps {
   selected: boolean;
 }
 
-function useStandardMaterial(material?: Material) {
+/**
+ * 재질 → three 머티리얼.
+ *
+ * 사진 텍스처(CC0 PBR)가 붙어 있으면 그것을 쓰고, 없으면 예전처럼 절차적으로 그린다.
+ * ARM 맵은 R=AO, G=거칠기, B=금속감이 한 장에 들어 있는 형식이라 세 채널을 나눠 물린다.
+ */
+export function useStandardMaterial(material?: Material) {
   return useMemo(() => {
     const color = material?.baseColor ?? "#b9b2a8";
-    const map = textureForMaterial(color, material?.tags ?? []);
+    const photo = material?.textureUrl
+      ? imageTexture(material.textureUrl, { repeat: 1 })
+      : undefined;
+
+    const normal = material?.normalMapUrl
+      ? imageTexture(material.normalMapUrl, { srgb: false })
+      : undefined;
+    const arm = material?.armMapUrl ? imageTexture(material.armMapUrl, { srgb: false }) : undefined;
+
     return new THREE.MeshStandardMaterial({
-      color,
+      color: photo ? "#ffffff" : color,
       roughness: material?.roughness ?? 0.75,
       metalness: material?.metallic ?? 0,
-      map,
+      map: photo ?? textureForMaterial(color, material?.tags ?? []),
+      normalMap: normal ?? null,
+      aoMap: arm ?? null,
+      roughnessMap: arm ?? null,
+      metalnessMap: arm ?? null,
     });
   }, [material]);
 }
@@ -68,9 +86,32 @@ function Legs({
 }
 
 /**
+ * 모델을 못 불러왔을 때 primitive로 물러난다.
+ *
+ * 메시는 public/models 아래에 있고 빌드 때 받아 온다(scripts/assets/polyhaven.mjs).
+ * 그 단계가 실패했거나 파일 하나가 깨져도 3D 뷰 전체가 죽으면 안 된다 —
+ * useGLTF는 실패하면 렌더 중에 throw하므로 경계가 없으면 캔버스가 통째로 내려간다.
+ */
+class ModelBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.warn("[3d] 모델을 불러오지 못해 기본 형태로 그립니다:", error);
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+/**
  * 외부 glTF 모델.
  *
- * Poly Pizza 같은 무료 소스에서 받은 모델은 크기가 제각각이라, 불러온 뒤
+ * 무료 소스(Poly Haven CC0)에서 받은 모델은 크기가 제각각이라, 불러온 뒤
  * 바운딩 박스를 재서 Scene에 적힌 실제 치수(mm)에 맞춰 균일 축소·확대한다.
  * 이렇게 해야 도면의 치수와 3D의 크기가 어긋나지 않는다.
  */
@@ -118,24 +159,72 @@ function ExternalModel({
   return <primitive object={model} />;
 }
 
-export function FurnitureMesh({ object, material, selected }: MeshProps) {
+/**
+ * AI가 만든 가구 이미지를 세운다.
+ *
+ * 메시가 아니라 잘라낸 판이라 옆에서 보면 얇다. 그래도 평면도의 발자국과 크기는
+ * 정확하고, 마지막 실사 렌더가 이 판을 사진으로 바꿔 주므로 결과물에서는 드러나지 않는다.
+ * 판을 두 장 겹쳐 세워 비스듬히 봐도 완전히 사라지지는 않게 한다.
+ */
+function ImageBillboard({
+  url,
+  width,
+  height,
+  depth,
+}: {
+  url: string;
+  width: number;
+  height: number;
+  depth: number;
+}) {
+  const texture = cutoutTexture(url);
+  if (!texture) return null;
+
+  return (
+    <group>
+      <mesh position={[0, 0, 0]} castShadow>
+        <planeGeometry args={[width, height]} />
+        <meshStandardMaterial
+          map={texture}
+          transparent
+          alphaTest={0.35}
+          side={THREE.DoubleSide}
+          roughness={0.9}
+        />
+      </mesh>
+      {/* 옆에서 봤을 때의 두께감 — 깊이의 절반만큼 뒤에 한 장 더 */}
+      <mesh position={[0, 0, -depth / 2]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[depth, height]} />
+        <meshStandardMaterial
+          map={texture}
+          transparent
+          alphaTest={0.35}
+          opacity={0.55}
+          side={THREE.DoubleSide}
+          roughness={0.9}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * 가구 하나.
+ *
+ * 실제 메시 > AI 생성 이미지 > 타입별 primitive 순으로 그린다.
+ */
+export function FurnitureMesh(props: MeshProps) {
+  const { object, material, selected } = props;
+  const mat = useStandardMaterial(material);
+
   const w = object.dimensions.width * MM * object.transform.scale[0];
   const h = object.dimensions.height * MM * object.transform.scale[1];
   const d = object.dimensions.depth * MM * object.transform.scale[2];
 
-  const mat = useStandardMaterial(material);
-  const accent = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#3a332c", roughness: 0.5 }),
-    []
-  );
-
-  // 외부 모델이 있으면 그것이 우선이다 — primitive는 모델이 없을 때의 대비책이다.
-  if (object.modelUrl) {
+  if (!object.modelUrl && object.imageUrl) {
     return (
       <group>
-        <Suspense fallback={<mesh><boxGeometry args={[w, h, d]} /><primitive object={mat} attach="material" /></mesh>}>
-          <ExternalModel url={object.modelUrl} width={w} height={h} depth={d} />
-        </Suspense>
+        <ImageBillboard url={object.imageUrl} width={w} height={h} depth={d} />
         {selected && (
           <mesh>
             <boxGeometry args={[w * 1.04, h * 1.04, d * 1.04]} />
@@ -145,6 +234,43 @@ export function FurnitureMesh({ object, material, selected }: MeshProps) {
       </group>
     );
   }
+
+  if (!object.modelUrl) return <PrimitiveMesh {...props} />;
+
+  return (
+    <group>
+      <ModelBoundary fallback={<PrimitiveMesh {...props} />}>
+        <Suspense
+          fallback={
+            <mesh>
+              <boxGeometry args={[w, h, d]} />
+              <primitive object={mat} attach="material" />
+            </mesh>
+          }
+        >
+          <ExternalModel url={object.modelUrl} width={w} height={h} depth={d} />
+        </Suspense>
+      </ModelBoundary>
+      {selected && (
+        <mesh>
+          <boxGeometry args={[w * 1.04, h * 1.04, d * 1.04]} />
+          <meshBasicMaterial color="#000000" wireframe />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+function PrimitiveMesh({ object, material, selected }: MeshProps) {
+  const w = object.dimensions.width * MM * object.transform.scale[0];
+  const h = object.dimensions.height * MM * object.transform.scale[1];
+  const d = object.dimensions.depth * MM * object.transform.scale[2];
+
+  const mat = useStandardMaterial(material);
+  const accent = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#3a332c", roughness: 0.5 }),
+    []
+  );
 
   const outline = selected ? (
     <mesh>

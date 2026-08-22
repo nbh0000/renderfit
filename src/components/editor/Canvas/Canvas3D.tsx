@@ -8,7 +8,7 @@ import { useEditorStore } from "@/lib/editor/store";
 import type { Scene, SceneObject } from "@/scene/types";
 import { FurnitureMesh } from "./FurnitureMesh";
 import { NavGizmo, type GizmoHandlers } from "./NavGizmo";
-import { woodTexture, paintTexture } from "./textures";
+import { imageTexture, woodTexture, paintTexture } from "./textures";
 import {
   ensureRoom,
   levelIdOf,
@@ -18,6 +18,8 @@ import {
   wallLength,
   wallSpans,
 } from "@/scene/geometry";
+import { openingObjectIds } from "@/scene/openings";
+import { mountHeight, planCenter, worldXZ } from "@/scene/placement";
 
 /**
  * 3D 뷰.
@@ -45,23 +47,16 @@ export function worldFromScene(
   room: Scene["room"],
   override?: { x?: number; depth?: number }
 ): [number, number, number] {
-  const roomWidth = room.dimensions.width * MM;
-  const roomLength = room.dimensions.length * MM;
-  const screenX = override?.x ?? object.screen.x;
+  const screen = { x: override?.x ?? object.screen.x, width: object.screen.width };
   const depth = override?.depth ?? object.depth;
 
-  const x = (screenX + object.screen.width / 2 - 0.5) * roomWidth;
-  const z = (0.5 - depth) * roomLength;
-  const y = (object.dimensions.height * MM * object.transform.scale[1]) / 2;
-
-  // 벽에 붙는 요소는 바닥이 아니라 화면 높이를 따른다.
-  if (object.type === "window" || object.type === "decoration" || object.type === "tv") {
-    const roomHeight = room.dimensions.height * MM;
-    const wallY = (1 - (object.screen.y + object.screen.height / 2)) * roomHeight;
-    return [x, Math.max(0.3, wallY), -roomLength / 2 + 0.06];
-  }
-
-  return [x, y, z];
+  /*
+   * 평면 위치도 높이도 공용 규칙(scene/placement)을 쓴다.
+   * 예전에는 벽에 걸리는 것의 z를 뒷벽으로 고정해서 옆벽의 TV가 뒷벽으로 끌려갔고,
+   * 천장등은 바닥에 놓여 방 한가운데 상자가 하나 생겼다.
+   */
+  const [x, z] = worldXZ(planCenter(screen, depth, room), room);
+  return [x, mountHeight(object, room) * MM, z];
 }
 
 function clamp01(value: number): number {
@@ -170,11 +165,39 @@ function RoomShell({ scene }: { scene: Scene }) {
   const length = room.dimensions.length * MM;
   const height = room.dimensions.height * MM;
 
-  const floorColor = scene.materials.find((m) => m.tags?.includes("floor"))?.baseColor ?? "#c9a173";
-  const wallColor = scene.materials.find((m) => m.tags?.includes("wall"))?.baseColor ?? "#efe9e0";
+  /*
+   * 바닥·벽 마감.
+   *
+   * Scene에 사진 텍스처가 붙은 마감재(CC0 PBR)가 들어와 있으면 그것을 쓴다.
+   * 텍스처 한 장이 덮는 실제 크기(scale, m)를 알고 있으므로, 방 크기로 나눠
+   * 반복 수를 정한다 — 그래야 6m 거실이든 2m 화장실이든 널 폭이 같아 보인다.
+   */
+  const finish = (surface: "floor" | "wall" | "ceiling") => {
+    const chosen = room.finishes?.[surface];
+    if (chosen) return scene.materials.find((m) => m.id === chosen);
+    // 예전 프로젝트는 면을 지정하지 않았다 — 태그로 어림잡던 방식을 그대로 남겨 둔다.
+    return scene.materials.find((m) => m.tags?.includes(surface));
+  };
 
-  const floorMap = useMemo(() => woodTexture(floorColor, 4), [floorColor]);
-  const wallMap = useMemo(() => paintTexture(wallColor, 2), [wallColor]);
+  const floorFinish = finish("floor");
+  const wallFinish = finish("wall");
+
+  const floorColor = floorFinish?.baseColor ?? "#c9a173";
+  const wallColor = wallFinish?.baseColor ?? "#efe9e0";
+
+  const floorMap = useMemo(() => {
+    const tiles = Math.max(1, Math.round(Math.max(width, length) / (floorFinish?.scale || 2)));
+    return floorFinish?.textureUrl
+      ? imageTexture(floorFinish.textureUrl, { repeat: tiles })
+      : woodTexture(floorColor, 4);
+  }, [floorFinish, floorColor, width, length]);
+
+  const wallMap = useMemo(() => {
+    const tiles = Math.max(1, Math.round(Math.max(width, height) / (wallFinish?.scale || 4)));
+    return wallFinish?.textureUrl
+      ? imageTexture(wallFinish.textureUrl, { repeat: tiles })
+      : paintTexture(wallColor, 2);
+  }, [wallFinish, wallColor, width, height]);
 
   const walls = room.walls ?? [];
 
@@ -239,7 +262,7 @@ function WallMesh({
   wall: import("@/scene/types").WallSegment;
   room: Scene["room"];
   color: string;
-  map: THREE.Texture;
+  map?: THREE.Texture;
 }) {
   const spans = useMemo(() => wallSpans(wall), [wall]);
   const length = wallLength(wall);
@@ -756,7 +779,14 @@ export function Canvas3D() {
 
   if (!scene?.room) return null;
 
-  const objects = scene.objects.filter((object) => object.visibility);
+  /*
+   * 벽 개구부가 된 창·문은 벽이 이미 그리고 있다 (WallMesh의 창틀·유리).
+   * 객체로 또 그리면 같은 창문이 두 개로 보인다. 평면도(toPlanData)와 같은 기준으로 뺀다.
+   */
+  const converted = openingObjectIds(scene.room);
+  const objects = scene.objects.filter(
+    (object) => object.visibility && !converted.has(object.id)
+  );
 
   /*
    * 그림자를 다시 구워야 하는 시점을 판단하는 값.

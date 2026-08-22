@@ -68,6 +68,36 @@
   letter-spacing: -0.02em;
 }
 
+/*
+ * 갤러리 띠 — 이미지 열이 아래에서 위로 끊김 없이 흐른다.
+ *
+ * 트랙 안에 같은 목록을 두 벌 넣고 정확히 절반만 밀어 올리면 이음매가 보이지 않는다.
+ * 카드 사이 간격은 gap이 아니라 카드 아래 여백으로 준다 — gap을 쓰면 두 벌의 높이가
+ * 간격 하나만큼 어긋나 한 바퀴마다 툭 끊긴다.
+ */
+@keyframes marquee-up {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0, -50%, 0);
+  }
+}
+
+@layer utilities {
+  .marquee-track {
+    animation: marquee-up var(--marquee-duration, 60s) linear infinite;
+    will-change: transform;
+  }
+
+  /* 애니메이션을 줄여 달라고 한 사람에게는 그냥 목록으로 보인다 */
+  @media (prefers-reduced-motion: reduce) {
+    .marquee-track {
+      animation: none;
+    }
+  }
+}
+
 /* 스크롤바를 UI 크롬처럼 눈에 띄지 않게 */
 @layer utilities {
   .scrollbar-slim {

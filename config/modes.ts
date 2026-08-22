@@ -137,8 +137,14 @@ export const MODES: Mode[] = [
   },
   {
     id: "plan2render",
-    label: "평면도 → 렌더",
-    description: "2D 평면도나 SketchUp 스크린샷을 실내 투시 렌더로 만듭니다.",
+    label: "평면도 → 투시 미리보기",
+    /*
+     * 이 모드는 도면을 3D로 세우는 것이 아니라, 도면 그림을 보고 AI가 투시 사진을 그리는 것이다.
+     * 벽 위치·치수가 도면과 일치한다는 보장이 없으므로 이름과 설명에서 분명히 해 둔다.
+     * 치수를 지켜야 하면 편집기(도면 → Scene → 3D → 렌더)로 보낸다.
+     */
+    description:
+      "도면을 참고해 AI가 투시 이미지를 그립니다. 빠르지만 치수는 보장되지 않아요 — 도면대로 뽑으려면 편집기로 보내세요.",
     inputType: "floorplan",
     promptTemplate: [
       "{{structureLock}}",

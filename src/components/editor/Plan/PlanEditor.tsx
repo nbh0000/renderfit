@@ -61,9 +61,17 @@ type DragMode =
   | { kind: "vertex"; target: HitTarget }
   | { kind: "endpoint"; id: string; part: "start" | "end" }
   | { kind: "marquee"; from: [number, number]; to: [number, number] }
-  | { kind: "pan"; last: [number, number] };
+  /*
+   * 화면 이동.
+   * 오른쪽 버튼으로 시작한 이동은 "제자리에서 놓으면 그리기 취소"를 겸하므로
+   * 시작 지점을 들고 있다가 놓을 때 움직인 거리를 본다.
+   */
+  | { kind: "pan"; last: [number, number]; from: [number, number]; rightButton: boolean };
 
 const NUDGE_MM = 50;
+
+/** 이만큼도 안 움직였으면 끈 것이 아니라 누른 것으로 본다 (px) */
+const CLICK_SLOP_PX = 4;
 
 export function PlanEditor() {
   const scene = useEditorStore((state) => state.scene);
@@ -354,7 +362,12 @@ export function PlanEditor() {
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
 
     if (event.button === 1 || event.button === 2) {
-      setDrag({ kind: "pan", last: [event.clientX, event.clientY] });
+      setDrag({
+        kind: "pan",
+        last: [event.clientX, event.clientY],
+        from: [event.clientX, event.clientY],
+        rightButton: event.button === 2,
+      });
       return;
     }
     if (event.button !== 0) return;
@@ -532,10 +545,26 @@ export function PlanEditor() {
     [annotations, areas, objects, roomLengthMm, roomWidthMm, runTool, walls]
   );
 
+  /**
+   * 그리던 것을 물린다.
+   *
+   * 그리는 중이면 그 도형만 버리고 도구는 남긴다 — 이어서 새로 그릴 수 있다.
+   * 그리는 중이 아니면 도구 자체를 놓는다 (Esc와 같은 자리).
+   */
+  const cancelDrawing = useCallback(() => {
+    if (draft) {
+      setDraft(null);
+      setTip(null);
+      setHint("그리기를 취소했습니다");
+      return;
+    }
+    if (planTool !== "select") setPlanTool("select");
+  }, [draft, planTool, setPlanTool]);
+
   const onPointerMove = (event: React.PointerEvent) => {
     if (drag?.kind === "pan") {
       view.panBy(event.clientX - drag.last[0], event.clientY - drag.last[1]);
-      setDrag({ kind: "pan", last: [event.clientX, event.clientY] });
+      setDrag({ ...drag, last: [event.clientX, event.clientY] });
       return;
     }
 
@@ -573,6 +602,17 @@ export function PlanEditor() {
     if (drag?.kind === "marquee") {
       const ids = itemsInMarquee(drag.from, drag.to, hitContext);
       if (ids.length > 0) select(ids);
+    }
+
+    /*
+     * 우클릭으로 그리기를 빠져나간다.
+     *
+     * 벽·실·폴리라인은 더블클릭해야 끝나서, 한 번 시작하면 그 전까지 다른 일을 할 수 없었다.
+     * 끌지 않고 제자리에서 뗀 우클릭만 취소로 본다 — 우클릭 드래그는 그대로 화면 이동이다.
+     */
+    if (drag?.kind === "pan" && drag.rightButton) {
+      const moved = Math.hypot(event.clientX - drag.from[0], event.clientY - drag.from[1]);
+      if (moved <= CLICK_SLOP_PX) cancelDrawing();
     }
 
     setDrag(null);
@@ -888,11 +928,11 @@ export function PlanEditor() {
 const TOOL_HINT: Record<string, string> = {
   select:
     "클릭 선택 · Shift 추가 · 빈 곳 드래그로 여러 개 · 방향키 이동 · Delete 삭제 · 벽 안쪽 더블클릭으로 실 만들기",
-  wall: "이어서 클릭하면 계속 그립니다 · Shift 각도 자유 · Backspace 한 점 취소 · Esc 종료",
-  room: "모서리를 찍고 더블클릭으로 닫기 · 벽 안쪽 더블클릭이면 자동으로 잡습니다",
-  dimension: "시작 → 끝 → 띄울 위치 순서로 세 번 클릭합니다",
-  text: "클릭한 자리에 문구를 넣습니다",
-  polyline: "여러 점을 찍고 더블클릭으로 끝냅니다",
+  wall: "이어서 클릭하면 계속 그립니다 · Shift 각도 자유 · Backspace 한 점 취소 · 우클릭/Esc 취소",
+  room: "모서리를 찍고 더블클릭으로 닫기 · 벽 안쪽 더블클릭이면 자동 · 우클릭 취소",
+  dimension: "시작 → 끝 → 띄울 위치 순서로 세 번 클릭합니다 · 우클릭 취소",
+  text: "클릭한 자리에 문구를 넣습니다 · 우클릭 취소",
+  polyline: "여러 점을 찍고 더블클릭으로 끝냅니다 · 우클릭 취소",
 };
 
 function cursorFor(tool: string, hover: HitTarget | null, drag: DragMode | null): string {

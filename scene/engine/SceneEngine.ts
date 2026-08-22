@@ -468,6 +468,29 @@ export class SceneEngine {
     );
   }
 
+  /**
+   * 면 마감재를 바꾼다 (바닥·벽·천장).
+   *
+   * 재질이 Scene에 없으면 함께 담는다 — 3D는 scene.materials에서 맵을 찾는다.
+   * CHANGE_ROOM으로 커밋하므로 실행 취소가 그대로 동작한다.
+   */
+  setSurfaceFinish(
+    surface: "floor" | "wall" | "ceiling",
+    material: Material | null
+  ): CommitResult {
+    const room = ensureRoom(this.scene.room);
+
+    if (material && !this.scene.materials.some((item) => item.id === material.id)) {
+      this.scene = { ...this.scene, materials: [...this.scene.materials, material] };
+    }
+
+    const label = { floor: "바닥재", wall: "벽 마감", ceiling: "천장 마감" }[surface];
+    return this.commitRoom(
+      { finishes: { ...room.finishes, [surface]: material?.id ?? null } },
+      `${label} 변경`
+    );
+  }
+
   /** 실측 치수 입력 — 벽이 자동 생성된 직사각형이면 새 치수로 다시 만든다 */
   setRoomDimensions(
     dimensions: Partial<RoomSpec["dimensions"]>,
@@ -976,6 +999,15 @@ export function createSceneObject(
     dimensions: partial.dimensions ?? { width: 1000, height: 800, depth: 800 },
     screen: partial.screen ?? { x: 0.4, y: 0.5, width: 0.2, height: 0.2, rotation: 0 },
     assetId: partial.assetId ?? null,
+    /*
+     * 메시·생성 이미지·저작자 표시·층.
+     * 여기서 빠뜨리면 카탈로그의 3D 모델이 조용히 사라지고 상자로만 그려진다 —
+     * 실제로 그래서 add_object가 modelUrl을 나중에 따로 붙이고 있었다.
+     */
+    modelUrl: partial.modelUrl ?? null,
+    imageUrl: partial.imageUrl ?? null,
+    attribution: partial.attribution ?? null,
+    ...(partial.levelId ? { levelId: partial.levelId } : {}),
     materialId: partial.materialId ?? null,
     visibility: partial.visibility ?? true,
     locked: partial.locked ?? false,

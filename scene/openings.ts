@@ -21,6 +21,23 @@ export function isOpeningObject(object: SceneObject): boolean {
   return object.type === "window" || object.type === "door";
 }
 
+/**
+ * 이미 벽 개구부가 된 창·문 객체의 id.
+ *
+ * 벽에 뚫린 개구부와 객체를 둘 다 그리면 같은 창문이 두 개로 보인다 —
+ * 평면도에서는 벽에 하나·바닥에 하나, 3D에서는 벽 구멍 하나·허공에 뜬 판 하나.
+ * 평면도·3D가 같은 기준으로 걸러 내도록 여기서 한 번만 계산한다.
+ */
+export function openingObjectIds(room: RoomSpec): Set<string> {
+  return new Set(
+    (room.walls ?? [])
+      .flatMap((wall) => wall.openings ?? [])
+      .map((opening) => opening.id)
+      .filter((id) => id.startsWith("op_auto_"))
+      .map((id) => id.slice("op_auto_".length))
+  );
+}
+
 /** 점에서 선분(벽)까지의 거리와, 벽 시작점 기준 투영 거리 */
 export function projectOntoWall(
   wall: WallSegment,

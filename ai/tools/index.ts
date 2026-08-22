@@ -80,6 +80,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     parameters: { objectId: "string", materialId: "string" },
   },
   {
+    name: "set_surface_material",
+    description: "바닥·벽·천장의 마감재를 바꾼다.",
+    parameters: { surface: "floor|wall|ceiling", materialId: "string" },
+  },
+  {
     name: "change_color",
     description: "객체의 색상을 변경한다.",
     parameters: { objectId: "string", color: "string" },
@@ -307,6 +312,7 @@ export function objectFromAsset(
       name: asset.name,
       category: asset.category,
       assetId: asset.id,
+      modelUrl: asset.modelUrl ?? null,
       materialId: asset.materials[0] ?? null,
       dimensions: asset.dimensions,
       screen: {
@@ -497,6 +503,21 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       }
       const result = engine.changeMaterial(objectId, materialId);
       return toResult(command, result, "재질을 변경했습니다.", objectId);
+    }
+
+    case "set_surface_material": {
+      const surface = args.surface as "floor" | "wall" | "ceiling";
+      if (!["floor", "wall", "ceiling"].includes(surface)) {
+        return fail("바닥·벽·천장 중 하나를 지정해 주세요.");
+      }
+
+      const materialId = args.materialId as string | null;
+      const material = materialId ? MATERIAL_MAP[materialId] : null;
+      if (materialId && !material) return fail("존재하지 않는 재질입니다.");
+
+      const result = engine.setSurfaceFinish(surface, material ?? null);
+      const label = { floor: "바닥재", wall: "벽 마감", ceiling: "천장 마감" }[surface];
+      return toResult(command, result, material ? `${label}를 ${material.name}(으)로 바꿨습니다.` : `${label}를 되돌렸습니다.`);
     }
 
     case "change_color": {

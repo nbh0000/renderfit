@@ -91,7 +91,7 @@ export class MockVisionProvider implements VisionProviderShape {
     await delay(700);
 
     const seed = hash(image.url);
-    const roomTypes = ["living_room", "bedroom", "kitchen"] as const;
+    const roomTypes = ["living-room", "bedroom", "kitchen"] as const;
     // 이미지 URL이 방 종류 힌트를 담고 있으면 우선한다.
     const hinted = roomTypes.find((type) => image.url.includes(type));
     const roomType = hinted ?? roomTypes[seed % roomTypes.length];
