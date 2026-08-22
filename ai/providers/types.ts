@@ -60,10 +60,26 @@ export interface PlanOpening {
   sillMm: number;
 }
 
+/**
+ * 벽 한 장.
+ *
+ * 예전에는 외곽선의 변과 1:1이라 방을 하나밖에 못 그렸다. 아파트를 담으려면
+ * 거실과 방 사이를 가르는 내벽이 있어야 하므로, 벽을 외곽선에서 떼어 내
+ * 좌표를 직접 갖는 선분으로 둔다.
+ */
 export interface PlanWall {
   name: string;
+  start: PlanPoint;
+  end: PlanPoint;
   thicknessMm: number;
   openings: PlanOpening[];
+}
+
+/** 실(방) 하나 — 이름과 경계 폴리곤 */
+export interface PlanRoom {
+  name: string;
+  type: string;
+  polygon: PlanPoint[];
 }
 
 export interface PlanFurniture {
@@ -91,9 +107,11 @@ export interface RoomPlan {
   finishes?: { floor: string | null; wall: string | null; ceiling: string | null };
   /** 사진을 찍은 카메라가 등지고 있는 벽 번호 — 0이어야 도면 방향이 사진과 맞는다 */
   cameraWallIndex: number;
-  /** 바닥 외곽선 (반시계). 직사각형이 아닐 수 있다 */
+  /** 전체 바닥 외곽선 (반시계). 방 여러 개를 통틀어 감싸는 경계다 */
   outline: PlanPoint[];
-  /** outline의 변과 1:1. walls[i]는 outline[i] → outline[i+1] */
+  /** 실 목록. 원룸이면 하나, 아파트면 거실·방·주방·욕실이 각각 들어온다 */
+  rooms: PlanRoom[];
+  /** 외벽과 내벽을 통틀어. 좌표를 직접 갖는 선분이다 */
   walls: PlanWall[];
   furniture: PlanFurniture[];
 }

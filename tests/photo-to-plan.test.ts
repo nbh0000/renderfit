@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analysisToScene } from "@/services/projectService";
 import { createEmptyScene } from "@/scene/serialization";
-import { toPlanData } from "@/services/cadExport";
+import { buildPlanSvg, toPlanData } from "@/services/cadExport";
 import { buildElevationSvg } from "@/services/elevationExport";
 import { mountingOf, planCenter } from "@/scene/placement";
 import { toPlanAnalysis } from "@/ai/providers/vision";
@@ -165,5 +165,87 @@ describe("도면 산출물", () => {
     const wall = plan.walls.find((item) => item.openings.length > 0)!;
     const elevation = buildElevationSvg({ plan, wall });
     expect(elevation).not.toContain("NaN");
+  });
+});
+
+/**
+ * 다실 평면.
+ *
+ * 예전에는 외곽선 하나 = 실 하나였다. 그래서 24평 아파트 도면을 넣으면
+ * 24평짜리 원룸이 나왔다 — 거실도 방도 주방도 구분되지 않았다.
+ */
+const APARTMENT = {
+  roomType: "living-room",
+  ceilingHeightMm: 2400,
+  cameraWallIndex: 0,
+  outline: [
+    { x: 0, y: 0 },
+    { x: 8000, y: 0 },
+    { x: 8000, y: 9000 },
+    { x: 0, y: 9000 },
+  ],
+  rooms: [
+    { name: "거실", type: "living-room", polygon: [{ x: 0, y: 0 }, { x: 4800, y: 0 }, { x: 4800, y: 5000 }, { x: 0, y: 5000 }] },
+    { name: "안방", type: "bedroom", polygon: [{ x: 4800, y: 0 }, { x: 8000, y: 0 }, { x: 8000, y: 4000 }, { x: 4800, y: 4000 }] },
+    { name: "주방", type: "kitchen", polygon: [{ x: 0, y: 5000 }, { x: 4800, y: 5000 }, { x: 4800, y: 9000 }, { x: 0, y: 9000 }] },
+    { name: "욕실", type: "bathroom", polygon: [{ x: 4800, y: 4000 }, { x: 8000, y: 4000 }, { x: 8000, y: 9000 }, { x: 4800, y: 9000 }] },
+  ],
+  walls: [
+    { name: "남측 외벽", start: { x: 0, y: 0 }, end: { x: 8000, y: 0 }, thicknessMm: 200, openings: [] },
+    { name: "동측 외벽", start: { x: 8000, y: 0 }, end: { x: 8000, y: 9000 }, thicknessMm: 200, openings: [] },
+    { name: "북측 외벽", start: { x: 8000, y: 9000 }, end: { x: 0, y: 9000 }, thicknessMm: 200, openings: [] },
+    { name: "서측 외벽", start: { x: 0, y: 9000 }, end: { x: 0, y: 0 }, thicknessMm: 200, openings: [] },
+    // 내벽 — 이게 있어야 아파트가 아파트다
+    {
+      name: "거실·안방 사이", start: { x: 4800, y: 0 }, end: { x: 4800, y: 9000 }, thicknessMm: 100,
+      openings: [{ kind: "door", name: "안방 문", offsetMm: 1000, widthMm: 900, heightMm: 2100, sillMm: 0 }],
+    },
+    { name: "거실·주방 사이", start: { x: 0, y: 5000 }, end: { x: 4800, y: 5000 }, thicknessMm: 100, openings: [] },
+  ],
+  furniture: [],
+};
+
+describe("다실 평면", () => {
+  const apartment = analysisToScene(createEmptyScene(), toPlanAnalysis(APARTMENT)!);
+
+  it("실이 하나로 뭉개지지 않는다", () => {
+    expect(apartment.room.areas).toHaveLength(4);
+    expect(apartment.room.areas!.map((area) => area.name)).toEqual([
+      "거실",
+      "안방",
+      "주방",
+      "욕실",
+    ]);
+  });
+
+  it("실 경계마다 벽이 선다", () => {
+    // 모델이 준 벽(6개)만 쓰지 않고 실 경계에서 계산하므로 더 촘촘하다.
+    const walls = apartment.room.walls!;
+    expect(walls.length).toBeGreaterThanOrEqual(APARTMENT.rooms.length * 2);
+
+    // 거실과 안방을 가르는 x=4800 선 위의 내벽이 있어야 한다
+    const partition = walls.filter(
+      (wall) => wall.start[0] === 4800 && wall.end[0] === 4800
+    );
+    expect(partition.length).toBeGreaterThan(0);
+  });
+
+  it("모델이 준 개구부가 계산된 벽으로 옮겨 붙는다", () => {
+    // 벽을 다시 짜면서 창·문을 잃어버리면 도면이 통째로 못 쓰게 된다.
+    const doors = apartment
+      .room.walls!.flatMap((wall) => wall.openings)
+      .filter((opening) => opening.type === "door");
+    expect(doors.map((door) => door.name)).toContain("안방 문");
+  });
+
+  it("평면도에 실마다 이름과 면적이 찍힌다", () => {
+    const svg = buildPlanSvg(toPlanData(apartment, "아파트"));
+    for (const name of ["거실", "안방", "주방", "욕실"]) expect(svg).toContain(name);
+    expect(svg).not.toContain("NaN");
+  });
+
+  it("전체 크기는 외곽선을 따른다", () => {
+    expect(apartment.room.dimensions.width).toBe(8000);
+    expect(apartment.room.dimensions.length).toBe(9000);
   });
 });

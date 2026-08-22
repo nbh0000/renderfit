@@ -186,20 +186,16 @@ function planToScene(scene: Scene, plan: RoomPlan): Scene {
   const length = Math.max(...outline.map((point) => point.y));
   const dimensions = { width, length, height };
 
-  const walls: WallSegment[] = outline.map((start, index) => {
-    const end = outline[(index + 1) % outline.length];
-    const source = plan.walls[index];
-
-    return {
-      id: createId("wall"),
-      name: source?.name ?? `벽 ${index + 1}`,
-      start: [start.x, start.y] as [number, number],
-      end: [end.x, end.y] as [number, number],
-      thickness: source?.thicknessMm ?? 150,
-      height,
-      openings: (source?.openings ?? []).map((opening) => toWallOpening(opening, height)),
-    };
-  });
+  // 외벽과 내벽을 통틀어 그대로 옮긴다 — 내벽이 있어야 아파트가 원룸으로 안 그려진다.
+  const walls: WallSegment[] = plan.walls.map((source) => ({
+    id: createId("wall"),
+    name: source.name,
+    start: [source.start.x, source.start.y] as [number, number],
+    end: [source.end.x, source.end.y] as [number, number],
+    thickness: source.thicknessMm,
+    height,
+    openings: source.openings.map((opening) => toWallOpening(opening, height)),
+  }));
 
   const objects = plan.furniture.map((item, index) =>
     createSceneObject(
@@ -254,14 +250,13 @@ function planToScene(scene: Scene, plan: RoomPlan): Scene {
       dimensions,
       walls,
       finishes,
-      areas: [
-        {
-          id: createId("area"),
-          name: ROOM_MAP[plan.roomType as RoomId]?.label ?? "실",
-          points: outline.map((point) => [point.x, point.y] as [number, number]),
-          showArea: true,
-        },
-      ],
+      // 실마다 이름과 면적이 도면에 찍힌다 (거실 18.4㎡, 안방 11.2㎡ …)
+      areas: plan.rooms.map((item) => ({
+        id: createId("area"),
+        name: item.name,
+        points: item.polygon.map((point) => [point.x, point.y] as [number, number]),
+        showArea: true,
+      })),
     },
     objects,
     materials: [...scene.materials, ...extraMaterials],

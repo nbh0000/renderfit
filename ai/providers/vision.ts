@@ -3,12 +3,14 @@ import type {
   ImageRef,
   PlanFurniture,
   PlanOpening,
+  PlanPoint,
+  PlanRoom,
   PlanWall,
   RoomAnalysis,
   VisionProvider,
 } from "./types";
 import type { SceneObject } from "@/scene/types";
-import { ROOMS, type RoomId } from "@/config/rooms";
+import { ROOMS, ROOM_MAP, type RoomId } from "@/config/rooms";
 
 /**
  * Gemini 기반 공간 분석.
@@ -110,12 +112,27 @@ const PLAN_SCHEMA = {
       required: ["floor", "wall", "ceiling"],
     },
     outline: { type: "array", items: POINT },
+    /** 실 목록 — 원룸이면 하나, 아파트면 거실·방·주방·욕실이 각각 */
+    rooms: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          type: { type: "string", enum: ROOM_IDS },
+          polygon: { type: "array", items: POINT },
+        },
+        required: ["name", "type", "polygon"],
+      },
+    },
     walls: {
       type: "array",
       items: {
         type: "object",
         properties: {
           name: { type: "string" },
+          start: POINT,
+          end: POINT,
           thicknessMm: { type: "number" },
           openings: {
             type: "array",
@@ -133,7 +150,7 @@ const PLAN_SCHEMA = {
             },
           },
         },
-        required: ["name", "thicknessMm", "openings"],
+        required: ["name", "start", "end", "thicknessMm", "openings"],
       },
     },
     furniture: {
@@ -176,6 +193,7 @@ const PLAN_SCHEMA = {
     "inventory",
     "finishes",
     "outline",
+    "rooms",
     "walls",
     "furniture",
   ],
@@ -199,8 +217,11 @@ const PLAN_PROMPT = [
   "- 카메라가 등지고 있는 벽이 반드시 첫 번째 변이 되게 한다 —",
   "  즉 outline[0]=(0,0), outline[1]=(가로,0)이고 cameraWallIndex는 0이다.",
   "  이렇게 해야 도면의 위쪽이 사진의 안쪽과 맞는다.",
-  "- walls는 outline의 변과 1:1, 같은 순서. walls[i]는 outline[i]에서 outline[i+1]로 가는 벽.",
-  "- 개구부 offsetMm은 그 벽의 시작점에서 개구부 왼쪽 끝까지의 거리.",
+  "- rooms: 공간을 실 단위로 나눈다. 원룸·방 한 칸이면 하나, 아파트면 거실·방·주방·욕실을",
+  "  각각 폴리곤으로 준다. 실 이름은 도면에 그대로 찍히므로 한국어로 쓴다 (거실, 안방, 주방).",
+  "- walls: 외벽과 내벽을 통틀어 선분 목록으로 준다. 각 벽은 start·end 좌표를 직접 갖는다.",
+  "  방과 방 사이를 가르는 내벽을 빠뜨리지 않는다 — 이게 없으면 아파트가 원룸으로 그려진다.",
+  "- 개구부 offsetMm은 그 벽의 start에서 개구부 왼쪽 끝까지의 거리.",
   "",
   `- roomType은 다음 중 하나만 고른다: ${ROOM_IDS.join(", ")}.`,
   "",
@@ -208,6 +229,10 @@ const PLAN_PROMPT = [
   "- 바닥 타일·마루 줄눈, 천장 마감(600×600 텍스 등), 문 높이 2100mm, 천장 2300~2900mm를",
   "  자로 삼아 역산한다. 사람이 서 있으면 1700mm로 본다.",
   "- 바닥 타일이 보이면 타일 장수를 세어 방 크기를 잰다. 가장 정확한 방법이다.",
+  "",
+  "실 나누기",
+  "- 사진 한 장에는 보통 방 하나만 담기므로 rooms는 하나면 된다.",
+  "- 다만 유리 칸막이나 벽으로 나뉜 구역이 함께 보이면 각각 실로 나눈다.",
   "",
   "마감재 (finishes)",
   "- 바닥·벽·천장에 실제로 무엇이 마감돼 있는지 한국어 한 마디로 적는다.",
@@ -252,7 +277,9 @@ const FLOORPLAN_HEAD = [
   "- 호(arc)가 그려진 개구부는 여닫이문, 두 줄 평행선은 미닫이문, 얇은 이중선은 창이다.",
   "- 도면의 위쪽을 y가 커지는 방향(안쪽)으로 잡고, cameraWallIndex는 0으로 둔다.",
   "- 가구 기호가 그려져 있으면 그 종류·위치·방향을 그대로 옮긴다.",
-  "- 실명(거실·안방 등)이 적혀 있으면 roomType을 거기에 맞춘다.",
+  "- ★ 도면에 적힌 실명(거실·안방·주방·욕실·현관 등)을 하나도 빠뜨리지 말고 rooms에 넣는다.",
+  "  방을 가르는 내벽도 전부 walls에 넣는다. 한국 아파트는 보통 실이 5~8개다.",
+  "- roomType(전체)은 가장 넓은 실의 종류로 정한다.",
   "",
 ].join("\n");
 
@@ -520,8 +547,11 @@ interface RawPlan {
   styleGuess?: string;
   lightFrom?: string;
   outline?: { x?: number; y?: number }[];
+  rooms?: { name?: string; type?: string; polygon?: { x?: number; y?: number }[] }[];
   walls?: {
     name?: string;
+    start?: { x?: number; y?: number };
+    end?: { x?: number; y?: number };
     thicknessMm?: number;
     openings?: {
       kind?: string;
@@ -576,6 +606,94 @@ function fitOpening(raw: NonNullable<RawPlan["walls"]>[number]["openings"], wall
   return openings;
 }
 
+
+/* ─────────────── 실 경계에서 벽을 계산한다 ─────────────── */
+
+/** 방향을 무시한 선분 열쇠 — (a,b)와 (b,a)를 같은 벽으로 본다 */
+function edgeKey(a: PlanPoint, b: PlanPoint): string {
+  const one = `${a.x},${a.y}`;
+  const two = `${b.x},${b.y}`;
+  return one < two ? `${one}|${two}` : `${two}|${one}`;
+}
+
+/** 선분의 중점이 다른 선분 위(±허용오차)에 있고 방향이 나란한지 */
+function sameWall(a: PlanWall, b: PlanWall, toleranceMm = 400): boolean {
+  const dir = (w: PlanWall) => {
+    const dx = w.end.x - w.start.x;
+    const dy = w.end.y - w.start.y;
+    const length = Math.hypot(dx, dy) || 1;
+    return { x: dx / length, y: dy / length };
+  };
+  const da = dir(a);
+  const db = dir(b);
+  // 나란하지 않으면 다른 벽 (반대 방향도 같은 벽으로 본다)
+  if (Math.abs(da.x * db.x + da.y * db.y) < 0.95) return false;
+
+  const mid = { x: (b.start.x + b.end.x) / 2, y: (b.start.y + b.end.y) / 2 };
+  const t =
+    ((mid.x - a.start.x) * da.x + (mid.y - a.start.y) * da.y) /
+    (Math.hypot(a.end.x - a.start.x, a.end.y - a.start.y) || 1);
+  const clamped = Math.min(1, Math.max(0, t));
+  const near = {
+    x: a.start.x + (a.end.x - a.start.x) * clamped,
+    y: a.start.y + (a.end.y - a.start.y) * clamped,
+  };
+  return Math.hypot(mid.x - near.x, mid.y - near.y) <= toleranceMm;
+}
+
+/**
+ * 실 경계선을 모아 벽 네트워크를 만든다.
+ *
+ * 모델에게 벽을 일일이 세어 달라고 하면 자꾸 빠뜨린다 — 실 11개짜리 아파트 도면에서
+ * 벽을 5개만 줬다. 그런데 벽이 어디 있는지는 실 폴리곤이 이미 다 말해 주고 있다:
+ * 두 실이 공유하는 변은 내벽이고, 한 실에만 속한 변은 외벽이다. 세는 대신 계산한다.
+ *
+ * 모델이 준 벽은 개구부(창·문)를 들고 있으므로, 같은 자리의 계산된 벽에 옮겨 붙인다.
+ */
+function wallsFromRooms(rooms: PlanRoom[], given: PlanWall[]): PlanWall[] {
+  const counts = new Map<string, { wall: PlanWall; shared: boolean }>();
+
+  for (const room of rooms) {
+    for (let i = 0; i < room.polygon.length; i++) {
+      const start = room.polygon[i];
+      const end = room.polygon[(i + 1) % room.polygon.length];
+      if (Math.hypot(end.x - start.x, end.y - start.y) < 200) continue;
+
+      const key = edgeKey(start, end);
+      const seen = counts.get(key);
+      if (seen) {
+        seen.shared = true;
+        continue;
+      }
+      counts.set(key, {
+        shared: false,
+        wall: { name: "벽", start, end, thicknessMm: 150, openings: [] },
+      });
+    }
+  }
+
+  const derived = [...counts.values()].map(({ wall, shared }, index) => ({
+    ...wall,
+    name: shared ? `내벽 ${index + 1}` : `외벽 ${index + 1}`,
+    thicknessMm: shared ? 100 : 200,
+  }));
+
+  // 모델이 준 개구부를 같은 자리의 벽으로 옮긴다.
+  const leftover: PlanWall[] = [];
+  for (const wall of given) {
+    const match = derived.find((item) => sameWall(item, wall));
+    if (match) {
+      match.name = wall.name || match.name;
+      match.thicknessMm = wall.thicknessMm;
+      match.openings = [...match.openings, ...wall.openings];
+    } else {
+      leftover.push(wall);
+    }
+  }
+
+  return [...derived, ...leftover];
+}
+
 /**
  * 모델이 준 평면을 검증해서 RoomAnalysis로 옮긴다.
  *
@@ -600,17 +718,92 @@ export function toPlanAnalysis(raw: RawPlan): RoomAnalysis | null {
 
   const height = Math.round(clamp(raw.ceilingHeightMm ?? 0, 2000, 6000, 2400));
 
-  const walls: PlanWall[] = outline.map((start, index) => {
-    const end = outline[(index + 1) % outline.length];
-    const wallLengthMm = Math.hypot(end.x - start.x, end.y - start.y);
-    const source = raw.walls?.[index];
+  /** 좌표 하나를 도면 안으로 들여놓는다 (원점 이동 + 경계 밖 방지) */
+  const shift = (value: unknown, axis: "x" | "y") => {
+    const raw = Number(value);
+    if (!Number.isFinite(raw)) return null;
+    const moved = raw - (axis === "x" ? minX : minY);
+    return Math.round(Math.min(Math.max(moved, 0), axis === "x" ? width : length));
+  };
 
-    return {
+  /*
+   * 벽.
+   *
+   * 이제 외곽선의 변이 아니라 좌표를 가진 선분이라, 방과 방 사이의 내벽도 담긴다.
+   * 모델이 벽을 아예 안 주거나 다 버려지면 외곽선으로 둘러싸기라도 한다 —
+   * 벽이 없는 도면은 아무 쓸모가 없다.
+   */
+  const walls: PlanWall[] = [];
+  for (const [index, source] of (raw.walls ?? []).entries()) {
+    /*
+     * 좌표를 빠뜨린 벽은 외곽선의 같은 번호 변으로 본다.
+     * 예전 형식(벽이 외곽선 변과 1:1)이 그랬고, 모델이 start·end를 흘리는 경우도 있다.
+     * 이 폴백이 없으면 그 벽에 달린 창·문이 통째로 사라진다.
+     */
+    const edgeStart = outline[index];
+    const edgeEnd = outline[(index + 1) % outline.length];
+    const hasEdge = index < outline.length;
+
+    const sx = shift(source?.start?.x, "x") ?? (hasEdge ? edgeStart.x : null);
+    const sy = shift(source?.start?.y, "y") ?? (hasEdge ? edgeStart.y : null);
+    const ex = shift(source?.end?.x, "x") ?? (hasEdge ? edgeEnd.x : null);
+    const ey = shift(source?.end?.y, "y") ?? (hasEdge ? edgeEnd.y : null);
+    if (sx === null || sy === null || ex === null || ey === null) continue;
+
+    const wallLengthMm = Math.hypot(ex - sx, ey - sy);
+    if (wallLengthMm < 200) continue; // 점에 가까운 벽은 도면을 어지럽히기만 한다
+
+    walls.push({
       name: source?.name?.trim() || `벽 ${index + 1}`,
+      start: { x: sx, y: sy },
+      end: { x: ex, y: ey },
       thicknessMm: Math.round(clamp(source?.thicknessMm ?? 0, 50, 500, 150)),
       openings: fitOpening(source?.openings, wallLengthMm),
-    };
-  });
+    });
+  }
+
+  if (walls.length < 3) {
+    walls.length = 0;
+    outline.forEach((start, index) => {
+      const end = outline[(index + 1) % outline.length];
+      if (Math.hypot(end.x - start.x, end.y - start.y) < 200) return;
+      walls.push({
+        name: `외벽 ${index + 1}`,
+        start,
+        end,
+        thicknessMm: 150,
+        openings: [],
+      });
+    });
+  }
+
+  /*
+   * 실(방).
+   *
+   * 없으면 외곽선 전체를 실 하나로 본다 — 사진 한 장은 대개 방 하나다.
+   * 아파트 도면을 넣으면 여기에 거실·안방·주방·욕실이 각각 들어온다.
+   */
+  const rooms: PlanRoom[] = [];
+  for (const source of raw.rooms ?? []) {
+    const polygon = (source?.polygon ?? [])
+      .map((point) => ({ x: shift(point?.x, "x"), y: shift(point?.y, "y") }))
+      .filter((point): point is PlanPoint => point.x !== null && point.y !== null);
+    if (polygon.length < 3) continue;
+
+    rooms.push({
+      name: source?.name?.trim() || "실",
+      type: normalizeRoomType(source?.type),
+      polygon,
+    });
+  }
+
+  if (rooms.length === 0) {
+    rooms.push({
+      name: ROOM_MAP[normalizeRoomType(raw.roomType)]?.label ?? "실",
+      type: normalizeRoomType(raw.roomType),
+      polygon: outline,
+    });
+  }
 
   const furniture: PlanFurniture[] = (raw.furniture ?? [])
     .filter((item) => OBJECT_TYPES.includes(item.type as SceneObject["type"]))
@@ -639,6 +832,12 @@ export function toPlanAnalysis(raw: RawPlan): RoomAnalysis | null {
     );
   }
 
+  /*
+   * 실이 둘 이상이면 실 경계에서 벽을 다시 짠다.
+   * 방 하나짜리 사진은 모델이 준 벽이 이미 충분해서 건드리지 않는다.
+   */
+  const finalWalls = rooms.length > 1 ? wallsFromRooms(rooms, walls) : walls;
+
   return {
     roomType: normalizeRoomType(raw.roomType),
     roomDimensions: { width, length, height },
@@ -655,7 +854,8 @@ export function toPlanAnalysis(raw: RawPlan): RoomAnalysis | null {
       ceilingHeightMm: height,
       cameraWallIndex: raw.cameraWallIndex ?? 0,
       outline,
-      walls,
+      rooms,
+      walls: finalWalls,
       furniture,
     },
   };
