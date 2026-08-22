@@ -11,8 +11,6 @@ export interface UploadValue {
 
 const HINTS: Record<InputType, string> = {
   photo: "공간 사진을 올려 주세요",
-  sketch: "손스케치 또는 선 도면을 올려 주세요",
-  floorplan: "2D 평면도나 3D 스크린샷을 올려 주세요",
 };
 
 interface Props {

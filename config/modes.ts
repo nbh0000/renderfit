@@ -4,12 +4,17 @@ export type ModeId =
   | "redesign"
   | "keep-style"
   | "staging"
-  | "empty"
-  | "sketch2render"
-  | "plan2render";
+  | "empty";
 
-/** 업로드 입력의 성격. 업로더 안내 문구와 허용 확장자 힌트에 쓰인다. */
-export type InputType = "photo" | "sketch" | "floorplan";
+/**
+ * 업로드 입력의 성격 — 업로더 안내 문구에 쓴다.
+ *
+ * 스튜디오는 사진만 받는다.
+ *
+ * 스케치·평면도 모드는 AI가 그림을 보고 투시도를 "그려 주는" 것이라 치수가 보장되지 않았다.
+ * 도면에서 실제 치수대로 세우는 일은 편집기(도면 → 벽·개구부 → 3D)가 맡는다.
+ */
+export type InputType = "photo";
 
 export interface Mode {
   id: ModeId;
@@ -114,53 +119,6 @@ export const MODES: Mode[] = [
     requiredPlan: "free",
     placesFurniture: false,
     usesStyle: false,
-  },
-  {
-    id: "sketch2render",
-    label: "스케치 → 렌더",
-    description: "손스케치나 선 도면을 포토리얼 실내 렌더로 변환합니다.",
-    inputType: "sketch",
-    promptTemplate: [
-      "{{structureLock}}",
-      "대상 공간: {{room}}",
-      "입력 이미지는 이 공간의 손스케치 또는 선 도면이다.",
-      "스케치에 그려진 선, 비율, 시점, 공간 구획을 그대로 따르면서 포토리얼 실내 렌더로 변환한다.",
-      "스케치에 없는 벽이나 개구부를 새로 만들지 않는다.",
-      "{{style}} 스타일로 마감재와 가구를 채운다.",
-      "{{styleFragment}}",
-      "{{materials}}",
-      "물리적으로 정확한 전역 조명과 부드러운 그림자를 사용한 건축 시각화 품질로 렌더링한다.",
-    ].join("\n"),
-    requiredPlan: "free",
-    placesFurniture: true,
-    usesStyle: true,
-  },
-  {
-    id: "plan2render",
-    label: "평면도 → 투시 미리보기",
-    /*
-     * 이 모드는 도면을 3D로 세우는 것이 아니라, 도면 그림을 보고 AI가 투시 사진을 그리는 것이다.
-     * 벽 위치·치수가 도면과 일치한다는 보장이 없으므로 이름과 설명에서 분명히 해 둔다.
-     * 치수를 지켜야 하면 편집기(도면 → Scene → 3D → 렌더)로 보낸다.
-     */
-    description:
-      "도면을 참고해 AI가 투시 이미지를 그립니다. 빠르지만 치수는 보장되지 않아요 — 도면대로 뽑으려면 편집기로 보내세요.",
-    inputType: "floorplan",
-    promptTemplate: [
-      "{{structureLock}}",
-      "대상 공간: {{room}}",
-      "입력 이미지는 이 공간의 2D 평면도 또는 3D 모델링 스크린샷이다.",
-      "평면도에 표시된 벽 배치, 개구부 위치, 실 구획, 가구 배치 의도를 정확히 따른다.",
-      "평면도에 없는 공간이나 벽을 임의로 추가하지 않는다.",
-      "사람 눈높이(약 1.5m)의 실내 투시 시점으로 포토리얼 렌더를 생성한다.",
-      "{{style}} 스타일로 마감재와 가구를 구성한다.",
-      "{{styleFragment}}",
-      "{{materials}}",
-      "치수, 면적, 숫자 표기는 이미지에 넣지 않는다.",
-    ].join("\n"),
-    requiredPlan: "pro",
-    placesFurniture: true,
-    usesStyle: true,
   },
 ];
 

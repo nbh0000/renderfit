@@ -3,7 +3,6 @@ export type PlanId = "free" | "basic" | "pro";
 export type FeatureKey =
   | "masking"
   | "materials"
-  | "plan2render"
   | "highRes"
   | "commercialUse"
   | "noWatermark";
@@ -36,7 +35,6 @@ export const PLANS: Plan[] = [
     features: {
       masking: false,
       materials: false,
-      plan2render: false,
       highRes: false,
       commercialUse: false,
       noWatermark: false,
@@ -59,7 +57,6 @@ export const PLANS: Plan[] = [
     features: {
       masking: false,
       materials: false,
-      plan2render: false,
       highRes: false,
       commercialUse: false,
       noWatermark: true,
@@ -82,7 +79,6 @@ export const PLANS: Plan[] = [
     features: {
       masking: true,
       materials: true,
-      plan2render: true,
       highRes: true,
       commercialUse: true,
       noWatermark: true,

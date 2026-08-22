@@ -151,3 +151,27 @@ describe("방 종류 정규화", () => {
     expect(toPlanData(scene, "테스트").roomType).toBe("침실");
   });
 });
+
+describe("속성 패널이 쓰는 값", () => {
+  /*
+   * 패널은 평면 좌표(mm)를 보여 주고 그 값으로 move_object를 부른다.
+   * planCenter가 되돌려 주는 값과 패널이 넣는 값이 서로 역함수여야 자리가 어긋나지 않는다.
+   */
+  it("mm 좌표를 넣으면 그 자리에 그대로 놓인다", () => {
+    const cabinet = find("붙박이장");
+    for (const targetCx of [500, 1900, 3600]) {
+      const nextScreenX = targetCx / room.dimensions.width - cabinet.screen.width / 2;
+      const moved = { ...cabinet, screen: { ...cabinet.screen, x: nextScreenX } };
+      expect(planCenter(moved.screen, moved.depth, room).cx).toBeCloseTo(targetCx, 6);
+    }
+  });
+
+  it("원하는 각도까지의 차이만큼 돌리면 그 각도가 된다", () => {
+    // rotate_object는 상대 회전이라 패널이 (목표 − 현재)를 넘긴다.
+    let rotation = 0;
+    for (const want of [15, 45, 270, 0]) {
+      rotation += want - rotation;
+      expect(rotation).toBe(want);
+    }
+  });
+});

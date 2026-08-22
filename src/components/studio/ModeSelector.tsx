@@ -17,12 +17,6 @@ const ICONS: Record<ModeId, React.ReactNode> = {
   empty: (
     <path d="M4 20h16M6 20V8l6-4 6 4v12M9.5 12.5l5 5m0-5l-5 5" strokeLinecap="round" strokeLinejoin="round" />
   ),
-  sketch2render: (
-    <path d="M4 20l1-4 9.5-9.5a2.1 2.1 0 013 3L8 19l-4 1zM13 7l4 4" strokeLinecap="round" strokeLinejoin="round" />
-  ),
-  plan2render: (
-    <path d="M4 5h16v14H4zM4 12h8m0-7v14M16 12h4" strokeLinecap="round" strokeLinejoin="round" />
-  ),
 };
 
 interface Props {

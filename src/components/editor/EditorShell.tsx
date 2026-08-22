@@ -205,13 +205,20 @@ function OnboardingOverlay() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<"upload" | "style">("upload");
   const [uploading, setUploading] = useState(false);
+  /*
+   * 사진인지 도면인지 먼저 고른다.
+   * 분석 프롬프트가 완전히 다르다 — 사진은 원근에서 치수를 역산해야 하고,
+   * 도면은 벽 선과 치수가 이미 그려져 있어 그대로 읽으면 된다.
+   */
+  const [kind, setKind] = useState<"photo" | "floorplan">("photo");
 
   const upload = async (file: File) => {
     setUploading(true);
-    setBusy("사진을 올리고 있습니다...");
+    setBusy(kind === "floorplan" ? "도면을 올리고 있습니다..." : "사진을 올리고 있습니다...");
     try {
       const form = new FormData();
       form.append("image", file);
+      form.append("kind", kind);
 
       const response = await fetch(`/api/projects/${projectId}/images`, {
         method: "POST",
@@ -239,11 +246,35 @@ function OnboardingOverlay() {
       <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-surface p-6 text-center">
         {step === "upload" ? (
           <>
-            <h2 className="text-[17px] font-semibold">방 사진을 올려 주세요</h2>
+            <h2 className="text-[17px] font-semibold">
+              {kind === "floorplan" ? "평면도를 올려 주세요" : "방 사진을 올려 주세요"}
+            </h2>
             <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
-              AI가 공간을 분석해 벽·가구·조명을 객체로 분리합니다. 그다음 스타일을 고르면 시안이
-              만들어지고, 각 객체를 직접 편집할 수 있습니다.
+              {kind === "floorplan"
+                ? "도면에서 벽·개구부·치수를 읽어 평면도와 3D를 세웁니다. 치수가 적혀 있으면 그 값을 그대로 씁니다."
+                : "AI가 공간을 분석해 벽·가구·조명을 객체로 분리합니다. 그다음 스타일을 고르면 시안이 만들어지고, 각 객체를 직접 편집할 수 있습니다."}
             </p>
+
+            <div className="mt-4 flex gap-1">
+              {(
+                [
+                  ["photo", "사진"],
+                  ["floorplan", "평면도"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setKind(id)}
+                  className={[
+                    "flex-1 rounded-md px-2 py-1.5 text-[12px] transition-colors",
+                    kind === id ? "bg-ink text-white" : "bg-sunken text-muted hover:text-ink",
+                  ].join(" ")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               disabled={uploading}

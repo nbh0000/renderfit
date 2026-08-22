@@ -2,6 +2,8 @@
 
 import { useEditorStore, useSelectedObject } from "@/lib/editor/store";
 import { DEFAULT_MATERIALS } from "@/models/materials";
+import { ensureRoom } from "@/scene/geometry";
+import { planCenter } from "@/scene/placement";
 import { NumberField } from "../shared/NumberField";
 
 /** 선택한 객체의 속성 · 변형 · 재질 · AI 편집 */
@@ -19,6 +21,9 @@ export function PropertiesPanel() {
     );
   }
 
+  const room = ensureRoom(scene.room);
+  const center = planCenter(object.screen, object.depth, room);
+
   const materials = [
     ...scene.materials,
     ...DEFAULT_MATERIALS.filter((m) => !scene.materials.some((s) => s.id === m.id)),
@@ -33,17 +38,54 @@ export function PropertiesPanel() {
         </p>
       </section>
 
-      <Section title="위치">
-        <Row label="X">{(object.screen.x * 100).toFixed(1)}%</Row>
-        <Row label="Y">{(object.screen.y * 100).toFixed(1)}%</Row>
-        <Row label="깊이">{object.depth.toFixed(2)}</Row>
+      <Section title="위치 (mm)">
+        <div className="space-y-1">
+          <NumberField
+            label="X"
+            value={center.cx}
+            unit="mm"
+            min={0}
+            onCommit={(next) =>
+              runTool("move_object", {
+                objectId: object.id,
+                x: next / room.dimensions.width - object.screen.width / 2,
+                depth: object.depth,
+              })
+            }
+          />
+          <NumberField
+            label="Y"
+            value={center.cy}
+            unit="mm"
+            min={0}
+            onCommit={(next) =>
+              runTool("move_object", {
+                objectId: object.id,
+                x: object.screen.x,
+                depth: next / room.dimensions.length,
+              })
+            }
+          />
+        </div>
+        <p className="mt-1 text-[10.5px] text-muted">방 좌측 하단이 원점입니다.</p>
       </Section>
 
       <Section title="변형">
-        <Row label="회전">{object.screen.rotation.toFixed(0)}°</Row>
-        <Row label="폭">{(object.screen.width * 100).toFixed(1)}%</Row>
-        <Row label="높이">{(object.screen.height * 100).toFixed(1)}%</Row>
-        <div className="mt-1.5 flex gap-1">
+        <NumberField
+          label="회전"
+          value={object.screen.rotation}
+          unit="°"
+          min={-360}
+          // rotate_object는 상대 회전이라, 원하는 각도까지의 차이만큼 돌린다.
+          onCommit={(next) =>
+            runTool("rotate_object", {
+              objectId: object.id,
+              degrees: next - object.screen.rotation,
+            })
+          }
+        />
+        <Row label="배율">{object.transform.scale[0].toFixed(2)}배</Row>
+        <div className="mt-1.5 flex flex-wrap gap-1">
           <MiniButton onClick={() => runTool("scale_object", { objectId: object.id, factor: 1.1 })}>
             +10%
           </MiniButton>
@@ -51,7 +93,10 @@ export function PropertiesPanel() {
             −10%
           </MiniButton>
           <MiniButton onClick={() => runTool("rotate_object", { objectId: object.id, degrees: 15 })}>
-            15° 회전
+            +15°
+          </MiniButton>
+          <MiniButton onClick={() => runTool("rotate_object", { objectId: object.id, degrees: 90 })}>
+            +90°
           </MiniButton>
         </div>
       </Section>

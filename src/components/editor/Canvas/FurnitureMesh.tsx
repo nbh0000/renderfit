@@ -141,10 +141,16 @@ function ExternalModel({
     );
     clone.scale.setScalar(Number.isFinite(factor) && factor > 0 ? factor : 1);
 
-    // 바닥에 붙이고 가운데로 옮긴다.
+    /*
+     * 경계 상자의 한가운데를 원점에 맞춘다.
+     *
+     * primitive는 전부 원점을 중심으로 그려지고, 바깥에서 이 그룹을 물체 중심 높이
+     * (mountHeight = 바닥에서 h/2)에 올려 놓는다. 그런데 여기서 바닥(min.y)을 원점에
+     * 맞춰 버리면 모델만 딱 반 키만큼 공중에 뜬다 — 실제로 그렇게 떠 있었다.
+     */
     const scaled = new THREE.Box3().setFromObject(clone);
     const center = scaled.getCenter(new THREE.Vector3());
-    clone.position.set(-center.x, -scaled.min.y, -center.z);
+    clone.position.set(-center.x, -center.y, -center.z);
 
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
