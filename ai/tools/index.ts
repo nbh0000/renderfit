@@ -318,6 +318,7 @@ export function objectFromAsset(
       category: asset.category,
       assetId: asset.id,
       modelUrl: asset.modelUrl ?? null,
+      imageUrl: asset.imageUrl ?? null,
       materialId: asset.materials[0] ?? null,
       dimensions: asset.dimensions,
       screen: {

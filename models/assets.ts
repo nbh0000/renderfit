@@ -1,5 +1,6 @@
 import type { Asset, ObjectType } from "@/scene/types";
 import { POLYHAVEN_EXTRA, POLYHAVEN_MODELS } from "./polyhaven.generated";
+import { GENERATED_ASSET_IMAGES } from "./generated.generated";
 
 /**
  * 가구 에셋 라이브러리.
@@ -174,9 +175,16 @@ function withModels(assets: Asset[]): Asset[] {
 
   const dressed = assets.map((asset) => {
     const model = POLYHAVEN_MODELS[asset.id];
-    return model
-      ? { ...asset, modelUrl: model.modelUrl, dimensions: model.dimensions }
-      : asset;
+    if (model) return { ...asset, modelUrl: model.modelUrl, dimensions: model.dimensions };
+
+    /*
+     * 메시가 없는 것은 AI로 만든 제품 사진을 붙인다 (scripts/assets/generate.mjs).
+     * Poly Haven에는 붙박이장·주방 상하부장·4도어 냉장고처럼 한국 주거의 핵심 품목이
+     * 아예 없다. 3D는 이 사진의 흰 배경을 지워 실루엣을 세운다.
+     * 치수는 카탈로그에 적힌 국내 유통 규격을 그대로 쓴다 — 사진은 크기를 알려 주지 않는다.
+     */
+    const image = GENERATED_ASSET_IMAGES[asset.id];
+    return image ? { ...asset, imageUrl: image } : asset;
   });
 
   return [...dressed, ...extra];

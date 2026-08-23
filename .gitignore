@@ -17,3 +17,5 @@ tsconfig.tsbuildinfo
 # Poly Haven CC0 메시 — 빌드 때 scripts/assets/polyhaven.mjs가 받아 온다 (76MB)
 /public/models/
 /public/textures/
+
+# public/assets 는 커밋한다 — 빌드마다 재생성하면 비용이 들고 결과가 매번 달라진다

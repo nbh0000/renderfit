@@ -438,7 +438,9 @@ export interface Asset {
   dimensions: Dimensions;
   thumbnailUrl: string | null;
   modelUrl: string | null;
-  /** 3D 모델이 없을 때 사용할 primitive */
+  /** 메시가 없을 때 3D에 세울 제품 사진 (AI 생성). 흰 배경을 지워 판으로 쓴다 */
+  imageUrl?: string | null;
+  /** 모델도 사진도 없을 때 쓰는 primitive */
   primitive: "box" | "cylinder" | "sphere" | "plane";
   materials: string[];
   tags: string[];

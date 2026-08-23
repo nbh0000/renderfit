@@ -8,7 +8,7 @@ import { useEditorStore } from "@/lib/editor/store";
 import type { Scene, SceneObject, WallSegment } from "@/scene/types";
 import { FurnitureMesh } from "./FurnitureMesh";
 import { NavGizmo, type GizmoHandlers } from "./NavGizmo";
-import { imageTexture, woodTexture, paintTexture } from "./textures";
+import { imageTexture, onTextureReady, woodTexture, paintTexture } from "./textures";
 import {
   ensureRoom,
   isPerimeterWall,
@@ -137,6 +137,9 @@ function RenderPump({ signature }: { signature: string }) {
     return () => timers.forEach(window.clearTimeout);
   }, [invalidate, signature]);
 
+  // 사진 텍스처·잘라낸 가구 이미지는 비동기로 도착한다. 도착하면 그때 다시 그린다.
+  useEffect(() => onTextureReady(invalidate), [invalidate]);
+
   useEffect(() => {
     const manager = THREE.DefaultLoadingManager;
     const previous = manager.onLoad;
@@ -150,6 +153,13 @@ function RenderPump({ signature }: { signature: string }) {
   }, [invalidate]);
 
   return null;
+}
+
+/** 텍스처가 하나 도착할 때마다 올라가는 값 — 이 값을 의존성에 넣어 다시 계산한다 */
+function useTextureGeneration(): number {
+  const [generation, setGeneration] = useState(0);
+  useEffect(() => onTextureReady(() => setGeneration((value) => value + 1)), []);
+  return generation;
 }
 
 /* ───────────────────────────── 공간 ───────────────────────────── */
@@ -200,6 +210,8 @@ function worldFromPlan([x, y]: [number, number], room: Scene["room"]): [number, 
 
 function RoomShell({ scene }: { scene: Scene }) {
   const room = useMemo(() => ensureRoom(scene.room), [scene.room]);
+  // 사진이 도착하면 절차적 텍스처에서 사진으로 바꿔 단다.
+  const textureGeneration = useTextureGeneration();
   const width = room.dimensions.width * MM;
   const length = room.dimensions.length * MM;
   const height = room.dimensions.height * MM;
@@ -229,14 +241,14 @@ function RoomShell({ scene }: { scene: Scene }) {
     return floorFinish?.textureUrl
       ? imageTexture(floorFinish.textureUrl, { repeat: tiles })
       : woodTexture(floorColor, 4);
-  }, [floorFinish, floorColor, width, length]);
+  }, [floorFinish, floorColor, width, length, textureGeneration]);
 
   const wallMap = useMemo(() => {
     const tiles = Math.max(1, Math.round(Math.max(width, height) / (wallFinish?.scale || 4)));
     return wallFinish?.textureUrl
       ? imageTexture(wallFinish.textureUrl, { repeat: tiles })
       : paintTexture(wallColor, 2);
-  }, [wallFinish, wallColor, width, height]);
+  }, [wallFinish, wallColor, width, height, textureGeneration]);
 
   const walls = room.walls ?? [];
 
@@ -899,19 +911,40 @@ export function Canvas3D() {
   }, []);
 
   /*
-   * 열자마자 잠깐은 매 프레임 그린다.
+   * 장면이 자리를 잡는 동안은 매 프레임 그린다.
    *
-   * frameloop="demand"는 GPU를 아끼지만, 장면이 자리를 잡는 과정(카메라 배치,
-   * OrbitControls 부착, 텍스처·모델 도착)이 여러 틱에 걸쳐 일어나서 그 사이에
-   * 프레임 요청을 놓치면 화면이 빈 채로 멈춘다 — 실제로 3D를 열면 새까맣게 있다가
-   * 마우스로 한 번 돌려야 그려졌다. invalidate를 아무리 걸어도 이 구간을 못 덮었다.
-   * 처음 2초만 연속으로 돌리고 그 뒤에는 다시 요청 기반으로 돌아간다.
+   * frameloop="demand"는 GPU를 아끼지만, 3D를 여는 순간에는 아직 아무것도 준비돼
+   * 있지 않다. 특히 마감재 사진은 한 장에 700KB씩이라 늦게 도착하는데, 그 전에
+   * 그린 프레임은 map이 비어 있어 벽이 새까맣게 나온다 — 마우스로 한 번 돌려야
+   * 비로소 제대로 보였다.
+   *
+   * 그래서 텍스처가 하나 도착할 때마다 이 창을 다시 연장하고, 더 이상 도착하지
+   * 않으면 그때 요청 기반으로 돌아간다. 다 받고 나면 평소처럼 조용해진다.
    */
   const [settling, setSettling] = useState(true);
+  const settleUntil = useRef(0);
+
   useEffect(() => {
-    setSettling(true);
-    const timer = window.setTimeout(() => setSettling(false), 2000);
-    return () => window.clearTimeout(timer);
+    let timer = 0;
+
+    const extend = () => {
+      settleUntil.current = Date.now() + 1500;
+      setSettling(true);
+
+      window.clearTimeout(timer);
+      timer = window.setTimeout(function check() {
+        if (Date.now() >= settleUntil.current) setSettling(false);
+        else timer = window.setTimeout(check, 300);
+      }, 1500);
+    };
+
+    extend();
+    const stop = onTextureReady(extend);
+
+    return () => {
+      stop();
+      window.clearTimeout(timer);
+    };
   }, [scene?.sceneId, scene?.room?.dimensions.width, scene?.room?.dimensions.length]);
 
   if (!scene?.room) return null;

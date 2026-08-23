@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "node scripts/seed/index.mjs",
-    "assets": "node scripts/assets/polyhaven.mjs && node scripts/assets/textures.mjs",
+    "assets": "node scripts/assets/polyhaven.mjs && node scripts/assets/textures.mjs && node scripts/assets/generate.mjs",
     "prebuild": "npm run assets"
   },
   "dependencies": {

@@ -1,10 +1,10 @@
 "use client";
 
-import { Component, Suspense, useMemo, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { RoundedBox, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import type { Material, SceneObject } from "@/scene/types";
-import { cutoutTexture, imageTexture, textureForMaterial } from "./textures";
+import { cutoutTexture, imageTexture, onTextureReady, textureForMaterial } from "./textures";
 
 /**
  * 가구 지오메트리.
@@ -28,6 +28,10 @@ export interface MeshProps {
  * ARM 맵은 R=AO, G=거칠기, B=금속감이 한 장에 들어 있는 형식이라 세 채널을 나눠 물린다.
  */
 export function useStandardMaterial(material?: Material) {
+  // 사진이 늦게 도착해도 검게 보이지 않도록, 도착하면 다시 만든다.
+  const [generation, setGeneration] = useState(0);
+  useEffect(() => onTextureReady(() => setGeneration((value) => value + 1)), []);
+
   return useMemo(() => {
     const color = material?.baseColor ?? "#b9b2a8";
     const photo = material?.textureUrl
@@ -49,7 +53,8 @@ export function useStandardMaterial(material?: Material) {
       roughnessMap: arm ?? null,
       metalnessMap: arm ?? null,
     });
-  }, [material]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [material, generation]);
 }
 
 /** 다리 4개 */

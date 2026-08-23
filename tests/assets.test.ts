@@ -97,3 +97,43 @@ describe("씬에 넣을 때 메시가 따라간다", () => {
     expect(engine.getScene().objects.at(-1)!.imageUrl).toBe("/api/files/x.png");
   });
 });
+
+describe("메시가 없는 가구는 생성 이미지로 채운다", () => {
+  /*
+   * Poly Haven에는 붙박이장·주방 상하부장·4도어 냉장고처럼 한국 주거의 핵심 품목이 없다.
+   * 그 자리를 AI 제품 사진이 메운다 — 비어 있으면 3D가 흰 상자로 돌아간다.
+   */
+  it("모든 가구가 메시나 사진 중 하나는 갖는다", () => {
+    const bare = ASSETS.filter((asset) => !asset.modelUrl && !asset.imageUrl);
+    expect(bare.map((asset) => asset.name)).toEqual([]);
+  });
+
+  it("사진 경로가 public/assets 아래를 가리킨다", () => {
+    for (const asset of ASSETS.filter((item) => item.imageUrl)) {
+      expect(asset.imageUrl).toMatch(/^\/assets\/asset_[a-z0-9_]+\.png$/);
+    }
+  });
+
+  it("사진으로 채운 가구도 국내 규격 치수를 지킨다", () => {
+    // 사진은 크기를 알려 주지 않는다 — 치수는 카탈로그에 적어 둔 값을 그대로 써야 한다.
+    const wardrobe = ASSET_MAP.asset_wardrobe_slide;
+    expect(wardrobe.imageUrl).toBeTruthy();
+    expect(wardrobe.dimensions).toEqual({ width: 2400, height: 2400, depth: 600 });
+  });
+
+  it("씬에 넣으면 사진이 객체에 실린다", async () => {
+    const { SceneEngine } = await import("@/scene/engine/SceneEngine");
+    const { createEmptyScene } = await import("@/scene/serialization");
+    const { executeCommand } = await import("@/ai/tools");
+
+    const engine = new SceneEngine(createEmptyScene());
+    executeCommand(engine, {
+      tool: "add_object",
+      arguments: { assetId: "asset_fridge_4door" },
+      explanation: "",
+      confidence: 1,
+    });
+
+    expect(engine.getScene().objects.at(-1)!.imageUrl).toBe(ASSET_MAP.asset_fridge_4door.imageUrl);
+  });
+});

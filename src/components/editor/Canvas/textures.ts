@@ -11,6 +11,25 @@ import * as THREE from "three";
 
 const cache = new Map<string, THREE.Texture>();
 
+/**
+ * 텍스처가 뒤늦게 도착했다고 알린다.
+ *
+ * 3D는 요청이 있을 때만 다시 그린다(frameloop="demand"). 그런데 사진 텍스처와
+ * 잘라낸 가구 이미지는 비동기로 도착하고, 도착해도 아무도 다시 그려 달라고 하지
+ * 않으면 화면은 검은 방과 빈 바닥으로 남는다 — 실제로 그랬다.
+ * 타이머로 몇 번 두드려 보는 것으로는 큰 이미지를 못 기다린다.
+ */
+const listeners = new Set<() => void>();
+
+export function onTextureReady(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function notifyReady(): void {
+  for (const listener of listeners) listener();
+}
+
 function makeCanvas(size = 512): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
   const canvas = document.createElement("canvas");
   canvas.width = size;
@@ -164,16 +183,25 @@ export function imageTexture(
   const { srgb = true, repeat = 1 } = options;
   const key = `${url}:${srgb}:${repeat}`;
   const hit = fileCache.get(key);
-  if (hit) return hit;
 
-  const texture = new THREE.TextureLoader().load(url);
+  /*
+   * 아직 안 온 텍스처는 없는 셈 친다.
+   *
+   * 마감재 사진은 한 장에 700KB가 넘어 늦게 도착하는데, 그동안 map 자리에
+   * 빈 텍스처를 물려 두면 벽과 바닥이 새까맣게 보인다. 그럴 바에는 절차적 텍스처로
+   * 먼저 채우고, 사진이 도착하면(notifyReady) 그때 바꿔 다는 편이 낫다.
+   */
+  if (hit) return hit.image ? hit : undefined;
+
+  const texture = new THREE.TextureLoader().load(url, notifyReady);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(repeat, repeat);
   texture.anisotropy = 8;
   if (srgb) texture.colorSpace = THREE.SRGBColorSpace;
 
   fileCache.set(key, texture);
-  return texture;
+  // 방금 만든 것은 아직 이미지가 없다 — 도착할 때까지는 절차적 텍스처에 맡긴다.
+  return texture.image ? texture : undefined;
 }
 
 export function textureForMaterial(
@@ -239,6 +267,7 @@ export function cutoutTexture(url: string): THREE.Texture | undefined {
 
     ctx.putImageData(frame, 0, 0);
     texture.needsUpdate = true;
+    notifyReady();
   };
   image.src = url;
 
