@@ -4,7 +4,13 @@ import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } fro
 import { RoundedBox, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import type { Material, SceneObject } from "@/scene/types";
-import { cutoutTexture, imageTexture, onTextureReady, textureForMaterial } from "./textures";
+import {
+  cutoutShape,
+  cutoutTexture,
+  imageTexture,
+  onTextureReady,
+  textureForMaterial,
+} from "./textures";
 
 /**
  * 가구 지오메트리.
@@ -173,10 +179,27 @@ function ExternalModel({
 /**
  * AI가 만든 가구 이미지를 세운다.
  *
- * 메시가 아니라 잘라낸 판이라 옆에서 보면 얇다. 그래도 평면도의 발자국과 크기는
- * 정확하고, 마지막 실사 렌더가 이 판을 사진으로 바꿔 주므로 결과물에서는 드러나지 않는다.
- * 판을 두 장 겹쳐 세워 비스듬히 봐도 완전히 사라지지는 않게 한다.
+ * 메시가 아니라 잘라낸 판이다. 한 장만 세우면 옆에서 볼 때 종잇장처럼 사라지므로,
+ * 가로·세로로 한 장씩 교차해 세운다(십자). 어느 각도에서 봐도 실루엣이 남고,
+ * 옆에서 보면 그 가구의 실제 안길이만큼 폭을 차지한다.
+ *
+ * 평면도의 발자국과 치수는 정확하고, 마지막 실사 렌더가 이 판을 사진으로 바꿔 준다.
  */
+/**
+ * 메시가 없는 가구를 사진으로 세운다.
+ *
+ * 판 한 장으로 세우면 옆에서 볼 때 종이처럼 얇아 방이 우스워진다. 그래서 실루엣이
+ * 자기 사각형을 얼마나 채우는지 재서 두 가지로 나눈다.
+ *
+ *  - 침대·붙박이장·냉장고처럼 꽉 찬 것: 사진에서 뽑은 색으로 덩어리를 세우고 앞면에만
+ *    사진을 붙인다. 어느 각도에서 봐도 부피가 있고, 평면도의 발자국과도 맞는다.
+ *  - 화분·조명처럼 뚫린 것: 덩어리로 만들면 통나무가 되므로 판을 십자로 교차시킨다.
+ *
+ * 사진이 아직 안 왔으면 판 하나로 시작하고, 다 읽히면 위 둘 중 하나로 바뀐다.
+ */
+/** 실루엣이 외접 사각형의 이만큼을 채우면 속이 꽉 찬 가구로 본다 */
+const SOLID_FILL = 0.6;
+
 function ImageBillboard({
   url,
   width,
@@ -189,31 +212,51 @@ function ImageBillboard({
   depth: number;
 }) {
   const texture = cutoutTexture(url);
+  const [shape, setShape] = useState(() => cutoutShape(url));
+
+  useEffect(() => {
+    if (shape) return;
+    return onTextureReady(() => setShape(cutoutShape(url)));
+  }, [url, shape]);
+
   if (!texture) return null;
+
+  const face = (
+    <meshStandardMaterial
+      map={texture}
+      transparent
+      alphaTest={0.35}
+      side={THREE.DoubleSide}
+      roughness={0.9}
+    />
+  );
+
+  if (shape && shape.fill >= SOLID_FILL) {
+    return (
+      <group>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[width * 0.98, height * 0.98, depth * 0.98]} />
+          <meshStandardMaterial color={shape.color} roughness={0.85} metalness={0.02} />
+        </mesh>
+        {/* 앞면 사진 — 덩어리보다 아주 살짝 앞에 둬야 z-파이팅이 없다 */}
+        <mesh position={[0, 0, depth / 2 + 0.002]} castShadow>
+          <planeGeometry args={[width, height]} />
+          {face}
+        </mesh>
+      </group>
+    );
+  }
 
   return (
     <group>
-      <mesh position={[0, 0, 0]} castShadow>
+      <mesh castShadow>
         <planeGeometry args={[width, height]} />
-        <meshStandardMaterial
-          map={texture}
-          transparent
-          alphaTest={0.35}
-          side={THREE.DoubleSide}
-          roughness={0.9}
-        />
+        {face}
       </mesh>
-      {/* 옆에서 봤을 때의 두께감 — 깊이의 절반만큼 뒤에 한 장 더 */}
-      <mesh position={[0, 0, -depth / 2]} rotation={[0, Math.PI / 2, 0]}>
+      {/* 교차판 — 가운데를 지나게 세워야 십자가 되고, 옆에서도 안길이만큼 보인다 */}
+      <mesh rotation={[0, Math.PI / 2, 0]} castShadow>
         <planeGeometry args={[depth, height]} />
-        <meshStandardMaterial
-          map={texture}
-          transparent
-          alphaTest={0.35}
-          opacity={0.55}
-          side={THREE.DoubleSide}
-          roughness={0.9}
-        />
+        {face}
       </mesh>
     </group>
   );

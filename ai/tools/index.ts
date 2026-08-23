@@ -22,6 +22,7 @@ import { ASSET_MAP, searchAssets } from "@/models/assets";
 import { STYLE_PRESET_MAP } from "@/models/styles";
 import { MATERIAL_MAP } from "@/models/materials";
 import { createOpening, createWall, findFreeOffset } from "@/scene/geometry";
+import { placeObject } from "@/scene/placement";
 
 /**
  * AI Agent Tools.
@@ -466,6 +467,22 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       }
 
       if (typeof args.levelId === "string") object.levelId = String(args.levelId);
+
+      /*
+       * 빈자리를 찾아 놓는다.
+       *
+       * 예전에는 새 가구가 늘 같은 자리(화면 35%, 깊이 0.5)에서 시작해서, 여러 개를
+       * 넣으면 한 점에 겹쳐 쌓였다. 놓는 시점에 배치 규칙을 한 번 돌리면 벽에 붙고
+       * 서로 비켜 앉는다 — 나중에 "자동 배치"를 따로 누를 필요가 없다.
+       */
+      const spot = placeObject(
+        { room: scene.room, objects: [...scene.objects, object] },
+        object.id
+      );
+      if (spot) {
+        object.screen = { ...object.screen, x: spot.screen.x, rotation: spot.rotation };
+        object.depth = spot.depth;
+      }
 
       const result = engine.addObject(object);
       return toResult(command, result, `${asset.name}을(를) 추가했습니다.`, object.id);

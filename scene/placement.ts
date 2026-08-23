@@ -190,31 +190,50 @@ function snapToWall(footprint: Footprint, room: RoomSpec, side: WallSide): Footp
   return next;
 }
 
-/** 겹치면 벽을 따라 옆으로 비켜 놓는다 */
+/**
+ * 겹치면 빈자리로 비켜 놓는다.
+ *
+ * 벽에 붙인 가구는 그 벽을 따라서만 움직인다 — 벽에서 떼면 붙인 의미가 없다.
+ * 그 외에는 가로·세로 양쪽으로 넓혀 가며 찾는다. 예전에는 가로로만 찾아서,
+ * 방이 조금만 좁아도 자리를 못 찾고 그대로 겹쳐 놓았다.
+ */
 function slideUntilFree(
   footprint: Footprint,
   others: Footprint[],
   room: RoomSpec,
   side: WallSide | null
 ): Footprint {
-  if (!others.some((other) => overlaps(footprint, other, 10))) return footprint;
+  const free = (candidate: Footprint) => !others.some((other) => overlaps(candidate, other, 10));
+  if (free(footprint)) return footprint;
 
-  // 벽에 붙은 가구는 벽을 따라, 그 외에는 가로 방향으로 비킨다.
-  const alongX = side === "north" || side === "south" || side === null;
   const step = 100;
   const limit = Math.max(room.dimensions.width, room.dimensions.length);
 
+  // 벽에 붙었으면 그 벽과 나란한 방향으로만
+  const alongWall = side === "north" || side === "south" ? "x" : side ? "y" : null;
+
   for (let offset = step; offset <= limit; offset += step) {
-    for (const direction of [1, -1]) {
+    const moves: [number, number][] = alongWall
+      ? alongWall === "x"
+        ? [[offset, 0], [-offset, 0]]
+        : [[0, offset], [0, -offset]]
+      : [
+          [offset, 0],
+          [-offset, 0],
+          [0, offset],
+          [0, -offset],
+          [offset, offset],
+          [-offset, offset],
+          [offset, -offset],
+          [-offset, -offset],
+        ];
+
+    for (const [dx, dy] of moves) {
       const candidate = clampToRoom(
-        {
-          ...footprint,
-          cx: alongX ? footprint.cx + direction * offset : footprint.cx,
-          cy: alongX ? footprint.cy : footprint.cy + direction * offset,
-        },
+        { ...footprint, cx: footprint.cx + dx, cy: footprint.cy + dy },
         room
       );
-      if (!others.some((other) => overlaps(candidate, other, 10))) return candidate;
+      if (free(candidate)) return candidate;
     }
   }
 

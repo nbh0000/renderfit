@@ -137,3 +137,59 @@ describe("메시가 없는 가구는 생성 이미지로 채운다", () => {
     expect(engine.getScene().objects.at(-1)!.imageUrl).toBe(ASSET_MAP.asset_fridge_4door.imageUrl);
   });
 });
+
+describe("가구를 여러 개 넣어도 겹치지 않는다", () => {
+  /*
+   * 예전에는 새 가구가 늘 같은 자리에서 시작해 한 점에 쌓였다.
+   * 놓는 시점에 배치 규칙을 돌리므로 서로 비켜 앉아야 한다.
+   */
+  it("연달아 넣은 가구가 서로 다른 자리에 놓인다", async () => {
+    const { SceneEngine } = await import("@/scene/engine/SceneEngine");
+    const { createEmptyScene } = await import("@/scene/serialization");
+    const { executeCommand } = await import("@/ai/tools");
+    const { planCenter, footprintOf } = await import("@/scene/placement");
+    const { ensureRoom } = await import("@/scene/geometry");
+
+    const engine = new SceneEngine(createEmptyScene());
+    // 넉넉한 방 — 자리가 정말 없으면 겹쳐 두는 것 말고 방법이 없다.
+    engine.setRoomDimensions({ width: 7000, length: 9000, height: 2400 });
+
+    for (const assetId of [
+      "asset_bed_king",
+      "asset_wardrobe_slide",
+      "asset_fridge_4door",
+      "asset_sofa_corner",
+    ]) {
+      executeCommand(engine, {
+        tool: "add_object",
+        arguments: { assetId },
+        explanation: "",
+        confidence: 1,
+      });
+    }
+
+    const scene = engine.getScene();
+    const room = ensureRoom(scene.room);
+    expect(scene.objects).toHaveLength(4);
+
+    // 같은 좌표에 두 개가 놓이면 안 된다
+    const spots = scene.objects.map((object) => {
+      const { cx, cy } = planCenter(object.screen, object.depth, room);
+      return `${Math.round(cx)},${Math.round(cy)}`;
+    });
+    expect(new Set(spots).size).toBe(spots.length);
+
+    // 발자국이 실제로 겹치지도 않아야 한다 (10mm 여유)
+    const boxes = scene.objects.map((object) => footprintOf(object, room));
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i];
+        const b = boxes[j];
+        const apart =
+          Math.abs(a.cx - b.cx) >= (a.width + b.width) / 2 - 10 ||
+          Math.abs(a.cy - b.cy) >= (a.depth + b.depth) / 2 - 10;
+        expect(apart).toBe(true);
+      }
+    }
+  });
+});

@@ -910,42 +910,6 @@ export function Canvas3D() {
     setDraft({ id: object.id, x: object.screen.x, depth: object.depth });
   }, []);
 
-  /*
-   * 장면이 자리를 잡는 동안은 매 프레임 그린다.
-   *
-   * frameloop="demand"는 GPU를 아끼지만, 3D를 여는 순간에는 아직 아무것도 준비돼
-   * 있지 않다. 특히 마감재 사진은 한 장에 700KB씩이라 늦게 도착하는데, 그 전에
-   * 그린 프레임은 map이 비어 있어 벽이 새까맣게 나온다 — 마우스로 한 번 돌려야
-   * 비로소 제대로 보였다.
-   *
-   * 그래서 텍스처가 하나 도착할 때마다 이 창을 다시 연장하고, 더 이상 도착하지
-   * 않으면 그때 요청 기반으로 돌아간다. 다 받고 나면 평소처럼 조용해진다.
-   */
-  const [settling, setSettling] = useState(true);
-  const settleUntil = useRef(0);
-
-  useEffect(() => {
-    let timer = 0;
-
-    const extend = () => {
-      settleUntil.current = Date.now() + 1500;
-      setSettling(true);
-
-      window.clearTimeout(timer);
-      timer = window.setTimeout(function check() {
-        if (Date.now() >= settleUntil.current) setSettling(false);
-        else timer = window.setTimeout(check, 300);
-      }, 1500);
-    };
-
-    extend();
-    const stop = onTextureReady(extend);
-
-    return () => {
-      stop();
-      window.clearTimeout(timer);
-    };
-  }, [scene?.sceneId, scene?.room?.dimensions.width, scene?.room?.dimensions.length]);
 
   if (!scene?.room) return null;
 
@@ -974,7 +938,16 @@ export function Canvas3D() {
       <Canvas
         shadows
         // 가만히 두면 프레임을 그리지 않는다. 카메라 조작·드래그·상태 변경 때만 렌더한다.
-        frameloop={settling ? "always" : "demand"}
+        /*
+         * 매 프레임 그린다.
+         *
+         * 예전에는 frameloop="demand"로 GPU를 아꼈는데, 그 대가가 너무 컸다 —
+         * 3D를 열면 첫 프레임을 그릴 계기를 놓쳐 빈 화면이 그대로 멈춰 있었고,
+         * 마우스로 한 번 돌려야 비로소 방이 나타났다. 카메라·컨트롤·텍스처·모델이
+         * 저마다 다른 시점에 준비되는 탓이라, 어디서 invalidate를 걸어도 새는 구멍이
+         * 남았다. 편집기 뷰포트는 계속 보고 있는 화면이니 그냥 계속 그린다.
+         */
+        frameloop="always"
         dpr={DPR}
         gl={GL_CONFIG}
         camera={cameraConfig}

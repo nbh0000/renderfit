@@ -233,6 +233,167 @@ export function textureForMaterial(
  * 흰 사각형이 방 한가운데 서 있게 되므로, 배경에 가까운 픽셀의 알파를 0으로 만든다.
  * 가장자리는 부드럽게 깎아 실루엣이 톱니처럼 보이지 않게 한다.
  */
+/** 배경 씨앗 — 순백만 배경으로 삼는다 */
+const BACKGROUND_SEED = 252;
+/** 씨앗에서 번져 나갈 수 있는 밝기 (사진의 반투명 가장자리) */
+const BACKGROUND_HALO = 230;
+/** 번지는 거리 — 물건 안쪽까지 새 들어가지 못하게 막는다 */
+const HALO_STEPS = 8;
+
+/**
+ * 배경만 지운다.
+ *
+ * 예전에는 밝기가 기준을 넘으면 무조건 지웠다. 그런데 카탈로그 사진은 흰 배경 위에
+ * 흰 침구, 흰 붙박이장, 흰 냉장고가 얹혀 있다 — 침대는 이불이 통째로 사라져서 바닥에
+ * 깔린 얇은 판처럼 보였다.
+ *
+ * 배경은 테두리에서 안쪽으로 이어져 있고 물건의 흰색은 그렇지 않다. 그래서 테두리
+ * 픽셀에서 시작해 이어진 밝은 곳만 따라가며 지운다. 물건 안쪽의 흰색은 배경과
+ * 끊겨 있으니 살아남는다.
+ */
+/**
+ * 잘라낸 실루엣의 생김새.
+ *
+ * fill은 실루엣이 자기 외접 사각형을 얼마나 채우는지다. 침대·붙박이장처럼 꽉 찬
+ * 물건은 1에 가깝고, 화분·조명처럼 뚫린 물건은 낮다.
+ */
+export type CutoutShape = { fill: number; color: string };
+
+const shapes = new Map<string, CutoutShape>();
+
+/** 이미지를 다 읽고 나면 그 실루엣의 생김새를 알려 준다 (아직이면 undefined) */
+export function cutoutShape(url: string): CutoutShape | undefined {
+  return shapes.get(url);
+}
+
+function eraseBackground(frame: ImageData, size: number): CutoutShape {
+  const pixels = frame.data;
+  const total = size * size;
+
+  const brightness = (index: number) => {
+    const at = index * 4;
+    return Math.min(pixels[at], pixels[at + 1], pixels[at + 2]);
+  };
+
+  const background = new Uint8Array(total);
+  const stack = new Int32Array(total);
+  let top = 0;
+
+  const push = (index: number) => {
+    if (background[index] || brightness(index) < BACKGROUND_SEED) return;
+    background[index] = 1;
+    stack[top++] = index;
+  };
+
+  for (let x = 0; x < size; x += 1) {
+    push(x);
+    push((size - 1) * size + x);
+  }
+  for (let y = 0; y < size; y += 1) {
+    push(y * size);
+    push(y * size + size - 1);
+  }
+
+  while (top > 0) {
+    const index = stack[--top];
+    const x = index % size;
+    const y = (index - x) / size;
+
+    if (x > 0) push(index - 1);
+    if (x < size - 1) push(index + 1);
+    if (y > 0) push(index - size);
+    if (y < size - 1) push(index + size);
+  }
+
+  /*
+   * 순백만 지우면 사진의 반투명한 가장자리가 흰 테처럼 남는다. 배경에 닿은 밝은
+   * 픽셀을 몇 겹만 더 걷어내되, 걸음 수를 묶어 둔다 — 무한정 번지면 이불처럼 밝은
+   * 물건 속으로 새 들어가 침대가 판때기가 된다.
+   */
+  for (let step = 0; step < HALO_STEPS; step += 1) {
+    const halo: number[] = [];
+
+    for (let index = 0; index < total; index += 1) {
+      if (background[index] || brightness(index) < BACKGROUND_HALO) continue;
+
+      const x = index % size;
+      const y = (index - x) / size;
+      if (
+        (x > 0 && background[index - 1]) ||
+        (x < size - 1 && background[index + 1]) ||
+        (y > 0 && background[index - size]) ||
+        (y < size - 1 && background[index + size])
+      ) {
+        halo.push(index);
+      }
+    }
+
+    if (halo.length === 0) break;
+    for (const index of halo) background[index] = 1;
+  }
+
+  /*
+   * 남은 실루엣의 모양을 재 둔다. 3D는 이 값으로 판을 세울지 덩어리를 세울지 고른다.
+   */
+  let left = size;
+  let right = 0;
+  let top_ = size;
+  let bottom = 0;
+  let kept = 0;
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  for (let index = 0; index < total; index += 1) {
+    if (background[index]) continue;
+
+    const x = index % size;
+    const y = (index - x) / size;
+    if (x < left) left = x;
+    if (x > right) right = x;
+    if (y < top_) top_ = y;
+    if (y > bottom) bottom = y;
+
+    const at = index * 4;
+    red += pixels[at];
+    green += pixels[at + 1];
+    blue += pixels[at + 2];
+    kept += 1;
+  }
+
+  const box = Math.max(1, (right - left + 1) * (bottom - top_ + 1));
+  const shape: CutoutShape = {
+    fill: kept / box,
+    color: kept
+      ? `rgb(${Math.round(red / kept)}, ${Math.round(green / kept)}, ${Math.round(blue / kept)})`
+      : "#d8d5d0",
+  };
+
+  /*
+   * 경계를 한 번 부드럽게 한다. 그대로 자르면 사진의 반투명한 가장자리(그림자가
+   * 아니라 안티에일리어싱)가 흰 실선처럼 남아 물건 둘레에 테를 두른 것처럼 보인다.
+   */
+  for (let index = 0; index < total; index += 1) {
+    const at = index * 4;
+    if (background[index]) {
+      pixels[at + 3] = 0;
+      continue;
+    }
+
+    const x = index % size;
+    const y = (index - x) / size;
+    const touching =
+      (x > 0 && background[index - 1]) ||
+      (x < size - 1 && background[index + 1]) ||
+      (y > 0 && background[index - size]) ||
+      (y < size - 1 && background[index + size]);
+
+    if (touching) pixels[at + 3] = 150;
+  }
+
+  return shape;
+}
+
 export function cutoutTexture(url: string): THREE.Texture | undefined {
   if (typeof document === "undefined") return undefined;
 
@@ -256,15 +417,7 @@ export function cutoutTexture(url: string): THREE.Texture | undefined {
     ctx.drawImage(image, 0, 0, size, size);
 
     const frame = ctx.getImageData(0, 0, size, size);
-    const pixels = frame.data;
-
-    for (let i = 0; i < pixels.length; i += 4) {
-      const min = Math.min(pixels[i], pixels[i + 1], pixels[i + 2]);
-      // 240 이상이면 배경, 214~240은 가장자리로 보고 서서히 지운다.
-      if (min >= 240) pixels[i + 3] = 0;
-      else if (min > 214) pixels[i + 3] = Math.round(((240 - min) / 26) * 255);
-    }
-
+    shapes.set(url, eraseBackground(frame, size));
     ctx.putImageData(frame, 0, 0);
     texture.needsUpdate = true;
     notifyReady();
