@@ -78,6 +78,8 @@ export function PlanEditor() {
   const selectedIds = useEditorStore((state) => state.selectedIds);
   const select = useEditorStore((state) => state.select);
   const runTool = useEditorStore((state) => state.runTool);
+  /** 이번 드래그에서 손이 실제로 움직였는가 — 제자리 클릭은 서버로 보내지 않는다 */
+  const draggedRef = useRef(false);
   const planTool = useEditorStore((state) => state.planTool);
   const setPlanTool = useEditorStore((state) => state.setPlanTool);
   const showGrid = useEditorStore((state) => state.showGrid);
@@ -438,8 +440,21 @@ export function PlanEditor() {
     });
   };
 
+  /**
+   * 끄는 동안의 한 걸음.
+   *
+   * live면 화면만 바꾸고 서버로 보내지 않는다. 손을 뗄 때 live=false로 한 번 더 불러
+   * 그때 서버에 보낸다 — 드래그 한 번이 되돌리기 한 번이 되고 요청도 한 번만 나간다.
+   *
+   * 회전·크기는 "지금 값과의 차이"로 보내는 조작이라 두 경우의 값이 다르다. 끄는
+   * 동안에는 직전 미리보기와의 차이를, 마무리할 때는 드래그를 시작한 값과의 차이를
+   * 보낸다. 서버의 물건은 아직 드래그 전 상태이기 때문이다.
+   */
   const applyDrag = useCallback(
-    async (mode: DragMode, point: [number, number]): Promise<string[] | null> => {
+    async (mode: DragMode, point: [number, number], live: boolean): Promise<string[] | null> => {
+      const call = (tool: string, args: Record<string, unknown>) =>
+        runTool(tool, args, live ? { send: false } : { preview: false });
+
       if (mode.kind === "rotate") {
         const object = objects.find((item) => item.id === mode.id);
         if (!object) return null;
@@ -448,10 +463,10 @@ export function PlanEditor() {
         const delta = ((angle - mode.startAngle) * 180) / Math.PI;
         // 15도 단위로 떨어뜨리면 손으로도 반듯하게 맞출 수 있다.
         const target = Math.round((mode.origin + delta) / 15) * 15;
-        const diff = target - object.screen.rotation;
+        const diff = live ? target - object.screen.rotation : target - mode.origin;
 
         if (Math.abs(diff) >= 1) {
-          await runTool("rotate_object", { objectId: mode.id, degrees: diff });
+          await call("rotate_object", { objectId: mode.id, degrees: diff });
         }
         return [`각도 ${(((target % 360) + 360) % 360).toFixed(0)}°`];
       }
@@ -462,10 +477,10 @@ export function PlanEditor() {
 
         const distance = Math.hypot(point[0] - mode.center[0], point[1] - mode.center[1]);
         const wanted = Math.min(4, Math.max(0.3, (mode.origin * distance) / mode.startDistance));
-        const factor = wanted / object.transform.scale[0];
+        const factor = live ? wanted / object.transform.scale[0] : wanted / mode.origin;
 
         if (Math.abs(factor - 1) >= 0.02) {
-          await runTool("scale_object", { objectId: mode.id, factor });
+          await call("scale_object", { objectId: mode.id, factor });
         }
         return [
           `폭 ${Math.round(object.dimensions.width * wanted)}mm`,
@@ -479,7 +494,7 @@ export function PlanEditor() {
 
         const start = mode.part === "start" ? point : wall.start;
         const end = mode.part === "end" ? point : wall.end;
-        await runTool("update_wall", { wallId: mode.id, start, end });
+        await call("update_wall", { wallId: mode.id, start, end });
         return [describeSegment(start, end)];
       }
 
@@ -493,7 +508,7 @@ export function PlanEditor() {
           const area = areas.find((item) => item.id === target.id);
           if (!area) return null;
           const points = area.points.map((v, i) => (i === target.vertex ? point : v));
-          await runTool("update_room_area", { areaId: target.id, points });
+          await call("update_room_area", { areaId: target.id, points });
           return [`${toSquareMeters(polygonArea(points)).toFixed(1)}㎡`];
         }
 
@@ -501,7 +516,7 @@ export function PlanEditor() {
           const annotation = annotations.find((item) => item.id === target.id);
           if (!annotation) return null;
           const points = annotation.points.map((v, i) => (i === target.vertex ? point : v));
-          await runTool("update_annotation", { annotationId: target.id, points });
+          await call("update_annotation", { annotationId: target.id, points });
         }
         return null;
       }
@@ -513,7 +528,7 @@ export function PlanEditor() {
       const { target, origin } = mode;
 
       if (target.kind === "object" && roomWidthMm && roomLengthMm) {
-        await runTool("move_object", {
+        await call("move_object", {
           objectId: target.id,
           x: Math.min(1, Math.max(0, (origin.objectX ?? 0) + dx / roomWidthMm)),
           depth: Math.min(1, Math.max(0, (origin.objectDepth ?? 0) + dy / roomLengthMm)),
@@ -522,7 +537,7 @@ export function PlanEditor() {
       }
 
       if (target.kind === "wall" && origin.wall) {
-        await runTool("update_wall", {
+        await call("update_wall", {
           wallId: target.id,
           start: [Math.round(origin.wall.start[0] + dx), Math.round(origin.wall.start[1] + dy)],
           end: [Math.round(origin.wall.end[0] + dx), Math.round(origin.wall.end[1] + dy)],
@@ -536,9 +551,9 @@ export function PlanEditor() {
       );
 
       if (target.kind === "area") {
-        await runTool("update_room_area", { areaId: target.id, points: moved });
+        await call("update_room_area", { areaId: target.id, points: moved });
       } else if (target.kind === "annotation") {
-        await runTool("update_annotation", { annotationId: target.id, points: moved });
+        await call("update_annotation", { annotationId: target.id, points: moved });
       }
       return [`이동 ${Math.round(dx)} · ${Math.round(dy)}mm`];
     },
@@ -574,7 +589,8 @@ export function PlanEditor() {
     }
 
     if (drag) {
-      void applyDrag(drag, pointerPlan(event)).then((lines) => {
+      draggedRef.current = true;
+      void applyDrag(drag, pointerPlan(event), true).then((lines) => {
         if (lines) showTip(event, lines);
       });
       return;
@@ -614,6 +630,15 @@ export function PlanEditor() {
       const moved = Math.hypot(event.clientX - drag.from[0], event.clientY - drag.from[1]);
       if (moved <= CLICK_SLOP_PX) cancelDrawing();
     }
+
+    /*
+     * 끌던 것을 여기서 한 번만 서버에 보낸다.
+     * 움직이지 않은 클릭은 보내지 않는다 — 아무것도 안 바뀐 되돌리기 칸이 쌓인다.
+     */
+    if (drag && drag.kind !== "pan" && drag.kind !== "marquee" && draggedRef.current) {
+      void applyDrag(drag, pointerPlan(event), false);
+    }
+    draggedRef.current = false;
 
     setDrag(null);
     setTip(null);

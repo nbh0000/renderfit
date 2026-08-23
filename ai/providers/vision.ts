@@ -11,6 +11,7 @@ import type {
 } from "./types";
 import type { SceneObject } from "@/scene/types";
 import { ROOMS, ROOM_MAP, type RoomId } from "@/config/rooms";
+import { repairPlan } from "@/scene/planRepair";
 
 /**
  * Gemini 기반 공간 분석.
@@ -75,7 +76,7 @@ const POINT = {
   required: ["x", "y"],
 } as const;
 
-const PLAN_SCHEMA = {
+export const PLAN_SCHEMA = {
   type: "object",
   properties: {
     roomType: { type: "string", enum: ROOM_IDS },
@@ -121,8 +122,10 @@ const PLAN_SCHEMA = {
           name: { type: "string" },
           type: { type: "string", enum: ROOM_IDS },
           polygon: { type: "array", items: POINT },
+          /** 도면에 적힌 실 면적(㎡). 안 적혀 있으면 0 */
+          areaSqm: { type: "number" },
         },
-        required: ["name", "type", "polygon"],
+        required: ["name", "type", "polygon", "areaSqm"],
       },
     },
     walls: {
@@ -258,6 +261,14 @@ const PLAN_PROMPT = [
   "- 같은 것이 여러 개면 하나씩 따로, 실제로 놓인 자리에 각각 배치한다.",
   "  겹쳐 놓지 말고 사진에서 보이는 간격 그대로 벌려 놓는다.",
   "- 의자는 자기 테이블 주위에 둘러 놓고, 각각 테이블을 바라보도록 회전시킨다.",
+  "  테이블 상판 안쪽에 의자를 넣지 않는다 — 도면에서 몇 인용인지 읽을 수 없게 된다.",
+  "- ★ 치수는 실제 제품 규격으로 쓴다. 도면의 치수선을 잘못 짚으면 방보다 큰 가구가 나온다.",
+  "  침대는 싱글 1000×2000, 슈퍼싱글 1100×2000, 더블 1400×2000, 퀸 1500×2000, 킹 1600×2000.",
+  "  소파는 2인 1600×900, 3인 2100×900, 코너 2600×1700. 식탁 1500×900, 의자 450×500.",
+  "  책상 1400×700, 붙박이장 1800×600, 냉장고 900×800, 세탁기 600×650.",
+  "- ★ 가구는 자기가 놓인 실보다 클 수 없다. 침실이 2450×2520이면 그 안의 침대는",
+  "  어느 방향으로도 그보다 작아야 하고, 벽에서 최소 50mm는 떨어져 있어야 한다.",
+  "- ★ 가구끼리 겹치지 않는다. 두 물건의 평면 사각형이 닿기만 해도 안 된다.",
   "- elevationMm은 바닥에서 물체 아래쪽까지의 높이다. 바닥에 놓인 것은 0,",
   "  천장등·환기 덕트는 (천장고 − 물체 높이), 벽에 걸린 것은 실제로 걸린 높이.",
   "- 천장등·환기 덕트·후드는 mountedOn=ceiling, 벽에 걸린 TV·액자·메뉴판은 wall, 나머지는 floor.",
@@ -283,6 +294,9 @@ const FLOORPLAN_HEAD = [
   "- 가구 기호가 그려져 있으면 그 종류·위치·방향을 그대로 옮긴다.",
   "- 선 도면에는 마감재 정보가 없다. 도면에 재료명이 적혀 있지 않으면 finishes는 빈 문자열로 둔다.",
   "  흑백 선 그림을 보고 벽지 색을 지어내면 3D가 엉뚱한 방으로 그려진다.",
+  "- ★ 실 안에 면적이 적혀 있으면(24.1m², 7.8㎡, 3.2평 등) 그 숫자를 areaSqm에 ㎡로 적는다.",
+  "  평으로 적혀 있으면 3.3058을 곱해 ㎡로 바꾼다. 안 적혀 있으면 0을 넣는다.",
+  "  이 숫자는 폴리곤 좌표를 검산하는 데 쓴다 — 짐작하지 말고 적힌 것만 옮긴다.",
   "- ★ 도면에 적힌 실명(거실·안방·주방·욕실·현관 등)을 하나도 빠뜨리지 말고 rooms에 넣는다.",
   "  방을 가르는 내벽도 전부 walls에 넣는다. 한국 아파트는 보통 실이 5~8개다.",
   "- roomType(전체)은 가장 넓은 실의 종류로 정한다.",
@@ -290,7 +304,7 @@ const FLOORPLAN_HEAD = [
 ].join("\n");
 
 /** 올린 것이 사진인지 도면인지에 따라 프롬프트를 고른다 */
-function promptFor(kind: ImageRef["kind"]): string {
+export function promptFor(kind: ImageRef["kind"]): string {
   if (kind !== "floorplan") return PLAN_PROMPT;
   // 세는 단계·좌표 규칙은 그대로 쓰고, 첫 줄(사진 안내)만 도면용으로 바꾼다.
   return FLOORPLAN_HEAD + PLAN_PROMPT.split("\n").slice(1).join("\n");
@@ -457,7 +471,7 @@ function lightVector(from: string | undefined): [number, number, number] {
  * 다시 눌러서 값이 바뀌면 사용자는 어느 쪽도 믿지 않는다.
  * 측량은 창작이 아니므로 무작위성을 완전히 끈다.
  */
-const DETERMINISTIC = { temperature: 0, topP: 1, seed: 7 } as const;
+export const DETERMINISTIC = { temperature: 0, topP: 1, seed: 7 } as const;
 
 /** 환경변수로 고정하면 그 모델만 쓴다 */
 export function visionModels(): string[] {
@@ -553,7 +567,12 @@ interface RawPlan {
   styleGuess?: string;
   lightFrom?: string;
   outline?: { x?: number; y?: number }[];
-  rooms?: { name?: string; type?: string; polygon?: { x?: number; y?: number }[] }[];
+  rooms?: {
+    name?: string;
+    type?: string;
+    polygon?: { x?: number; y?: number }[];
+    areaSqm?: number;
+  }[];
   walls?: {
     name?: string;
     start?: { x?: number; y?: number };
@@ -800,6 +819,11 @@ export function toPlanAnalysis(raw: RawPlan): RoomAnalysis | null {
       name: source?.name?.trim() || "실",
       type: normalizeRoomType(source?.type),
       polygon,
+      // 도면에 적힌 면적. 말이 안 되는 값(0.5㎡ 미만·300㎡ 초과)은 안 적힌 것으로 본다.
+      areaSqm:
+        Number.isFinite(source?.areaSqm) && source!.areaSqm! >= 0.5 && source!.areaSqm! <= 300
+          ? source!.areaSqm!
+          : null,
     });
   }
 
@@ -844,9 +868,33 @@ export function toPlanAnalysis(raw: RawPlan): RoomAnalysis | null {
    */
   const finalWalls = rooms.length > 1 ? wallsFromRooms(rooms, walls) : walls;
 
+  /*
+   * 가구를 상식으로 한 번 걸러 낸다.
+   *
+   * 벽과 실은 모델이 꽤 정확히 읽는데 가구는 자주 무너진다 — 2.4m 방에 폭 2.4m짜리
+   * 침대가 들어오고, 식탁 의자 넷이 식탁 위에 쌓인다. 프롬프트로 당부해도 끝까지 남는
+   * 종류의 오류라, 돌려받은 값을 표준 규격·방 크기·서로 간의 간격으로 다시 앉힌다.
+   */
+  const repaired = repairPlan({
+    roomType: normalizeRoomType(raw.roomType),
+    ceilingHeightMm: height,
+    cameraWallIndex: raw.cameraWallIndex ?? 0,
+    outline,
+    rooms,
+    walls: finalWalls,
+    furniture,
+  });
+
+  /*
+   * 되맞추면서 도면이 커지거나 작아졌을 수 있다 — 방 크기를 다시 잰다.
+   * 예전 값을 그대로 쓰면 3D의 바닥과 평면도의 실이 어긋난다.
+   */
+  const fittedWidth = Math.max(...repaired.outline.map((point) => point.x));
+  const fittedLength = Math.max(...repaired.outline.map((point) => point.y));
+
   return {
     roomType: normalizeRoomType(raw.roomType),
-    roomDimensions: { width, length, height },
+    roomDimensions: { width: fittedWidth, length: fittedLength, height },
     objects: [],
     styleGuess: raw.styleGuess?.trim() || null,
     lightDirection: lightVector(raw.lightFrom),
@@ -859,10 +907,10 @@ export function toPlanAnalysis(raw: RawPlan): RoomAnalysis | null {
       },
       ceilingHeightMm: height,
       cameraWallIndex: raw.cameraWallIndex ?? 0,
-      outline,
-      rooms,
-      walls: finalWalls,
-      furniture,
+      outline: repaired.outline,
+      rooms: repaired.rooms,
+      walls: repaired.walls,
+      furniture: repaired.furniture,
     },
   };
 }

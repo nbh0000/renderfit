@@ -103,7 +103,18 @@ interface EditorState {
   /** 설명으로 가구를 만들어 씬에 넣는다 (이미지 생성 → 3D 배치) */
   generateAsset: (description: string) => Promise<{ ok: boolean; message: string }>;
 
-  runTool: (tool: string, args?: Record<string, unknown>) => Promise<ToolCallResult>;
+  /**
+   * Scene operation 하나를 실행한다.
+   *
+   * 드래그처럼 손이 움직이는 내내 값이 바뀌는 조작은 두 단계로 나눠 쓴다 —
+   * 끄는 동안에는 send:false로 화면만 바꾸고, 손을 뗄 때 preview:false로 서버에 한 번
+   * 보낸다. 이렇게 해야 드래그 한 번이 되돌리기 한 번이 되고, 요청도 한 번만 나간다.
+   */
+  runTool: (
+    tool: string,
+    args?: Record<string, unknown>,
+    options?: { preview?: boolean; send?: boolean }
+  ) => Promise<ToolCallResult>;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
   runCommand: (
@@ -299,17 +310,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   /** Scene operation 실행 — 모든 편집은 이 경로를 지난다 */
-  runTool: async (tool, args = {}) => {
+  runTool: async (tool, args = {}, options = {}) => {
     const { projectId, scene } = get();
+    const { preview: wantPreview = true, send = true } = options;
 
     // 1) 브라우저에서 먼저 돌려 화면을 즉시 바꾼다.
-    const preview = previewTool(scene, tool, args);
+    const preview = wantPreview ? previewTool(scene, tool, args) : null;
     if (preview) {
       set({
         scene: preview.scene,
         ...(preview.selectObjectId ? { selectedIds: [preview.selectObjectId] } : {}),
       });
     }
+
+    /*
+     * 끄는 중에는 여기서 멈춘다.
+     *
+     * 예전에는 pointermove마다 서버로 보냈다. 물건 하나를 위에서 아래로 옮기면 요청이
+     * 스무 번 나가고 되돌리기도 스무 번 눌러야 했다 — 게다가 요청을 줄 세워 보내므로
+     * 손이 멈춘 뒤에도 한참 따라왔다.
+     */
+    if (!send) return { ok: true, message: "" };
 
     // 2) 서버에는 줄을 세워 하나씩 보낸다.
     inFlight += 1;
@@ -332,8 +353,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!ok) {
       const message = (data.error as string) ?? "실행에 실패했습니다.";
       set({ lastMessage: message });
-      // 낙관적으로 바꿔 둔 화면이 서버와 어긋났다 — 서버 상태로 되돌린다.
-      if (preview) await get().reload();
+      /*
+       * 낙관적으로 바꿔 둔 화면이 서버와 어긋났다 — 서버 상태로 되돌린다.
+       * 드래그를 마무리하는 호출은 preview를 건너뛰지만, 그 전에 끄는 동안 화면을 이미
+       * 바꿔 놨다. 그래서 이 호출이 미리보기를 했는지와 무관하게 되읽어야 한다.
+       */
+      await get().reload();
       return { ok: false, message };
     }
 
