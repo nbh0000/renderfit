@@ -1,3 +1,4 @@
+import { chargeCredits, isDenied, EDITOR_COST } from "@/lib/credits";
 import { getViewer } from "@/lib/auth";
 import { enqueueAnalyze, loadProject } from "@/services/projectService";
 
@@ -13,6 +14,9 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     return Response.json({ error: "먼저 방 사진을 업로드해 주세요." }, { status: 400 });
   }
 
-  const job = enqueueAnalyze(loaded);
+  const charge = await chargeCredits(EDITOR_COST.analyze);
+  if (isDenied(charge)) return charge.denied;
+
+  const job = enqueueAnalyze(loaded, charge.refund);
   return Response.json({ job });
 }

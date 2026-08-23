@@ -1,3 +1,4 @@
+import { chargeCredits, isDenied, EDITOR_COST } from "@/lib/credits";
 import { getViewer } from "@/lib/auth";
 import { enqueueGenerate, enqueueGenerateVariants, loadProject } from "@/services/projectService";
 
@@ -26,10 +27,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
 
   // variants=2 → 두 방향으로 만들어 고르게 한다 (바로 적용하지 않는다)
   const options = { styleId: body.styleId ?? null, prompt: body.prompt };
+  const charge = await chargeCredits(EDITOR_COST.renderFinal);
+  if (isDenied(charge)) return charge.denied;
+
   const job =
     body.variants && body.variants > 1
-      ? enqueueGenerateVariants(loaded, options)
-      : enqueueGenerate(loaded, options);
+      ? enqueueGenerateVariants(loaded, options, charge.refund)
+      : enqueueGenerate(loaded, options, charge.refund);
 
   return Response.json({ job });
 }

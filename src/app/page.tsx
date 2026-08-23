@@ -4,6 +4,7 @@ import { BRAND } from "@/config/brand";
 import { STYLES } from "@/config/styles";
 import { StartChat } from "@/components/StartChat";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
+import { SiteFooter } from "@/components/legal/SiteFooter";
 import { GalleryMarquee, type GalleryMarqueeItem } from "@/components/gallery/GalleryMarquee";
 import { getViewer } from "@/lib/auth";
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -243,9 +244,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <footer className="border-t border-line px-5 py-5 text-center text-[11.5px] text-muted sm:px-8">
-        생성물은 참고용 시안이며 시공용 도면이 아닙니다.
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

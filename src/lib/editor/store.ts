@@ -58,6 +58,13 @@ interface EditorState {
    * 사용자에게 알리므로, 저장된 줄 알고 창을 닫는 일이 없어진다.
    */
   unsaved: boolean;
+  /**
+   * 크레딧이 모자라 마지막 작업이 막혔는가.
+   *
+   * 편집기는 크레딧을 눈에 띄게 보여 주지 않으므로, 막혔을 때만이라도 왜 막혔고
+   * 어디로 가면 되는지 알려야 한다.
+   */
+  outOfCredits: boolean;
   clipboard: SceneObject | null;
   showGrid: boolean;
   /** 평면도 그리기 도구 */
@@ -193,6 +200,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   jobs: [],
   lastMessage: null,
   unsaved: false,
+  outOfCredits: false,
   clipboard: null,
   showGrid: true,
   planTool: "select",
@@ -300,7 +308,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     if (!ok) {
       const message = (data.error as string) ?? "가구를 만들지 못했습니다.";
-      set({ busy: null, lastMessage: message });
+      set({ busy: null, lastMessage: message, outOfCredits: data.insufficient === true });
       return { ok: false, message };
     }
 
@@ -438,7 +446,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     if (!ok) {
       const message = (data.error as string) ?? "명령을 실행하지 못했습니다.";
-      set({ busy: null, lastMessage: message });
+      set({ busy: null, lastMessage: message, outOfCredits: data.insufficient === true });
       return { ok: false, message };
     }
 
@@ -479,7 +487,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const { ok, data } = await postJSON(`/api/projects/${projectId}${path}`, payload);
 
     if (!ok) {
-      set({ lastMessage: (data.error as string) ?? "작업을 시작하지 못했습니다.", busy: null });
+      /*
+       * 크레딧이 모자란 것은 고장이 아니라 안내할 일이다.
+       * 요금제 쪽으로 보내는 표시를 따로 세워 둔다.
+       */
+      set({
+        lastMessage: (data.error as string) ?? "작업을 시작하지 못했습니다.",
+        busy: null,
+        outOfCredits: data.insufficient === true,
+      });
       return null;
     }
 

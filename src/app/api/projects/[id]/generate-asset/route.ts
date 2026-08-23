@@ -1,3 +1,4 @@
+import { chargeCredits, isDenied, EDITOR_COST } from "@/lib/credits";
 import { withPersistGuard } from "@/lib/persist-guard";
 import { getViewer } from "@/lib/auth";
 import { loadProject, persist } from "@/services/projectService";
@@ -35,6 +36,9 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       return Response.json({ error: "설명이 너무 깁니다 (200자 이내)." }, { status: 400 });
     }
 
+    const charge = await chargeCredits(EDITOR_COST.generateAsset);
+    if (isDenied(charge)) return charge.denied;
+
     // 이미지와 치수는 서로를 기다릴 이유가 없다.
     const [image, estimate] = await Promise.all([
       generateProductImage(description).catch((error: unknown) => error as Error),
@@ -42,6 +46,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     ]);
 
     if (image instanceof Error) {
+      await charge.refund();
       return Response.json({ error: image.message }, { status: 502 });
     }
 
@@ -84,6 +89,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     });
 
     if (!result.ok) {
+      await charge.refund();
       return Response.json({ error: result.error ?? "씬에 넣지 못했습니다." }, { status: 400 });
     }
 

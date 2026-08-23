@@ -446,60 +446,74 @@ export function analysisToScene(scene: Scene, analysis: RoomAnalysis): Scene {
 }
 
 /** 업로드 이미지 → 분석 → Scene 생성 (background job) */
-export function enqueueAnalyze(loaded: LoadedProject): Job {
+/**
+ * 잡이 실패했을 때 부를 것 — 미리 걷은 크레딧을 돌려주는 데 쓴다.
+ *
+ * 잡은 응답을 보낸 뒤 백그라운드에서 도는지라, 라우트에서는 실패를 알 수 없다.
+ * 그래서 실패 처리를 잡 안으로 들여보낸다.
+ */
+type OnFailure = () => Promise<void>;
+
+export function enqueueAnalyze(loaded: LoadedProject, onFailure?: OnFailure): Job {
   const projectId = loaded.project.id;
 
   return getQueue().enqueue({
     type: "ANALYZE_IMAGE",
     projectId,
     handler: async (update) => {
-      const reloaded = await loadProject(projectId, loaded.project.ownerId);
-      if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
+      /* 실패하면 미리 걷은 크레딧을 돌려준다 */
+      try {
+        const reloaded = await loadProject(projectId, loaded.project.ownerId);
+        if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
 
-      const imageUrl = reloaded.engine.getScene().source.imageUrl;
-      if (!imageUrl) throw new Error("먼저 방 사진을 업로드해 주세요.");
+        const imageUrl = reloaded.engine.getScene().source.imageUrl;
+        if (!imageUrl) throw new Error("먼저 방 사진을 업로드해 주세요.");
 
-      const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
+        const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
 
-      update(15, "방 종류를 인식하고 있습니다...");
-      const analysis = await providers.vision.analyzeRoom({
-        url: imageUrl,
-        kind: reloaded.engine.getScene().source.kind ?? "photo",
-      });
+        update(15, "방 종류를 인식하고 있습니다...");
+        const analysis = await providers.vision.analyzeRoom({
+          url: imageUrl,
+          kind: reloaded.engine.getScene().source.kind ?? "photo",
+        });
 
-      update(45, "객체를 분리하고 있습니다...");
-      const scene = analysisToScene(reloaded.engine.getScene(), analysis);
-      const engine = new SceneEngine(scene, {
-        operations: reloaded.engine.getOperations(),
-        redo: reloaded.engine.getRedoStack(),
-      });
+        update(45, "객체를 분리하고 있습니다...");
+        const scene = analysisToScene(reloaded.engine.getScene(), analysis);
+        const engine = new SceneEngine(scene, {
+          operations: reloaded.engine.getOperations(),
+          redo: reloaded.engine.getRedoStack(),
+        });
 
-      const segmentation = await providers.segmentation.segment({ url: imageUrl });
+        const segmentation = await providers.segmentation.segment({ url: imageUrl });
 
-      update(70, "깊이를 추정하고 있습니다...");
-      const depth = await providers.depth.estimateDepth({ url: imageUrl });
+        update(70, "깊이를 추정하고 있습니다...");
+        const depth = await providers.depth.estimateDepth({ url: imageUrl });
 
-      const withMaps: Scene = {
-        ...engine.getScene(),
-        source: {
-          ...engine.getScene().source,
-          segmentationUrl: segmentation.segmentationUrl,
-          depthMapUrl: depth.depthMapUrl,
-        },
-      };
+        const withMaps: Scene = {
+          ...engine.getScene(),
+          source: {
+            ...engine.getScene().source,
+            segmentationUrl: segmentation.segmentationUrl,
+            depthMapUrl: depth.depthMapUrl,
+          },
+        };
 
-      const finalEngine = new SceneEngine(withMaps, {
-        operations: engine.getOperations(),
-        redo: engine.getRedoStack(),
-      });
+        const finalEngine = new SceneEngine(withMaps, {
+          operations: engine.getOperations(),
+          redo: engine.getRedoStack(),
+        });
 
-      update(90, "장면을 구성하고 있습니다...");
-      const saved = await persist(
-        { project: reloaded.project, engine: finalEngine },
-        { status: "ready" }
-      );
+        update(90, "장면을 구성하고 있습니다...");
+        const saved = await persist(
+          { project: reloaded.project, engine: finalEngine },
+          { status: "ready" }
+        );
 
-      return { objectCount: saved.scene.objects.length, roomType: saved.scene.room.type };
+        return { objectCount: saved.scene.objects.length, roomType: saved.scene.room.type };
+      } catch (error) {
+        await onFailure?.();
+        throw error;
+      }
     },
   });
 }
@@ -530,7 +544,8 @@ function buildGeneratePrompt(scene: Scene, styleFragment?: string, extra?: strin
 /** Scene + 스타일 → 이미지 생성 (background job) */
 export function enqueueGenerate(
   loaded: LoadedProject,
-  options: { styleId?: string | null; prompt?: string }
+  options: { styleId?: string | null; prompt?: string },
+  onFailure?: OnFailure
 ): Job {
   const projectId = loaded.project.id;
   const ownerId = loaded.project.ownerId;
@@ -539,47 +554,53 @@ export function enqueueGenerate(
     type: "GENERATE_INTERIOR",
     projectId,
     handler: async (update) => {
-      const reloaded = await loadProject(projectId, ownerId);
-      if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
+      /* 실패하면 미리 걷은 크레딧을 돌려준다 */
+      try {
+        const reloaded = await loadProject(projectId, ownerId);
+        if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
 
-      const scene = reloaded.engine.getScene();
-      const imageUrl = scene.source.imageUrl;
-      if (!imageUrl) throw new Error("먼저 방 사진을 업로드해 주세요.");
+        const scene = reloaded.engine.getScene();
+        const imageUrl = scene.source.imageUrl;
+        if (!imageUrl) throw new Error("먼저 방 사진을 업로드해 주세요.");
 
-      const styleId = options.styleId ?? scene.styleId ?? "modern";
-      const style = STYLE_PRESET_MAP[styleId];
-      const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
+        const styleId = options.styleId ?? scene.styleId ?? "modern";
+        const style = STYLE_PRESET_MAP[styleId];
+        const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
 
-      if (options.styleId) reloaded.engine.setStyle(options.styleId);
+        if (options.styleId) reloaded.engine.setStyle(options.styleId);
 
-      update(30, "디자인을 생성하고 있습니다...");
+        update(30, "디자인을 생성하고 있습니다...");
 
-      const prompt = buildGeneratePrompt(scene, style?.promptFragment, options.prompt);
+        const prompt = buildGeneratePrompt(scene, style?.promptFragment, options.prompt);
 
-      const result = await providers.generation.generate({
-        image: { url: imageUrl },
-        prompt,
-        depthMap: scene.source.depthMapUrl ? { url: scene.source.depthMapUrl } : null,
-        segmentation: scene.source.segmentationUrl ? { url: scene.source.segmentationUrl } : null,
-        styleId,
-        settings: { objects: scene.objects.length },
-      });
+        const result = await providers.generation.generate({
+          image: { url: imageUrl },
+          prompt,
+          depthMap: scene.source.depthMapUrl ? { url: scene.source.depthMapUrl } : null,
+          segmentation: scene.source.segmentationUrl ? { url: scene.source.segmentationUrl } : null,
+          styleId,
+          settings: { objects: scene.objects.length },
+        });
 
-      update(80, "장면에 반영하고 있습니다...");
-      reloaded.engine.applyGeneration({ generatedImageUrl: result.imageUrl });
+        update(80, "장면에 반영하고 있습니다...");
+        reloaded.engine.applyGeneration({ generatedImageUrl: result.imageUrl });
 
-      const version = createVersion(
-        reloaded.engine.getScene(),
-        style ? `${style.label} 생성` : "AI 생성"
-      );
+        const version = createVersion(
+          reloaded.engine.getScene(),
+          style ? `${style.label} 생성` : "AI 생성"
+        );
 
-      const saved = await persist(reloaded, {
-        status: "ready",
-        thumbnailUrl: result.imageUrl,
-        versions: [...reloaded.project.versions, version].slice(-20),
-      });
+        const saved = await persist(reloaded, {
+          status: "ready",
+          thumbnailUrl: result.imageUrl,
+          versions: [...reloaded.project.versions, version].slice(-20),
+        });
 
-      return { imageUrl: result.imageUrl, cached: result.cached, version: saved.versions.length };
+        return { imageUrl: result.imageUrl, cached: result.cached, version: saved.versions.length };
+      } catch (error) {
+        await onFailure?.();
+        throw error;
+      }
     },
   });
 }
@@ -600,7 +621,8 @@ const VARIANT_DIRECTIONS = [
 
 export function enqueueGenerateVariants(
   loaded: LoadedProject,
-  options: { styleId?: string | null; prompt?: string }
+  options: { styleId?: string | null; prompt?: string },
+  onFailure?: OnFailure
 ): Job {
   const projectId = loaded.project.id;
   const ownerId = loaded.project.ownerId;
@@ -609,41 +631,47 @@ export function enqueueGenerateVariants(
     type: "GENERATE_INTERIOR",
     projectId,
     handler: async (update) => {
-      const reloaded = await loadProject(projectId, ownerId);
-      if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
+      /* 실패하면 미리 걷은 크레딧을 돌려준다 */
+      try {
+        const reloaded = await loadProject(projectId, ownerId);
+        if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
 
-      const scene = reloaded.engine.getScene();
-      const imageUrl = scene.source.imageUrl;
-      if (!imageUrl) throw new Error("먼저 방 사진을 업로드해 주세요.");
+        const scene = reloaded.engine.getScene();
+        const imageUrl = scene.source.imageUrl;
+        if (!imageUrl) throw new Error("먼저 방 사진을 업로드해 주세요.");
 
-      const styleId = options.styleId ?? scene.styleId ?? "modern";
-      const style = STYLE_PRESET_MAP[styleId];
-      const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
+        const styleId = options.styleId ?? scene.styleId ?? "modern";
+        const style = STYLE_PRESET_MAP[styleId];
+        const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
 
-      const variants: { label: string; imageUrl: string }[] = [];
+        const variants: { label: string; imageUrl: string }[] = [];
 
-      for (const [index, direction] of VARIANT_DIRECTIONS.entries()) {
-        update(
-          20 + index * 40,
-          `${index + 1}번째 시안을 만들고 있습니다... (${VARIANT_DIRECTIONS.length}개 중)`
-        );
+        for (const [index, direction] of VARIANT_DIRECTIONS.entries()) {
+          update(
+            20 + index * 40,
+            `${index + 1}번째 시안을 만들고 있습니다... (${VARIANT_DIRECTIONS.length}개 중)`
+          );
 
-        const result = await providers.generation.generate({
-          image: { url: imageUrl },
-          prompt: [
-            buildGeneratePrompt(scene, style?.promptFragment, options.prompt),
-            direction.fragment,
-          ].join("\n"),
-          depthMap: scene.source.depthMapUrl ? { url: scene.source.depthMapUrl } : null,
-          segmentation: scene.source.segmentationUrl ? { url: scene.source.segmentationUrl } : null,
-          styleId,
-          settings: { objects: scene.objects.length, variant: direction.label },
-        });
+          const result = await providers.generation.generate({
+            image: { url: imageUrl },
+            prompt: [
+              buildGeneratePrompt(scene, style?.promptFragment, options.prompt),
+              direction.fragment,
+            ].join("\n"),
+            depthMap: scene.source.depthMapUrl ? { url: scene.source.depthMapUrl } : null,
+            segmentation: scene.source.segmentationUrl ? { url: scene.source.segmentationUrl } : null,
+            styleId,
+            settings: { objects: scene.objects.length, variant: direction.label },
+          });
 
-        variants.push({ label: direction.label, imageUrl: result.imageUrl });
+          variants.push({ label: direction.label, imageUrl: result.imageUrl });
+        }
+
+        return { variants };
+      } catch (error) {
+        await onFailure?.();
+        throw error;
       }
-
-      return { variants };
     },
   });
 }
@@ -716,7 +744,8 @@ export function enqueueInpaint(
 export function enqueueRender(
   loaded: LoadedProject,
   quality: "preview" | "final",
-  options: { viewportImage?: string } = {}
+  options: { viewportImage?: string } = {},
+  onFailure?: OnFailure
 ): Job {
   const projectId = loaded.project.id;
   const ownerId = loaded.project.ownerId;
@@ -725,26 +754,32 @@ export function enqueueRender(
     type: quality === "final" ? "RENDER_FINAL" : "RENDER_PREVIEW",
     projectId,
     handler: async (update) => {
-      const reloaded = await loadProject(projectId, ownerId);
-      if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
+      /* 실패하면 미리 걷은 크레딧을 돌려준다 */
+      try {
+        const reloaded = await loadProject(projectId, ownerId);
+        if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
 
-      const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
-      update(40, quality === "final" ? "최종 렌더링 중입니다..." : "미리보기 렌더링 중입니다...");
+        const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
+        update(40, quality === "final" ? "최종 렌더링 중입니다..." : "미리보기 렌더링 중입니다...");
 
-      const scene = reloaded.engine.getScene();
-      const renderOptions = options.viewportImage
-        ? { viewportImage: { url: options.viewportImage } }
-        : undefined;
-      const result =
-        quality === "final"
-          ? await providers.rendering.finalRender(scene, renderOptions)
-          : await providers.rendering.preview(scene, renderOptions);
+        const scene = reloaded.engine.getScene();
+        const renderOptions = options.viewportImage
+          ? { viewportImage: { url: options.viewportImage } }
+          : undefined;
+        const result =
+          quality === "final"
+            ? await providers.rendering.finalRender(scene, renderOptions)
+            : await providers.rendering.preview(scene, renderOptions);
 
-      if (quality === "final") {
-        await persist(reloaded, { thumbnailUrl: result.imageUrl });
+        if (quality === "final") {
+          await persist(reloaded, { thumbnailUrl: result.imageUrl });
+        }
+
+        return result;
+      } catch (error) {
+        await onFailure?.();
+        throw error;
       }
-
-      return result;
     },
   });
 }

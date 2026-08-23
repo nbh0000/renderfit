@@ -1,3 +1,4 @@
+import { chargeCredits, isDenied, EDITOR_COST } from "@/lib/credits";
 import { getViewer } from "@/lib/auth";
 import { loadProject, runAICommand } from "@/services/projectService";
 import { intentOf } from "@/ai/router";
@@ -23,7 +24,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     return Response.json({ error: "명령이 너무 깁니다." }, { status: 400 });
   }
 
+  const charge = await chargeCredits(EDITOR_COST.command);
+  if (isDenied(charge)) return charge.denied;
+
   const result = await runAICommand(loaded, instruction, body.selectedObjectId ?? null);
+
+  // 아무것도 못 알아들었으면 값을 받지 않는다
+  if (!result.ok) await charge.refund();
 
   return Response.json({
     ok: result.ok,

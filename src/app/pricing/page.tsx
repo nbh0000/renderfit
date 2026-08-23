@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
 import { PlanCards } from "@/components/pricing/PlanCards";
 import { getViewer } from "@/lib/auth";
+import { SiteFooter } from "@/components/legal/SiteFooter";
+import { PaymentResult } from "@/components/pricing/PaymentResult";
 
 export const metadata: Metadata = {
   title: "요금제",
@@ -36,6 +38,7 @@ export default async function PricingPage() {
     <AppShell active="pricing" authed={Boolean(viewer.userId)}>
 
       <main className="mx-auto max-w-[1000px] px-4 py-10 sm:px-6">
+        <PaymentResult />
         <h1 className="serif-display text-[26px] leading-tight sm:text-[30px]">요금제</h1>
         <p className="mt-2 max-w-lg text-[14px] leading-relaxed text-ink-soft">
           1장 생성에 1크레딧, 고해상도는 2크레딧입니다. 크레딧은 매월 갱신되며 다음 달로 이월되지
@@ -78,6 +81,8 @@ export default async function PricingPage() {
           아닙니다.
         </p>
       </main>
+
+      <SiteFooter />
     </AppShell>
   );
 }

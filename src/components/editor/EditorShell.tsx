@@ -43,6 +43,7 @@ export function EditorShell({ project }: { project: DesignProject }) {
     <div className="flex h-dvh flex-col bg-canvas">
       <Ribbon />
       <UnsavedBanner />
+      <CreditBanner />
       <BusyBanner />
 
       <div className="flex min-h-0 flex-1">
@@ -383,6 +384,34 @@ function BusyBanner() {
     <div className="flex shrink-0 items-center gap-2 border-b border-line bg-sunken px-4 py-2">
       <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-line-strong border-t-transparent" />
       <span className="text-[12.5px] text-ink-soft">{busy}</span>
+    </div>
+  );
+}
+
+/**
+ * 크레딧이 모자라 막혔다는 띠.
+ *
+ * AI 작업은 크레딧을 쓰는데 편집기에는 잔액이 보이지 않는다. 막혔을 때 "실패했습니다"만
+ * 뜨면 고장으로 오해하므로, 왜 막혔고 어디로 가면 되는지 그 자리에서 알려 준다.
+ */
+function CreditBanner() {
+  const outOfCredits = useEditorStore((state) => state.outOfCredits);
+  if (!outOfCredits) return null;
+
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 items-center justify-between gap-3 border-b border-line-strong bg-sunken px-4 py-2"
+    >
+      <span className="text-[12.5px] text-ink-soft">
+        크레딧을 다 썼습니다. AI 분석·렌더·가구 만들기는 크레딧이 있어야 돌아갑니다.
+      </span>
+      <a
+        href="/pricing"
+        className="shrink-0 rounded-[var(--radius-control)] bg-ink px-2.5 py-1 text-[11.5px] text-surface hover:opacity-90"
+      >
+        요금제 보기
+      </a>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { chargeCredits, isDenied, EDITOR_COST } from "@/lib/credits";
 import { getViewer } from "@/lib/auth";
 import { enqueueRender, loadProject } from "@/services/projectService";
 
@@ -27,6 +28,11 @@ export async function POST(
       ? body.viewport
       : undefined;
 
-  const job = enqueueRender(loaded, quality, { viewportImage });
+  const charge = await chargeCredits(
+    quality === "final" ? EDITOR_COST.renderFinal : EDITOR_COST.renderPreview
+  );
+  if (isDenied(charge)) return charge.denied;
+
+  const job = enqueueRender(loaded, quality, { viewportImage }, charge.refund);
   return Response.json({ job });
 }
