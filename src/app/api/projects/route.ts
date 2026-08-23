@@ -1,3 +1,4 @@
+import { withPersistGuard } from "@/lib/persist-guard";
 import { getViewer } from "@/lib/auth";
 import { createProject, listProjects } from "@/services/projectService";
 import { summarizeScene } from "@/scene/serialization";
@@ -25,15 +26,17 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  let body: { name?: string };
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    body = {};
-  }
+  return withPersistGuard(async () => {
+    let body: { name?: string };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      body = {};
+    }
 
-  const viewer = await getViewer();
-  const project = await createProject(body.name ?? "새 프로젝트", viewer.userId);
+    const viewer = await getViewer();
+    const project = await createProject(body.name ?? "새 프로젝트", viewer.userId);
 
-  return Response.json({ project: { id: project.id, name: project.name } }, { status: 201 });
+    return Response.json({ project: { id: project.id, name: project.name } }, { status: 201 });
+  });
 }

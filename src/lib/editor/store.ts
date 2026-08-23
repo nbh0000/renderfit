@@ -51,6 +51,13 @@ interface EditorState {
   busy: string | null;
   jobs: Job[];
   lastMessage: string | null;
+  /**
+   * 서버에 기록되지 못한 편집이 화면에 남아 있는가.
+   *
+   * 저장이 거절되면 화면은 그대로 두고 이 값을 세운다. 편집기가 이 값을 보고
+   * 사용자에게 알리므로, 저장된 줄 알고 창을 닫는 일이 없어진다.
+   */
+  unsaved: boolean;
   clipboard: SceneObject | null;
   showGrid: boolean;
   /** 평면도 그리기 도구 */
@@ -185,6 +192,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   busy: null,
   jobs: [],
   lastMessage: null,
+  unsaved: false,
   clipboard: null,
   showGrid: true,
   planTool: "select",
@@ -352,12 +360,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     if (!ok) {
       const message = (data.error as string) ?? "실행에 실패했습니다.";
-      set({ lastMessage: message });
+
       /*
-       * 낙관적으로 바꿔 둔 화면이 서버와 어긋났다 — 서버 상태로 되돌린다.
-       * 드래그를 마무리하는 호출은 preview를 건너뛰지만, 그 전에 끄는 동안 화면을 이미
-       * 바꿔 놨다. 그래서 이 호출이 미리보기를 했는지와 무관하게 되읽어야 한다.
+       * 저장에 실패한 것과 편집이 거절된 것은 다르게 다뤄야 한다.
+       *
+       * 거절(400)이면 서버에는 그 편집이 없으므로 화면을 서버 상태로 되돌리는 게 맞다.
+       * 하지만 저장 실패(503)는 편집 자체는 옳았고 기록만 못 한 것이다. 이때 되읽으면
+       * 사용자가 방금 한 작업이 눈앞에서 사라진다 — 30분치 작업이 그렇게 날아갈 수 있다.
+       * 그래서 화면은 그대로 두고 저장되지 않았다는 사실만 알린다.
        */
+      if (data.persisted === false) {
+        set({ lastMessage: message, unsaved: true });
+        return { ok: false, message };
+      }
+
+      set({ lastMessage: message });
+      // 낙관적으로 바꿔 둔 화면이 서버와 어긋났다 — 서버 상태로 되돌린다.
       await get().reload();
       return { ok: false, message };
     }
@@ -370,8 +388,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
      */
     set(
       inFlight > 0
-        ? { canUndo: Boolean(data.canUndo), canRedo: Boolean(data.canRedo) }
+        ? { canUndo: Boolean(data.canUndo), canRedo: Boolean(data.canRedo), unsaved: false }
         : {
+            unsaved: false,
             scene: data.scene as Scene,
             canUndo: Boolean(data.canUndo),
             canRedo: Boolean(data.canRedo),

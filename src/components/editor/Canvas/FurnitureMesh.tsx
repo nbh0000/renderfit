@@ -232,12 +232,34 @@ function ImageBillboard({
   );
 
   if (shape && shape.fill >= SOLID_FILL) {
+    /*
+     * 각진 상자는 어떤 가구도 그렇게 생기지 않아서 눈에 걸린다. 모서리를 조금만
+     * 굴려도 "가구"로 읽힌다. 반지름은 가장 짧은 변에 맞춰야 얇은 것(TV장·매트리스)이
+     * 캡슐처럼 부풀지 않는다.
+     */
+    const radius = Math.min(0.03, Math.min(width, height, depth) * 0.12);
+
     return (
       <group>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[width * 0.98, height * 0.98, depth * 0.98]} />
+        <RoundedBox
+          args={[width * 0.98, height * 0.98, depth * 0.98]}
+          radius={radius}
+          smoothness={3}
+          castShadow
+          receiveShadow
+        >
           <meshStandardMaterial color={shape.color} roughness={0.85} metalness={0.02} />
+        </RoundedBox>
+
+        {/*
+          윗면은 3/4 시점에서 앞면 다음으로 많이 보인다. 사진 윗부분에서 뽑은 색을
+          얹어 두면 통짜 색 덩어리에서 벗어난다.
+        */}
+        <mesh position={[0, height / 2 - 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[width * 0.94, depth * 0.94]} />
+          <meshStandardMaterial color={shape.topColor} roughness={0.8} metalness={0.02} />
         </mesh>
+
         {/* 앞면 사진 — 덩어리보다 아주 살짝 앞에 둬야 z-파이팅이 없다 */}
         <mesh position={[0, 0, depth / 2 + 0.002]} castShadow>
           <planeGeometry args={[width, height]} />

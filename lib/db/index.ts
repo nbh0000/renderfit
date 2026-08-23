@@ -10,6 +10,19 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
  * Supabase가 설정돼 있으면 PostgreSQL에, 아니면 로컬 파일(.data/projects)에 저장한다.
  * 두 구현 모두 같은 인터페이스를 쓰므로 서비스 코드는 저장소를 신경 쓰지 않는다.
  */
+/**
+ * 저장이 실패했다는 뜻.
+ *
+ * 라우트는 이것을 잡아 503으로 돌려주고, 편집기는 화면의 편집 내용을 지우지 않은 채
+ * 저장에 실패했다고 알린다. 다른 오류(잘못된 요청 등)와 구분해야 하므로 따로 둔다.
+ */
+export class PersistError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PersistError";
+  }
+}
+
 export interface ProjectRepository {
   readonly name: string;
   list(ownerId: string | null): Promise<DesignProject[]>;
@@ -127,11 +140,19 @@ export class SupabaseProjectRepository implements ProjectRepository {
     return this.toProject(data as unknown as ProjectRow);
   }
 
+  /**
+   * 프로젝트를 저장한다. 실패하면 던진다.
+   *
+   * supabase-js는 쓰기가 거절돼도 예외를 던지지 않고 { error }를 돌려준다. 예전에는
+   * 그 결과를 버렸는데, 그래서 RLS 거절이나 네트워크 오류가 아무 일 없었던 것처럼
+   * 지나갔다 — 프로젝트를 만들면 id까지 돌려받고서 다음 요청에서 404가 났고, 편집기는
+   * "저장됐다"고 믿은 채로 사용자의 작업을 잃었다. 조용히 지나가느니 던지는 편이 낫다.
+   */
   async save(project: DesignProject): Promise<void> {
     const supabase = await createServerSupabase();
     if (!supabase) return;
 
-    await supabase.from("design_projects").upsert({
+    const { error } = await supabase.from("design_projects").upsert({
       id: project.id,
       owner_id: project.ownerId,
       name: project.name,
@@ -144,13 +165,18 @@ export class SupabaseProjectRepository implements ProjectRepository {
       redo_stack: project.redoStack,
       versions: project.versions,
     });
+
+    if (error) throw new PersistError(error.message);
   }
 
   async delete(id: string, ownerId: string | null): Promise<void> {
     const supabase = await createServerSupabase();
     if (!supabase) return;
+
     const query = supabase.from("design_projects").delete().eq("id", id);
-    await (ownerId ? query.eq("owner_id", ownerId) : query);
+    const { error } = await (ownerId ? query.eq("owner_id", ownerId) : query);
+
+    if (error) throw new PersistError(error.message);
   }
 }
 

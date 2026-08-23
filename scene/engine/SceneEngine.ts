@@ -35,6 +35,7 @@ const ANNOTATION_LABEL: Record<string, string> = {
 };
 
 import { arrangeObjects, placeObject } from "../placement";
+import { isSaneRoomSize, resizeArea as resizeAreaGeometry } from "../resizeArea";
 import { applyOperation, OPERATION_LABEL } from "../operations";
 import { validateOperation, type ValidationResult } from "../validation";
 
@@ -619,6 +620,57 @@ export class SceneEngine {
         before,
         { room: patch, objects: fitted.objects },
         `실측 치수 반영 (가구 ${fitted.changed}개 위치 보정)`
+      )
+    );
+  }
+
+
+  /**
+   * 실 하나의 폭·깊이를 실측값으로 고친다.
+   *
+   * 도면 스캔은 치수선이 그어진 실만 정확하다. 치수선이 없는 실은 모델이 눈대중으로
+   * 그리므로 같은 도면을 두 번 넣어도 달라진다 — 그건 AI를 조여서 없앨 수 있는
+   * 오차가 아니라, 사람이 줄자로 잰 값을 넣을 길을 열어 두는 게 맞다.
+   *
+   * 그 실이 차지한 칸만 늘이므로 이웃 실과 벽은 붙어 있는 관계를 그대로 지킨다.
+   * 방과 가구가 함께 바뀌므로 RESIZE_ROOM 하나로 커밋한다 — 되돌리기 한 번이면 원래대로다.
+   */
+  resizeArea(areaId: string, wanted: { width?: number; length?: number }): CommitResult {
+    const area = this.getAreas().find((item) => item.id === areaId);
+    if (!area) return { ok: false, error: "실을 찾을 수 없습니다." };
+
+    for (const value of [wanted.width, wanted.length]) {
+      if (value !== undefined && !isSaneRoomSize(value)) {
+        return { ok: false, error: "치수를 600~30000mm 사이로 입력해 주세요." };
+      }
+    }
+
+    const next = resizeAreaGeometry(this.scene.room, this.scene.objects, areaId, wanted);
+    if (!next) return { ok: false, error: "바꿀 치수를 입력해 주세요." };
+
+    const room = ensureRoom(this.scene.room);
+    const patch: Partial<RoomSpec> = {
+      dimensions: next.room.dimensions,
+      walls: next.room.walls,
+      areas: next.room.areas,
+      annotations: next.room.annotations,
+      measured: true,
+    };
+
+    const before: Record<string, unknown> = {
+      room: Object.fromEntries(
+        (Object.keys(patch) as (keyof RoomSpec)[]).map((key) => [key, room[key]])
+      ),
+      objects: this.scene.objects,
+    };
+
+    return this.commit(
+      this.makeOperation(
+        "RESIZE_ROOM",
+        undefined,
+        before,
+        { room: patch, objects: next.objects },
+        `${area.name} 치수 입력`
       )
     );
   }

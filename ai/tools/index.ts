@@ -215,6 +215,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
+    name: "resize_room_area",
+    description:
+      "실의 폭·깊이를 실측값(mm)으로 고친다. 그 실이 차지한 자리만 늘어나고 이웃 실과 벽은 붙어 있는 관계를 지킨다. width·length 중 아는 것만 줘도 된다.",
+    parameters: { areaId: "string", width: "number", length: "number" },
+  },
+  {
     name: "delete_room_area",
     description: "실을 삭제한다.",
     parameters: { areaId: "string" },
@@ -809,6 +815,22 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       if (typeof args.floorMaterialId === "string") patch.floorMaterialId = args.floorMaterialId;
 
       return toResult(command, engine.updateArea(areaId, patch), "실을 수정했습니다.");
+    }
+
+    case "resize_room_area": {
+      const areaId = args.areaId as string;
+      if (!areaId) return fail("대상 실이 없습니다.");
+
+      const size = (value: unknown) => {
+        const millimetres = Math.round(Number(value));
+        return Number.isFinite(millimetres) && millimetres > 0 ? millimetres : undefined;
+      };
+
+      return toResult(
+        command,
+        engine.resizeArea(areaId, { width: size(args.width), length: size(args.length) }),
+        "실 치수를 반영했습니다."
+      );
     }
 
     case "delete_room_area": {

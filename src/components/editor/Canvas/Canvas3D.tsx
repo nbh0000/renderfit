@@ -911,6 +911,11 @@ export function Canvas3D() {
   }, []);
 
 
+  // 마감재·모델이 다 올 때까지 덮개를 씌운다 (빈 회색 화면은 고장으로 보인다)
+  const { ready, onDrawn } = useSceneReady(scene.sceneId);
+  const host = useRef<HTMLDivElement | null>(null);
+  useCanvasSize(host);
+
   if (!scene?.room) return null;
 
   /*
@@ -934,7 +939,8 @@ export function Canvas3D() {
   const backdropOn = showBackdrop && Boolean(backdropUrl);
 
   return (
-    <div className="h-full w-full bg-[linear-gradient(#e9e8e5,#cfcdc8)]">
+    <div ref={host} className="relative h-full w-full bg-[linear-gradient(#e9e8e5,#cfcdc8)]">
+      {!ready && <LoadingVeil />}
       <Canvas
         shadows
         // 가만히 두면 프레임을 그리지 않는다. 카메라 조작·드래그·상태 변경 때만 렌더한다.
@@ -955,6 +961,7 @@ export function Canvas3D() {
         onPointerMissed={() => select([])}
       >
         <CanvasBridge />
+        <FirstFrames onDrawn={onDrawn} />
         <RenderPump signature={shadowSignature} />
 
         <SceneLights scene={scene} />
@@ -1052,6 +1059,124 @@ export function Canvas3D() {
               : "생성 이미지 꺼짐"
             : "생성 이미지 없음"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * 장면이 다 준비됐는지.
+ *
+ * 3D를 처음 열면 마감재 사진과 가구 메시를 받아오느라 한참 걸린다 — 개발 서버에서는
+ * 30초 가까이 걸렸다. 그동안 빈 회색 화면만 있으면 고장 난 것처럼 보이므로 덮개를
+ * 씌워 둔다.
+ *
+ * 텍스처가 하나 도착할 때마다 기다림을 다시 연장하고, 더 이상 도착하지 않으면 그때
+ * 준비된 것으로 본다. 몇 장이 올지는 미리 알 수 없어서 개수로는 셀 수 없다.
+ */
+function useSceneReady(sceneId: string) {
+  const [quiet, setQuiet] = useState(false);
+  const [drawn, setDrawn] = useState(false);
+
+  useEffect(() => {
+    setQuiet(false);
+    setDrawn(false);
+
+    let timer = window.setTimeout(() => setQuiet(true), SETTLE_MS);
+    const stop = onTextureReady(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setQuiet(true), SETTLE_MS);
+    });
+
+    return () => {
+      stop();
+      window.clearTimeout(timer);
+    };
+  }, [sceneId]);
+
+  /*
+   * 텍스처가 조용해졌다고 화면에 그려진 것은 아니다.
+   *
+   * 두 번째 열 때는 텍스처가 이미 캐시에 있어 아무 소식도 오지 않는다. 그러면 덮개가
+   * 0.9초 만에 걷히는데 캔버스는 아직 첫 프레임을 그리기 전이라, 가리려던 회색 화면이
+   * 그대로 드러난다. 그래서 실제로 몇 프레임 그려진 것까지 확인한 다음에 걷는다.
+   */
+  return { ready: quiet && drawn, onDrawn: useCallback(() => setDrawn(true), []) };
+}
+
+/** 캔버스가 실제로 그리기 시작했는지 알린다 */
+function FirstFrames({ onDrawn }: { onDrawn: () => void }) {
+  const count = useRef(0);
+
+  useFrame(() => {
+    count.current += 1;
+    if (count.current === 3) onDrawn();
+  });
+
+  return null;
+}
+
+
+/**
+ * 캔버스가 제 크기를 못 잡고 멈추는 것을 푼다.
+ *
+ * 3D를 열면 캔버스가 300×150(기본값) 그대로 멈춰 있는 일이 있다. 그러면 아무것도
+ * 그려지지 않아 회색 화면만 남는데, 마우스로 창을 흔들거나 resize 이벤트가 한 번
+ * 오면 그제야 제 크기를 잡고 방이 나타난다. 이 세션에서 "3D가 빈 화면"으로 보였던
+ * 일들이 대부분 이것이었다.
+ *
+ * react-use-measure의 관찰자가 첫 측정을 놓치는 것이라, 우리가 크기를 직접 견줘 보고
+ * 어긋나 있으면 resize를 한 번 흘려 준다. 맞으면 바로 멈춘다.
+ */
+function useCanvasSize(host: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    let tries = 0;
+
+    const timer = window.setInterval(() => {
+      const box = host.current;
+      const canvas = box?.querySelector("canvas");
+      if (!box || !canvas) return;
+
+      const wanted = box.clientWidth;
+      if (wanted <= 0) return;
+
+      // 폭이 얼추 맞으면 제대로 잡은 것이다
+      if (Math.abs(canvas.clientWidth - wanted) <= 2 || tries >= 20) {
+        window.clearInterval(timer);
+        return;
+      }
+
+      tries += 1;
+      window.dispatchEvent(new Event("resize"));
+    }, 120);
+
+    return () => window.clearInterval(timer);
+  }, [host]);
+}
+
+/** 마지막 텍스처가 도착하고 이만큼 조용하면 다 온 것으로 본다 */
+const SETTLE_MS = 900;
+
+/** 3D를 여는 동안 덮어 두는 화면 */
+function LoadingVeil() {
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), 6000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-[linear-gradient(#e9e8e5,#cfcdc8)]">
+      <div className="flex flex-col items-center gap-3">
+        <span className="h-7 w-7 animate-spin rounded-full border-2 border-line-strong border-t-transparent" />
+        <p className="text-[12.5px] text-ink-soft">3D 장면을 준비하고 있습니다</p>
+        {slow && (
+          <p className="max-w-[260px] text-center text-[11.5px] leading-relaxed text-muted">
+            마감재 사진과 가구 모델을 받아오는 중입니다. 처음 여는 장면은 시간이 좀 걸립니다.
+          </p>
+        )}
       </div>
     </div>
   );

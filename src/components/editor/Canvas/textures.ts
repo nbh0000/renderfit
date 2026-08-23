@@ -257,7 +257,19 @@ const HALO_STEPS = 8;
  * fill은 실루엣이 자기 외접 사각형을 얼마나 채우는지다. 침대·붙박이장처럼 꽉 찬
  * 물건은 1에 가깝고, 화분·조명처럼 뚫린 물건은 낮다.
  */
-export type CutoutShape = { fill: number; color: string };
+export type CutoutShape = {
+  fill: number;
+  /** 실루엣 전체의 평균색 — 덩어리를 세울 때 옆·뒷면 색으로 쓴다 */
+  color: string;
+  /**
+   * 실루엣 윗부분의 평균색.
+   *
+   * 3/4 시점에서는 앞면 다음으로 윗면이 많이 보인다. 붙박이장 윗면은 앞면보다 밝고
+   * 소파 등받이 위쪽은 앉는 면보다 어두운데, 전체 평균색 하나로 칠하면 그 차이가
+   * 사라져 통짜 색 덩어리로 보인다.
+   */
+  topColor: string;
+};
 
 const shapes = new Map<string, CutoutShape>();
 
@@ -361,12 +373,36 @@ function eraseBackground(frame: ImageData, size: number): CutoutShape {
     kept += 1;
   }
 
+  /* 실루엣 위쪽 18%만 따로 평균 낸다 — 윗면에 칠할 색이다 */
+  const cap = top_ + Math.max(1, Math.round((bottom - top_) * 0.18));
+  let capRed = 0;
+  let capGreen = 0;
+  let capBlue = 0;
+  let capKept = 0;
+
+  for (let y = top_; y <= Math.min(cap, bottom); y += 1) {
+    for (let x = left; x <= right; x += 1) {
+      const index = y * size + x;
+      if (background[index]) continue;
+
+      const at = index * 4;
+      capRed += pixels[at];
+      capGreen += pixels[at + 1];
+      capBlue += pixels[at + 2];
+      capKept += 1;
+    }
+  }
+
+  const average = (r: number, g: number, b: number, count: number) =>
+    count
+      ? `rgb(${Math.round(r / count)}, ${Math.round(g / count)}, ${Math.round(b / count)})`
+      : "#d8d5d0";
+
   const box = Math.max(1, (right - left + 1) * (bottom - top_ + 1));
   const shape: CutoutShape = {
     fill: kept / box,
-    color: kept
-      ? `rgb(${Math.round(red / kept)}, ${Math.round(green / kept)}, ${Math.round(blue / kept)})`
-      : "#d8d5d0",
+    color: average(red, green, blue, kept),
+    topColor: average(capRed, capGreen, capBlue, capKept),
   };
 
   /*

@@ -42,6 +42,8 @@ export function EditorShell({ project }: { project: DesignProject }) {
   return (
     <div className="flex h-dvh flex-col bg-canvas">
       <Ribbon />
+      <UnsavedBanner />
+      <BusyBanner />
 
       <div className="flex min-h-0 flex-1">
         {/* 좌측: 에셋/재질/스타일/조명/AI */}
@@ -318,6 +320,69 @@ function OnboardingOverlay() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 저장하지 못한 편집이 있다는 띠.
+ *
+ * 저장 실패는 조용히 지나가면 안 되는 종류의 일이다 — 사용자는 저장된 줄 알고 창을
+ * 닫고, 작업이 사라진 뒤에야 알게 된다. 그래서 화면 맨 위에 붙여 두고, 다음 편집이
+ * 성공해 서버에 기록될 때까지 내리지 않는다.
+ */
+function UnsavedBanner() {
+  const unsaved = useEditorStore((state) => state.unsaved);
+  const reload = useEditorStore((state) => state.reload);
+
+  /*
+   * 띠를 못 보고 창을 닫는 경우까지 막는다.
+   * 브라우저가 문구를 무시하고 자기 문구를 쓰지만, 확인 창은 뜬다.
+   */
+  useEffect(() => {
+    if (!unsaved) return;
+
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
+
+  if (!unsaved) return null;
+
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 items-center justify-between gap-3 border-b border-[#d9a441] bg-[#fdf6e6] px-4 py-2"
+    >
+      <span className="text-[12.5px] text-[#7a5a12]">
+        저장하지 못한 편집이 있습니다. 화면의 내용은 그대로이니 다시 시도해 주세요 —
+        창을 닫으면 사라집니다.
+      </span>
+      <button
+        type="button"
+        onClick={() => void reload()}
+        className="shrink-0 rounded-[var(--radius-control)] border border-[#d9a441] px-2.5 py-1 text-[11.5px] text-[#7a5a12] hover:bg-[#f7ecd2]"
+      >
+        서버 내용으로 되돌리기
+      </button>
+    </div>
+  );
+}
+
+/**
+ * 오래 걸리는 일이 도는 중이라는 띠.
+ *
+ * 도면 분석·이미지 생성은 20~40초씩 걸리는데, 진행 상황이 오른쪽 AI 패널 안에만
+ * 작게 떠서 보고 있지 않으면 멈춘 줄 안다. 화면 맨 위에 붙여 눈에 걸리게 한다.
+ */
+function BusyBanner() {
+  const busy = useEditorStore((state) => state.busy);
+  if (!busy) return null;
+
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-line bg-sunken px-4 py-2">
+      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-line-strong border-t-transparent" />
+      <span className="text-[12.5px] text-ink-soft">{busy}</span>
     </div>
   );
 }

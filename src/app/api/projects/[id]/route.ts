@@ -1,3 +1,4 @@
+import { withPersistGuard } from "@/lib/persist-guard";
 import { getViewer } from "@/lib/auth";
 import { deleteProject, loadProject } from "@/services/projectService";
 
@@ -12,8 +13,10 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
 }
 
 export async function DELETE(_request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { id } = await ctx.params;
-  const viewer = await getViewer();
-  await deleteProject(id, viewer.userId);
-  return Response.json({ ok: true });
+  return withPersistGuard(async () => {
+    const { id } = await ctx.params;
+    const viewer = await getViewer();
+    await deleteProject(id, viewer.userId);
+    return Response.json({ ok: true });
+  });
 }
