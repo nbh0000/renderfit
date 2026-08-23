@@ -22,6 +22,16 @@ const ROOM_MARGIN = 80;
 /** 이만큼보다 가까우면 그 벽에 붙이려던 것으로 본다 (mm) */
 const SNAP_RANGE = 900;
 
+/**
+ * 치수선이 그림과 이 배율 안에서 맞아떨어져야 그 실의 치수로 인정한다.
+ *
+ * 치수선은 도면에서 가장 믿을 만한 숫자지만, 어느 실의 것인지를 틀리는 일이 있다 —
+ * 모델이 도면 전체의 6500×4530을 거실 치수선이라고 옮겨 적어 평면이 세로로 늘어났다.
+ * 숫자 자체를 잘못 읽는 일은 드물고 붙일 곳을 헷갈리는 일이 잦으니, 모델이 그린
+ * 폴리곤과 크게 어긋나면 남의 치수를 가져온 것으로 보고 버린다.
+ */
+const PRINTED_TRUST = { min: 0.6, max: 1.7 };
+
 type Size = { width: number; depth: number };
 
 /**
@@ -93,41 +103,114 @@ const BY_NAME: { match: RegExp; size: Size; types?: string[] }[] = [
    * 실제로 1700mm 깊이라 가전 범위(최대 1000)를 넘는데, 범위로 자르면 750mm짜리
    * 반신욕조가 된다. 이름이 종류와 아귀가 맞으면 그 이름을 끝까지 믿는다.
    */
-  { match: /의자|체어|스툴/, size: { width: 450, depth: 500 }, types: ["chair"] },
+  {
+    match: /의자|체어|스툴/,
+    size: { width: 450, depth: 500 },
+    types: ["chair"],
+  },
 
-  { match: /슈퍼s*싱글|ss/i, size: { width: 1100, depth: 2000 }, types: ["bed"] },
+  {
+    match: /슈퍼s*싱글|ss/i,
+    size: { width: 1100, depth: 2000 },
+    types: ["bed"],
+  },
   { match: /싱글/, size: { width: 1000, depth: 2000 }, types: ["bed"] },
-  { match: /라지s*킹|라지킹/, size: { width: 1800, depth: 2000 }, types: ["bed"] },
+  {
+    match: /라지s*킹|라지킹/,
+    size: { width: 1800, depth: 2000 },
+    types: ["bed"],
+  },
   { match: /킹/, size: { width: 1600, depth: 2000 }, types: ["bed"] },
   { match: /퀸/, size: { width: 1500, depth: 2000 }, types: ["bed"] },
   { match: /더블/, size: { width: 1400, depth: 2000 }, types: ["bed"] },
-  { match: /2s*층s*침대|이층s*침대|벙커/, size: { width: 1100, depth: 2000 }, types: ["bed"] },
-  { match: /유아용?s*침대|아기s*침대|크립/, size: { width: 700, depth: 1300 }, types: ["bed"] },
+  {
+    match: /2s*층s*침대|이층s*침대|벙커/,
+    size: { width: 1100, depth: 2000 },
+    types: ["bed"],
+  },
+  {
+    match: /유아용?s*침대|아기s*침대|크립/,
+    size: { width: 700, depth: 1300 },
+    types: ["bed"],
+  },
 
-  { match: /코너s*소파|ㄱ자s*소파/, size: { width: 2600, depth: 1700 }, types: ["sofa"] },
+  {
+    match: /코너s*소파|ㄱ자s*소파/,
+    size: { width: 2600, depth: 1700 },
+    types: ["sofa"],
+  },
   { match: /4s*인s*소파/, size: { width: 2600, depth: 900 }, types: ["sofa"] },
   { match: /3s*인s*소파/, size: { width: 2100, depth: 900 }, types: ["sofa"] },
   { match: /2s*인s*소파/, size: { width: 1600, depth: 900 }, types: ["sofa"] },
-  { match: /1s*인s*소파|암체어/, size: { width: 900, depth: 900 }, types: ["sofa"] },
+  {
+    match: /1s*인s*소파|암체어/,
+    size: { width: 900, depth: 900 },
+    types: ["sofa"],
+  },
 
   { match: /책상|데스크/, size: { width: 1400, depth: 700 }, types: ["table"] },
   { match: /식탁|다이닝/, size: { width: 1500, depth: 900 }, types: ["table"] },
-  { match: /소파s*테이블|커피s*테이블|거실s*테이블/, size: { width: 1100, depth: 600 }, types: ["table"] },
-  { match: /협탁|사이드s*테이블|나이트s*스탠드/, size: { width: 450, depth: 400 }, types: ["table", "cabinet"] },
+  {
+    match: /소파s*테이블|커피s*테이블|거실s*테이블/,
+    size: { width: 1100, depth: 600 },
+    types: ["table"],
+  },
+  {
+    match: /협탁|사이드s*테이블|나이트s*스탠드/,
+    size: { width: 450, depth: 400 },
+    types: ["table", "cabinet"],
+  },
 
-  { match: /붙박이장|옷장|드레스/, size: { width: 1800, depth: 600 }, types: ["cabinet"] },
+  {
+    match: /붙박이장|옷장|드레스/,
+    size: { width: 1800, depth: 600 },
+    types: ["cabinet"],
+  },
   { match: /신발장/, size: { width: 900, depth: 350 }, types: ["cabinet"] },
-  { match: /거실장|tvs*장/i, size: { width: 1800, depth: 450 }, types: ["cabinet"] },
+  {
+    match: /거실장|tvs*장/i,
+    size: { width: 1800, depth: 450 },
+    types: ["cabinet"],
+  },
 
-  { match: /냉장고/, size: { width: 900, depth: 800 }, types: ["appliance", "cabinet"] },
-  { match: /세탁기|건조기/, size: { width: 600, depth: 650 }, types: ["appliance", "cabinet"] },
-  { match: /가스s*레인지|쿡탑|인덕션/, size: { width: 760, depth: 600 }, types: ["appliance", "cabinet"] },
+  {
+    match: /냉장고/,
+    size: { width: 900, depth: 800 },
+    types: ["appliance", "cabinet"],
+  },
+  {
+    match: /세탁기|건조기/,
+    size: { width: 600, depth: 650 },
+    types: ["appliance", "cabinet"],
+  },
+  {
+    match: /가스s*레인지|쿡탑|인덕션/,
+    size: { width: 760, depth: 600 },
+    types: ["appliance", "cabinet"],
+  },
 
   // 위생기구는 가전 범위를 넘나든다 — 욕조는 1700mm 깊이가 정상이다
-  { match: /변기|양변기/, size: { width: 400, depth: 700 }, types: ["appliance", "cabinet", "decoration"] },
-  { match: /세면대|세면기/, size: { width: 600, depth: 500 }, types: ["appliance", "cabinet", "decoration"] },
-  { match: /욕조/, size: { width: 800, depth: 1700 }, types: ["appliance", "cabinet", "decoration"] },
-  { match: /샤워s*부스/, size: { width: 900, depth: 900 }, types: ["appliance", "cabinet", "decoration"] },
+  // chair를 넣어 둔다 — 모델이 변기를 앉는 것으로 보고 chair로 분류해 오는 일이 있다
+  {
+    match: /변기|양변기/,
+    size: { width: 400, depth: 700 },
+    types: ["appliance", "cabinet", "decoration", "chair"],
+  },
+  {
+    match: /세면대|세면기/,
+    size: { width: 600, depth: 500 },
+    types: ["appliance", "cabinet", "decoration"],
+  },
+  {
+    match: /욕조/,
+    size: { width: 800, depth: 1700 },
+    types: ["appliance", "cabinet", "decoration"],
+  },
+  {
+    match: /샤워s*부스/,
+    size: { width: 900, depth: 900 },
+    types: ["appliance", "cabinet", "decoration"],
+  },
 ];
 
 /** 등을 벽에 대고 놓는 가구 — 도면에서 이런 것이 방 한가운데 떠 있으면 잘못 읽은 것이다 */
@@ -179,15 +262,30 @@ function overlap(a: Box, b: Box, slack = 0): number {
   return x > 0 && y > 0 ? x * y : 0;
 }
 
-/** 이 가구가 들어 있는 실. 어느 실에도 안 들어가면 가장 가까운 실로 본다 */
+/**
+ * 이 가구가 들어 있는 실.
+ *
+ * 이름이 먼저다. 모델은 "욕실 변기", "주방 싱크대", "침실1 침대"처럼 실 이름을 붙여
+ * 돌려주는데, 정작 좌표는 엉뚱한 방에 찍어 놓는 일이 있다 — 변기가 식탁 옆에 놓였다.
+ * 글자가 좌표보다 믿을 만하니 이름에 적힌 실로 보낸다. 뒤에서 fitToRoom이 그 실
+ * 안으로 들여놓는다.
+ *
+ * 이름에 실이 없으면 좌표가 들어 있는 실, 그것도 없으면 가장 가까운 실로 본다.
+ */
 function roomOf(item: PlanFurniture, rooms: PlanRoom[]): PlanRoom | null {
   if (rooms.length === 0) return null;
+
+  // 같은 이름이 겹칠 수 있으니 긴 이름부터 본다 (침실1이 침실보다 앞선다)
+  const named = [...rooms]
+    .sort((a, b) => b.name.length - a.name.length)
+    .find((room) => room.name.length >= 2 && item.name.includes(room.name));
+  if (named) return named;
 
   const inside = rooms.find((room) =>
     pointInPolygon(
       [item.xMm, item.yMm],
-      room.polygon.map((p) => [p.x, p.y] as [number, number])
-    )
+      room.polygon.map((p) => [p.x, p.y] as [number, number]),
+    ),
   );
   if (inside) return inside;
 
@@ -235,11 +333,23 @@ function resize(item: PlanFurniture): PlanFurniture {
   const typical = named?.size ?? standard.typical;
   const widen = (bound: Size, side: "min" | "max"): Size =>
     side === "min"
-      ? { width: Math.min(bound.width, typical.width), depth: Math.min(bound.depth, typical.depth) }
-      : { width: Math.max(bound.width, typical.width), depth: Math.max(bound.depth, typical.depth) };
+      ? {
+          width: Math.min(bound.width, typical.width),
+          depth: Math.min(bound.depth, typical.depth),
+        }
+      : {
+          width: Math.max(bound.width, typical.width),
+          depth: Math.max(bound.depth, typical.depth),
+        };
 
-  const min = widen(standard?.min ?? { width: typical.width * 0.6, depth: typical.depth * 0.6 }, "min");
-  const max = widen(standard?.max ?? { width: typical.width * 1.6, depth: typical.depth * 1.6 }, "max");
+  const min = widen(
+    standard?.min ?? { width: typical.width * 0.6, depth: typical.depth * 0.6 },
+    "min",
+  );
+  const max = widen(
+    standard?.max ?? { width: typical.width * 1.6, depth: typical.depth * 1.6 },
+    "max",
+  );
 
   /*
    * 이름으로 규격을 알아낸 경우, 읽어 온 치수가 그 규격에서 25% 넘게 벗어나면 규격을 믿는다.
@@ -293,10 +403,16 @@ function fitToRoom(item: PlanFurniture, room: Box): PlanFurniture {
   return {
     ...next,
     xMm: Math.round(
-      Math.min(Math.max(next.xMm, room.x0 + ROOM_MARGIN + placed.width / 2), room.x1 - ROOM_MARGIN - placed.width / 2)
+      Math.min(
+        Math.max(next.xMm, room.x0 + ROOM_MARGIN + placed.width / 2),
+        room.x1 - ROOM_MARGIN - placed.width / 2,
+      ),
     ),
     yMm: Math.round(
-      Math.min(Math.max(next.yMm, room.y0 + ROOM_MARGIN + placed.depth / 2), room.y1 - ROOM_MARGIN - placed.depth / 2)
+      Math.min(
+        Math.max(next.yMm, room.y0 + ROOM_MARGIN + placed.depth / 2),
+        room.y1 - ROOM_MARGIN - placed.depth / 2,
+      ),
     ),
   };
 }
@@ -346,7 +462,7 @@ function backToWall(item: PlanFurniture, room: Box): PlanFurniture {
  * 있으면 몇 인용 식탁인지 읽을 수 없으므로, 테이블에 겹친 의자만 골라 긴 변부터
  * 번갈아 둘러 앉힌다.
  */
-function seatChairs(items: PlanFurniture[]): PlanFurniture[] {
+function seatChairs(items: PlanFurniture[], rooms: PlanRoom[]): PlanFurniture[] {
   const tables = items.filter((item) => item.type === "table" && occupiesFloor(item));
   if (tables.length === 0) return items;
 
@@ -362,16 +478,25 @@ function seatChairs(items: PlanFurniture[]): PlanFurniture[] {
   next.forEach((item, index) => {
     if (item.type !== "chair" || !occupiesFloor(item)) return;
 
-    let best = tables[0];
+    /*
+     * 같은 실 안의 테이블만 주인이 될 수 있다.
+     *
+     * 실 검사가 없었을 때, 모델이 변기를 chair로 분류해 놓는 바람에 변기가 거실
+     * 식탁에 끌려가 의자 사이에 앉았다. 방을 건너뛰어 의자를 옮기는 일은 없어야 한다.
+     */
+    const home = roomOf(item, rooms);
+
+    let best: PlanFurniture | null = null;
     let bestDistance = Infinity;
     for (const table of tables) {
+      if (roomOf(table, rooms) !== home) continue;
       const distance = Math.hypot(item.xMm - table.xMm, item.yMm - table.yMm);
       if (distance < bestDistance) {
         bestDistance = distance;
         best = table;
       }
     }
-    owner.set(index, best);
+    if (best) owner.set(index, best);
   });
 
   for (const table of tables) {
@@ -391,9 +516,7 @@ function seatChairs(items: PlanFurniture[]): PlanFurniture[] {
     const tangled = seats.some(
       ({ item, index }) =>
         overlap(boxOf(item), tableBox) > 0 ||
-        seats.some(
-          (other) => other.index !== index && overlap(boxOf(item), boxOf(other.item)) > 0
-        )
+        seats.some((other) => other.index !== index && overlap(boxOf(item), boxOf(other.item)) > 0),
     );
     if (!tangled) continue;
 
@@ -418,18 +541,14 @@ function seatChairs(items: PlanFurniture[]): PlanFurniture[] {
       if (longSide) {
         chair.xMm = Math.round(step(slot, Math.max(count, 1), size.width, tableBox.x0));
         chair.yMm = Math.round(
-          first
-            ? tableBox.y0 - seatDepth / 2 - 50
-            : tableBox.y1 + seatDepth / 2 + 50
+          first ? tableBox.y0 - seatDepth / 2 - 50 : tableBox.y1 + seatDepth / 2 + 50,
         );
         // 아래쪽 의자는 위(테이블)를 보고 앉는다 = 등이 아래쪽 → 180도
         chair.rotationDeg = first ? 180 : 0;
       } else {
         chair.yMm = Math.round(step(slot, Math.max(count, 1), size.depth, tableBox.y0));
         chair.xMm = Math.round(
-          first
-            ? tableBox.x0 - seatDepth / 2 - 50
-            : tableBox.x1 + seatDepth / 2 + 50
+          first ? tableBox.x0 - seatDepth / 2 - 50 : tableBox.x1 + seatDepth / 2 + 50,
         );
         chair.rotationDeg = first ? 270 : 90;
       }
@@ -454,60 +573,120 @@ function separate(items: PlanFurniture[], room: Box): PlanFurniture[] {
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => occupiesFloor(item));
 
-  for (let round = 0; round < 12; round += 1) {
-    let moved = false;
+  /*
+   * 밀어서 떼어 보고, 그래도 남으면 줄이고, 다시 민다.
+   * 한 번만으로는 안 풀린다 — 좁은 욕실에서 욕조를 피해 민 샤워부스가 이번엔 변기와
+   * 부딪히고, 그 변기를 줄이면 다시 자리가 생기는 식으로 서로 물려 있기 때문이다.
+   */
+  for (let pass = 0; pass < 4; pass += 1) {
+    for (let round = 0; round < 40; round += 1) {
+      let moved = false;
 
+      for (let a = 0; a < movable.length; a += 1) {
+        for (let b = a + 1; b < movable.length; b += 1) {
+          const one = next[movable[a].index];
+          const two = next[movable[b].index];
+          const boxA = boxOf(one);
+          const boxB = boxOf(two);
+          if (overlap(boxA, boxB) <= 0) continue;
+
+          const dx = Math.min(boxA.x1, boxB.x1) - Math.max(boxA.x0, boxB.x0);
+          const dy = Math.min(boxA.y1, boxB.y1) - Math.max(boxA.y0, boxB.y0);
+          const push = Math.min(dx, dy) / 2 + 10;
+          const sign = (value: number) => (value >= 0 ? 1 : -1);
+
+          // 겹친 폭이 좁은 축으로 민다 — 가장 적게 움직여 떼어 놓는 방향이다
+          const alongX = dx <= dy;
+          const away = alongX ? sign(one.xMm - two.xMm) : sign(one.yMm - two.yMm);
+
+          const shift = (item: PlanFurniture, direction: number) => {
+            const size = extent(item);
+            const x = alongX ? item.xMm + push * direction : item.xMm;
+            const y = alongX ? item.yMm : item.yMm + push * direction;
+            return {
+              ...item,
+              xMm: Math.round(
+                Math.min(Math.max(x, room.x0 + size.width / 2), room.x1 - size.width / 2),
+              ),
+              yMm: Math.round(
+                Math.min(Math.max(y, room.y0 + size.depth / 2), room.y1 - size.depth / 2),
+              ),
+            };
+          };
+
+          next[movable[a].index] = shift(one, away);
+          next[movable[b].index] = shift(two, -away);
+          moved = true;
+        }
+      }
+
+      if (!moved) break;
+    }
+
+    /*
+     * 그래도 남는 겹침은 방이 물리적으로 좁아서 생긴 것이다.
+     *
+     * 2450mm 침실에 폭 1500 침대와 500짜리 협탁 둘을 넣으면 2500이라 애초에 안 들어간다.
+     * 실제 도면도 이 자리를 2330으로 적어 놓았다 — 협탁이 그만큼 좁은 것이다.
+     * 밀어서 못 풀면 작은 쪽을 겹친 만큼 줄인다. 도면에서 두 물건이 하나로 뭉쳐 보이는
+     * 것보다, 협탁이 조금 좁게 그려지는 편이 읽기에 낫다.
+     */
     for (let a = 0; a < movable.length; a += 1) {
       for (let b = a + 1; b < movable.length; b += 1) {
-        const one = next[movable[a].index];
-        const two = next[movable[b].index];
-        const boxA = boxOf(one);
-        const boxB = boxOf(two);
+        const oneIndex = movable[a].index;
+        const twoIndex = movable[b].index;
+        const boxA = boxOf(next[oneIndex]);
+        const boxB = boxOf(next[twoIndex]);
         if (overlap(boxA, boxB) <= 0) continue;
+
+        const areaA = (boxA.x1 - boxA.x0) * (boxA.y1 - boxA.y0);
+        const areaB = (boxB.x1 - boxB.x0) * (boxB.y1 - boxB.y0);
+        const index = areaA <= areaB ? oneIndex : twoIndex;
+        const item = next[index];
 
         const dx = Math.min(boxA.x1, boxB.x1) - Math.max(boxA.x0, boxB.x0);
         const dy = Math.min(boxA.y1, boxB.y1) - Math.max(boxA.y0, boxB.y0);
-        const push = Math.min(dx, dy) / 2 + 10;
-        const sign = (value: number) => (value >= 0 ? 1 : -1);
-
-        // 겹친 폭이 좁은 축으로 민다 — 가장 적게 움직여 떼어 놓는 방향이다
         const alongX = dx <= dy;
-        const away = alongX ? sign(one.xMm - two.xMm) : sign(one.yMm - two.yMm);
 
-        const shift = (item: PlanFurniture, direction: number) => {
-          const size = extent(item);
-          const x = alongX ? item.xMm + push * direction : item.xMm;
-          const y = alongX ? item.yMm : item.yMm + push * direction;
-          return {
-            ...item,
-            xMm: Math.round(
-              Math.min(Math.max(x, room.x0 + size.width / 2), room.x1 - size.width / 2)
-            ),
-            yMm: Math.round(
-              Math.min(Math.max(y, room.y0 + size.depth / 2), room.y1 - size.depth / 2)
-            ),
-          };
+        // 평면에서 줄일 축이 회전에 따라 폭인지 깊이인지 달라진다
+        const turned = quarter(item.rotationDeg) % 180 !== 0;
+        const key = alongX === !turned ? "widthMm" : "depthMm";
+        const shrunk = Math.max(
+          Math.round(item[key] * 0.6),
+          Math.round(item[key] - (alongX ? dx : dy) - 10),
+        );
+
+        const moved = { ...item, [key]: shrunk };
+        const size = extent(moved);
+        next[index] = {
+          ...moved,
+          xMm: Math.round(
+            Math.min(Math.max(moved.xMm, room.x0 + size.width / 2), room.x1 - size.width / 2),
+          ),
+          yMm: Math.round(
+            Math.min(Math.max(moved.yMm, room.y0 + size.depth / 2), room.y1 - size.depth / 2),
+          ),
         };
-
-        next[movable[a].index] = shift(one, away);
-        next[movable[b].index] = shift(two, -away);
-        moved = true;
       }
     }
-
-    if (!moved) break;
   }
 
   return next;
 }
 
-
 /* ─────────────────── 도면에 적힌 면적으로 되맞추기 ─────────────────── */
 
 /** 좌표가 이만큼 안쪽이면 같은 칸 경계로 본다 (mm) */
 const CUT_TOLERANCE = 120;
-/** 한 칸을 이 범위 밖으로는 늘이거나 줄이지 않는다 */
-const SCALE_LIMIT = { min: 0.55, max: 1.9 };
+/**
+ * 한 칸을 이 범위 밖으로는 늘이거나 줄이지 않는다.
+ *
+ * 처음에는 1.9까지만 열어 뒀는데, 도면이 거실 깊이를 절반 아래로 읽어 온 경우
+ * 한계에 걸려 24.1㎡가 18.6㎡에서 멈췄다. 도면에 적힌 숫자를 따라가는 것이므로
+ * 지어낸 값이 아니고, 그래서 세 배까지 연다. 그래도 한계를 두는 것은 모델이
+ * 면적을 한 자리 잘못 읽었을 때 도면이 통째로 무너지지 않게 하기 위해서다.
+ */
+const SCALE_LIMIT = { min: 0.4, max: 3 };
 
 /** 좌표들을 칸 경계로 추린다 — 가까운 것끼리는 하나로 본다 */
 function cutsFrom(values: number[]): number[] {
@@ -549,23 +728,44 @@ function remapper(cuts: number[], scales: number[]) {
 }
 
 /**
- * 도면에 적힌 실 면적에 맞게 평면을 늘인다.
+ * 도면에 적힌 숫자에 맞게 평면을 늘인다.
  *
  * 모델은 글자는 잘 읽는데 선 길이는 자주 틀린다. 실제로 24.1㎡라고 적힌 거실을
  * 6500×2010(13.1㎡)으로 읽어 왔다 — 소파와 식탁이 겹칠 수밖에 없는 깊이다.
  *
- * 그래서 실 경계를 세로줄·가로줄로 잘라 칸을 만들고, 각 칸의 폭·높이를 조금씩
- * 조정해 모든 실이 적힌 면적에 가까워지게 한다. 실이 칸을 나눠 쓰므로 한 번에
- * 풀리지 않아, 실마다 조금씩 당기기를 되풀이해 수렴시킨다.
+ * 믿는 순서가 있다.
  *
- * 늘이는 것은 칸의 크기뿐이라 방의 배치와 이웃 관계는 그대로 남는다 —
- * 거실 옆이 주방이던 것이 갑자기 떨어지거나 겹치지 않는다.
+ *  1. 치수선. 도면에 "2.45m"라고 적혀 있으면 그게 답이다.
+ *  2. 없으면 그림에서 읽은 폴리곤 그대로 둔다.
+ *
+ * 한때 실 안에 적힌 면적(24.1㎡ 같은 글자)으로도 되맞춰 봤는데, 그 숫자는 벽 두께를
+ * 품기도 해서 같은 도면의 치수선과 어긋났고(2.45×2.52 방에 7.8㎡라고 적혀 있었다),
+ * 치수선과 서로 잡아당기며 평면을 일그러뜨렸다. 도면에 그어진 치수선만 믿는다.
+ *
+ * 실 경계를 세로줄·가로줄로 잘라 칸을 만들고, 각 칸의 폭·높이를 조금씩 조정해
+ * 모든 실이 적힌 숫자에 가까워지게 한다. 실이 칸을 나눠 쓰므로 한 번에 풀리지 않아,
+ * 실마다 조금씩 당기기를 되풀이해 수렴시킨다. 늘이는 것은 칸의 크기뿐이라 방의 배치와
+ * 이웃 관계는 그대로 남는다 — 거실 옆이 주방이던 것이 갑자기 떨어지거나 겹치지 않는다.
  */
-export function fitRoomAreas(plan: RoomPlan): RoomPlan {
+export function fitRoomSizes(plan: RoomPlan): RoomPlan {
+  /** 그림과 아귀가 맞는 치수선만 남긴다 */
+  const believable = (printed: number | null | undefined, drawn: number) => {
+    if (!printed || drawn <= 0) return null;
+    const ratio = printed / drawn;
+    return ratio >= PRINTED_TRUST.min && ratio <= PRINTED_TRUST.max ? printed : null;
+  };
+
   const targets = plan.rooms
-    .map((room) => ({ room, bounds: boundsOf(room.polygon), want: room.areaSqm }))
-    .filter((entry): entry is { room: PlanRoom; bounds: Box; want: number } => {
-      if (!entry.want || entry.want <= 0) return false;
+    .map((room) => {
+      const bounds = boundsOf(room.polygon);
+      return {
+        bounds,
+        width: believable(room.printedWidthMm, bounds.x1 - bounds.x0),
+        depth: believable(room.printedDepthMm, bounds.y1 - bounds.y0),
+      };
+    })
+    .filter((entry) => {
+      if (!entry.width && !entry.depth) return false;
       return entry.bounds.x1 - entry.bounds.x0 > 0 && entry.bounds.y1 - entry.bounds.y0 > 0;
     });
 
@@ -587,26 +787,34 @@ export function fitRoomAreas(plan: RoomPlan): RoomPlan {
   const measure = (cuts: number[], scales: number[], indexes: number[]) =>
     indexes.reduce((sum, index) => sum + (cuts[index + 1] - cuts[index]) * scales[index], 0);
 
+  const pull = (scales: number[], indexes: number[], step: number) => {
+    for (const index of indexes) {
+      scales[index] = Math.min(SCALE_LIMIT.max, Math.max(SCALE_LIMIT.min, scales[index] * step));
+    }
+  };
+
   /*
-   * 한 실을 맞추면 이웃 실이 어긋나므로 한 번에 조금씩만 당긴다.
-   * 면적은 가로×세로라 양쪽에 제곱근씩 나눠 실으면 도면이 가장 덜 일그러진다.
+   * 치수선끼리 서로 어긋날 때가 있다.
+   *
+   * 도면 위쪽 "5.70m"는 오른쪽 두 실을 함께 재는 치수인데, 모델이 그것을 거실 폭이라고
+   * 옮겨 적는 일이 있었다. 그러면 거실(5700)과 침실1+침실2+욕실(2450+3150+2200=7800)이
+   * 같은 칸들을 두고 서로 잡아당긴다.
+   *
+   * 이럴 때는 칸을 적게 걸치는 쪽을 믿는다. 작은 실 옆에 그어진 치수선은 그 실의 것이
+   * 거의 확실하지만, 여러 실을 가로지르는 큰 실의 치수선은 남의 치수를 가져왔을 가능성이
+   * 그만큼 크기 때문이다. 그래서 걸친 칸 수로 당기는 힘을 나눈다.
    */
-  for (let round = 0; round < 80; round += 1) {
+  for (let round = 0; round < 200; round += 1) {
     for (const cell of cells) {
-      if (cell.columns.length === 0 || cell.bands.length === 0) continue;
-
-      const width = measure(xCuts, xScale, cell.columns);
-      const height = measure(yCuts, yScale, cell.bands);
-      if (width <= 0 || height <= 0) continue;
-
-      const ratio = (cell.want * 1_000_000) / (width * height);
-      const step = Math.pow(ratio, 0.25);
-
-      for (const index of cell.columns) {
-        xScale[index] = Math.min(SCALE_LIMIT.max, Math.max(SCALE_LIMIT.min, xScale[index] * step));
+      if (cell.width && cell.columns.length > 0) {
+        const width = measure(xCuts, xScale, cell.columns);
+        if (width > 0)
+          pull(xScale, cell.columns, Math.pow(cell.width / width, 0.5 / cell.columns.length));
       }
-      for (const index of cell.bands) {
-        yScale[index] = Math.min(SCALE_LIMIT.max, Math.max(SCALE_LIMIT.min, yScale[index] * step));
+      if (cell.depth && cell.bands.length > 0) {
+        const depth = measure(yCuts, yScale, cell.bands);
+        if (depth > 0)
+          pull(yScale, cell.bands, Math.pow(cell.depth / depth, 0.5 / cell.bands.length));
       }
     }
   }
@@ -618,7 +826,10 @@ export function fitRoomAreas(plan: RoomPlan): RoomPlan {
   return {
     ...plan,
     outline: plan.outline.map(point),
-    rooms: plan.rooms.map((room) => ({ ...room, polygon: room.polygon.map(point) })),
+    rooms: plan.rooms.map((room) => ({
+      ...room,
+      polygon: room.polygon.map(point),
+    })),
     walls: plan.walls.map((wall) => {
       const before = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
       const start = point(wall.start);
@@ -633,7 +844,10 @@ export function fitRoomAreas(plan: RoomPlan): RoomPlan {
         // 창·문도 벽과 같은 비율로 따라 움직인다 (안 그러면 벽 밖으로 밀려난다)
         openings: wall.openings.map((opening) => {
           const width = Math.min(Math.round(opening.widthMm * stretch), Math.round(after));
-          const offset = Math.min(Math.round(opening.offsetMm * stretch), Math.round(after) - width);
+          const offset = Math.min(
+            Math.round(opening.offsetMm * stretch),
+            Math.round(after) - width,
+          );
           return { ...opening, widthMm: width, offsetMm: Math.max(0, offset) };
         }),
       };
@@ -654,7 +868,7 @@ export function fitRoomAreas(plan: RoomPlan): RoomPlan {
  * 순서가 중요하다 — 방이 실제보다 얕은 채로 가구를 앉히면 어떻게 놓아도 겹친다.
  */
 export function repairPlan(plan: RoomPlan): RoomPlan {
-  const scaled = fitRoomAreas(plan);
+  const scaled = fitRoomSizes(plan);
   if (scaled.furniture.length === 0) return scaled;
 
   const rooms = scaled.rooms.length > 0 ? scaled.rooms : [];
@@ -671,7 +885,7 @@ export function repairPlan(plan: RoomPlan): RoomPlan {
   });
 
   // 4) 의자를 테이블 둘레에 앉히고, 5) 실마다 남은 겹침을 푼다
-  const seated = seatChairs(sized);
+  const seated = seatChairs(sized, rooms);
 
   const byRoom = new Map<PlanRoom | null, number[]>();
   seated.forEach((item, index) => {

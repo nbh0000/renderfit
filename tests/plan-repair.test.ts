@@ -256,12 +256,12 @@ describe("남은 겹침 풀기", () => {
 });
 
 /**
- * 도면에 적힌 면적으로 되맞추기.
+ * 도면에 그어진 치수선으로 방 크기를 되맞춘다.
  *
- * 실제 도면 한 장에서 24.1㎡라고 적힌 거실을 6500×2010(13.1㎡)으로 읽어 왔다.
- * 그 깊이로는 소파와 식탁을 어떻게 놓아도 겹친다 — 가구를 앉히기 전에 방부터 고쳐야 한다.
+ * 모델은 글자는 잘 읽는데 선 길이는 자주 틀린다. 치수선이 있으면 그 숫자가 답이고,
+ * 없으면 그림에서 읽은 폴리곤을 그대로 둔다.
  */
-describe("도면에 적힌 면적으로 방 되맞추기", () => {
+describe("치수선으로 방 되맞추기", () => {
   /** 위에 침실 둘, 아래에 거실 하나 — 아래 띠만 실제보다 얕게 읽혔다 */
   function squashed(): RoomPlan {
     return {
@@ -278,7 +278,8 @@ describe("도면에 적힌 면적으로 방 되맞추기", () => {
         {
           name: "거실",
           type: "living-room",
-          areaSqm: 24,
+          printedWidthMm: 6000,
+          printedDepthMm: 3000,
           polygon: [
             { x: 0, y: 0 },
             { x: 6000, y: 0 },
@@ -289,7 +290,8 @@ describe("도면에 적힌 면적으로 방 되맞추기", () => {
         {
           name: "침실1",
           type: "bedroom",
-          areaSqm: 7.5,
+          printedWidthMm: 3000,
+          printedDepthMm: 2500,
           polygon: [
             { x: 0, y: 2000 },
             { x: 3000, y: 2000 },
@@ -300,7 +302,8 @@ describe("도면에 적힌 면적으로 방 되맞추기", () => {
         {
           name: "침실2",
           type: "bedroom",
-          areaSqm: 7.5,
+          printedWidthMm: 3000,
+          printedDepthMm: 2500,
           polygon: [
             { x: 3000, y: 2000 },
             { x: 6000, y: 2000 },
@@ -331,26 +334,31 @@ describe("도면에 적힌 면적으로 방 되맞추기", () => {
     };
   }
 
-  /** 실 폴리곤의 외접 사각형 면적 (㎡) */
-  function areaOf(room: RoomPlan["rooms"][number]) {
+  /** 실 폴리곤의 외접 사각형 (mm) */
+  function sizeOf(room: RoomPlan["rooms"][number]) {
     const xs = room.polygon.map((p) => p.x);
     const ys = room.polygon.map((p) => p.y);
-    return ((Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys))) / 1_000_000;
+    return {
+      width: Math.max(...xs) - Math.min(...xs),
+      depth: Math.max(...ys) - Math.min(...ys),
+    };
   }
 
   const fitted = repairPlan(squashed());
 
-  it("얕게 읽힌 거실이 적힌 면적에 가까워진다", () => {
-    const living = fitted.rooms.find((room) => room.name === "거실")!;
-    expect(areaOf(living)).toBeGreaterThan(20);
-    expect(areaOf(living)).toBeLessThan(28);
+  it("얕게 읽힌 거실이 치수선대로 깊어진다", () => {
+    const living = sizeOf(fitted.rooms.find((room) => room.name === "거실")!);
+    expect(living.depth).toBeGreaterThan(2800);
+    expect(living.depth).toBeLessThan(3200);
   });
 
   it("이미 맞던 침실은 크게 흔들리지 않는다", () => {
     for (const name of ["침실1", "침실2"]) {
-      const bedroom = fitted.rooms.find((room) => room.name === name)!;
-      expect(areaOf(bedroom)).toBeGreaterThan(6);
-      expect(areaOf(bedroom)).toBeLessThan(9.5);
+      const bedroom = sizeOf(fitted.rooms.find((room) => room.name === name)!);
+      expect(bedroom.width).toBeGreaterThan(2800);
+      expect(bedroom.width).toBeLessThan(3200);
+      expect(bedroom.depth).toBeGreaterThan(2300);
+      expect(bedroom.depth).toBeLessThan(2700);
     }
   });
 
@@ -370,16 +378,18 @@ describe("도면에 적힌 면적으로 방 되맞추기", () => {
     expect(opening.offsetMm + opening.widthMm).toBeLessThanOrEqual(Math.round(length));
   });
 
-  it("면적이 안 적혀 있으면 손대지 않는다", () => {
+  it("치수선이 없으면 손대지 않는다 — 그림 그대로 간다", () => {
     const plain = squashed();
-    for (const room of plain.rooms) room.areaSqm = null;
+    for (const room of plain.rooms) {
+      room.printedWidthMm = null;
+      room.printedDepthMm = null;
+    }
 
     const same = repairPlan(plain);
     expect(same.rooms[0].polygon).toEqual(plain.rooms[0].polygon);
     expect(same.outline).toEqual(plain.outline);
   });
 });
-
 describe("이름 규칙이 종류를 가린다", () => {
   it("식탁 의자는 식탁 규격을 물려받지 않는다", () => {
     // 이름에 '식탁'이 들어 있어 1500×900짜리 의자가 만들어지던 버그
@@ -404,5 +414,234 @@ describe("이름 규칙이 종류를 가린다", () => {
     ).furniture;
 
     expect(tub.depthMm).toBe(1700);
+  });
+});
+
+/**
+ * 치수선이 그림을 이긴다.
+ *
+ * 모델이 그린 폴리곤은 눈대중이라 자주 어긋나지만, 치수선의 숫자는 도면에 적힌 그대로다.
+ * 치수선이 없는 실은 그림에서 읽은 폴리곤을 그대로 둔다 — 지어내지 않는다.
+ */
+describe("치수선이 그림을 이긴다", () => {
+  function twoRooms(left: Partial<RoomPlan["rooms"][number]>, right: Partial<RoomPlan["rooms"][number]>): RoomPlan {
+    return {
+      roomType: "living-room",
+      ceilingHeightMm: 2400,
+      cameraWallIndex: 0,
+      outline: [
+        { x: 0, y: 0 },
+        { x: 6000, y: 0 },
+        { x: 6000, y: 3000 },
+        { x: 0, y: 3000 },
+      ],
+      rooms: [
+        {
+          name: "침실",
+          type: "bedroom",
+          polygon: [
+            { x: 0, y: 0 },
+            { x: 3000, y: 0 },
+            { x: 3000, y: 3000 },
+            { x: 0, y: 3000 },
+          ],
+          ...left,
+        },
+        {
+          name: "거실",
+          type: "living-room",
+          polygon: [
+            { x: 3000, y: 0 },
+            { x: 6000, y: 0 },
+            { x: 6000, y: 3000 },
+            { x: 3000, y: 3000 },
+          ],
+          ...right,
+        },
+      ],
+      walls: [],
+      furniture: [],
+    };
+  }
+
+  function size(plan: RoomPlan, name: string) {
+    const room = plan.rooms.find((item) => item.name === name)!;
+    const xs = room.polygon.map((p) => p.x);
+    const ys = room.polygon.map((p) => p.y);
+    return {
+      width: Math.max(...xs) - Math.min(...xs),
+      depth: Math.max(...ys) - Math.min(...ys),
+    };
+  }
+
+  it("치수선이 있으면 그림이 아니라 그 값이 된다", () => {
+    // 그림은 3000×3000인데 도면에는 2450×2520이라고 그어져 있다
+    const fitted = repairPlan(twoRooms({ printedWidthMm: 2450, printedDepthMm: 2520 }, {}));
+
+    const bedroom = size(fitted, "침실");
+    expect(bedroom.width).toBeGreaterThan(2350);
+    expect(bedroom.width).toBeLessThan(2550);
+    expect(bedroom.depth).toBeGreaterThan(2420);
+    expect(bedroom.depth).toBeLessThan(2620);
+  });
+
+  it("한쪽만 적혀 있으면 그 축만 고치고 나머지는 그림대로 둔다", () => {
+    const fitted = repairPlan(twoRooms({ printedDepthMm: 2400 }, {}));
+
+    const bedroom = size(fitted, "침실");
+    expect(bedroom.depth).toBeGreaterThan(2300);
+    expect(bedroom.depth).toBeLessThan(2500);
+    // 폭은 치수선이 없으니 그림의 3000 그대로
+    expect(bedroom.width).toBe(3000);
+  });
+
+  it("치수선이 없는 실은 그림 그대로 둔다", () => {
+    const plain = twoRooms({}, {});
+    const same = repairPlan(plain);
+
+    expect(same.rooms[0].polygon).toEqual(plain.rooms[0].polygon);
+    expect(same.rooms[1].polygon).toEqual(plain.rooms[1].polygon);
+  });
+
+  it("치수선이 있는 실 옆에서도 실끼리 붙어 있다", () => {
+    const fitted = repairPlan(
+      twoRooms({ printedWidthMm: 2450, printedDepthMm: 2520 }, { printedWidthMm: 3400 })
+    );
+
+    const bedroomRight = Math.max(...fitted.rooms[0].polygon.map((p) => p.x));
+    const livingLeft = Math.min(...fitted.rooms[1].polygon.map((p) => p.x));
+    expect(bedroomRight).toBe(livingLeft);
+  });
+});
+
+describe("의자는 방을 건너뛰지 않는다", () => {
+  /** 실제 스캔에서 모델이 변기를 chair로 분류해 거실 식탁으로 끌려갔다 */
+  const twoRoomPlan: RoomPlan = {
+    roomType: "living-room",
+    ceilingHeightMm: 2400,
+    cameraWallIndex: 0,
+    outline: [
+      { x: 0, y: 0 },
+      { x: 8000, y: 0 },
+      { x: 8000, y: 5000 },
+      { x: 0, y: 5000 },
+    ],
+    rooms: [
+      {
+        name: "거실",
+        type: "living-room",
+        polygon: [
+          { x: 0, y: 0 },
+          { x: 8000, y: 0 },
+          { x: 8000, y: 2500 },
+          { x: 0, y: 2500 },
+        ],
+      },
+      {
+        name: "욕실",
+        type: "bathroom",
+        polygon: [
+          { x: 6000, y: 2500 },
+          { x: 8000, y: 2500 },
+          { x: 8000, y: 5000 },
+          { x: 6000, y: 5000 },
+        ],
+      },
+    ],
+    walls: [],
+    furniture: [
+      furniture({ type: "table", name: "식탁", xMm: 5500, yMm: 1200, widthMm: 1400, depthMm: 800 }),
+      furniture({ type: "chair", name: "식탁 의자 1", xMm: 5500, yMm: 1200, widthMm: 450, depthMm: 500 }),
+      furniture({ type: "chair", name: "식탁 의자 2", xMm: 5560, yMm: 1200, widthMm: 450, depthMm: 500 }),
+      // 모델이 chair로 분류해 버린 변기
+      furniture({ type: "chair", name: "욕실 변기", xMm: 4800, yMm: 400, widthMm: 700, depthMm: 400, rotationDeg: 270 }),
+    ],
+  };
+
+  const repaired = repairPlan(twoRoomPlan).furniture;
+  const toilet = repaired.find((item) => item.name === "욕실 변기")!;
+
+  it("변기가 이름에 적힌 욕실로 간다", () => {
+    expect(toilet.xMm).toBeGreaterThan(6000);
+    expect(toilet.yMm).toBeGreaterThan(2500);
+  });
+
+  it("변기가 식탁 의자 사이에 앉지 않는다", () => {
+    const chairs = repaired.filter((item) => item.name.startsWith("식탁 의자"));
+    for (const chair of chairs) expect(overlaps(toilet, chair)).toBe(false);
+  });
+
+  it("잘못 분류돼 와도 변기 규격은 지킨다", () => {
+    expect(toilet.widthMm).toBe(400);
+    expect(toilet.depthMm).toBe(700);
+  });
+});
+
+describe("남의 치수선은 버린다", () => {
+  /**
+   * 모델이 도면 전체 치수(6500×4530)를 거실 치수선으로 옮겨 적어 평면이 세로로 늘어났다.
+   * 숫자를 잘못 읽는 일은 드물고 어느 실의 것인지를 헷갈리는 일이 잦다.
+   */
+  const misread: RoomPlan = {
+    roomType: "living-room",
+    ceilingHeightMm: 2400,
+    cameraWallIndex: 0,
+    outline: [
+      { x: 0, y: 0 },
+      { x: 6500, y: 0 },
+      { x: 6500, y: 4500 },
+      { x: 0, y: 4500 },
+    ],
+    rooms: [
+      {
+        name: "거실",
+        type: "living-room",
+        // 그림에서는 2000 깊이인데 치수선이 4530이라고 주장한다 (2.3배)
+        printedWidthMm: 6500,
+        printedDepthMm: 4530,
+        polygon: [
+          { x: 0, y: 0 },
+          { x: 6500, y: 0 },
+          { x: 6500, y: 2000 },
+          { x: 0, y: 2000 },
+        ],
+      },
+      {
+        name: "침실",
+        type: "bedroom",
+        printedWidthMm: 2450,
+        printedDepthMm: 2520,
+        polygon: [
+          { x: 0, y: 2000 },
+          { x: 2400, y: 2000 },
+          { x: 2400, y: 4500 },
+          { x: 0, y: 4500 },
+        ],
+      },
+    ],
+    walls: [],
+    furniture: [],
+  };
+
+  const fitted = repairPlan(misread);
+  const depthOf = (name: string) => {
+    const room = fitted.rooms.find((item) => item.name === name)!;
+    const ys = room.polygon.map((p) => p.y);
+    return Math.max(...ys) - Math.min(...ys);
+  };
+
+  it("그림과 2배 넘게 어긋나는 치수선은 안 쓴다", () => {
+    // 4530을 그대로 믿었으면 거실만 4.5m 깊이가 됐다
+    expect(depthOf("거실")).toBeLessThan(3000);
+  });
+
+  it("버린 자리는 그림이 그대로 남는다", () => {
+    // 그림에서 읽은 2.0m를 지키고, 옆방 치수선에 딸려 조금 움직이는 정도만 허용한다
+    expect(depthOf("거실")).toBeGreaterThan(1800);
+  });
+
+  it("그림과 맞는 치수선은 그대로 쓴다", () => {
+    expect(depthOf("침실")).toBeGreaterThan(2400);
+    expect(depthOf("침실")).toBeLessThan(2650);
   });
 });

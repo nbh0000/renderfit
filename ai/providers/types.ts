@@ -81,12 +81,13 @@ export interface PlanRoom {
   type: string;
   polygon: PlanPoint[];
   /**
-   * 도면에 글자로 적혀 있던 면적 (㎡).
+   * 도면에 치수선으로 적혀 있던 안목 폭·깊이 (mm).
    *
-   * 폴리곤에서 계산한 면적과 다를 수 있다 — 모델은 글자는 잘 읽지만 선 길이는 자주 틀린다.
-   * 그래서 이 값을 폴리곤을 되맞추는 기준으로 쓴다. 도면에 없으면 null.
+   * 도면에서 가장 믿을 만한 숫자다. 있으면 이 값이 그림보다 앞선다.
+   * 없으면 null이고, 그때는 그림에서 읽은 폴리곤을 그대로 쓴다.
    */
-  areaSqm?: number | null;
+  printedWidthMm?: number | null;
+  printedDepthMm?: number | null;
 }
 
 export interface PlanFurniture {

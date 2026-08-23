@@ -122,10 +122,11 @@ export const PLAN_SCHEMA = {
           name: { type: "string" },
           type: { type: "string", enum: ROOM_IDS },
           polygon: { type: "array", items: POINT },
-          /** 도면에 적힌 실 면적(㎡). 안 적혀 있으면 0 */
-          areaSqm: { type: "number" },
+          /** 도면에 치수선으로 적힌 실 폭·깊이(mm). 안 적혀 있으면 0 */
+          printedWidthMm: { type: "number" },
+          printedDepthMm: { type: "number" },
         },
-        required: ["name", "type", "polygon", "areaSqm"],
+        required: ["name", "type", "polygon", "printedWidthMm", "printedDepthMm"],
       },
     },
     walls: {
@@ -294,9 +295,12 @@ const FLOORPLAN_HEAD = [
   "- 가구 기호가 그려져 있으면 그 종류·위치·방향을 그대로 옮긴다.",
   "- 선 도면에는 마감재 정보가 없다. 도면에 재료명이 적혀 있지 않으면 finishes는 빈 문자열로 둔다.",
   "  흑백 선 그림을 보고 벽지 색을 지어내면 3D가 엉뚱한 방으로 그려진다.",
-  "- ★ 실 안에 면적이 적혀 있으면(24.1m², 7.8㎡, 3.2평 등) 그 숫자를 areaSqm에 ㎡로 적는다.",
-  "  평으로 적혀 있으면 3.3058을 곱해 ㎡로 바꾼다. 안 적혀 있으면 0을 넣는다.",
-  "  이 숫자는 폴리곤 좌표를 검산하는 데 쓴다 — 짐작하지 말고 적힌 것만 옮긴다.",
+  "- ★ 치수선이 최우선이다. 실의 가로·세로 안목 치수가 치수선으로 적혀 있으면",
+  "  printedWidthMm·printedDepthMm에 mm로 옮긴다. 벽 한 토막이나 문 폭이 아니라",
+  "  그 실의 안쪽 끝에서 끝까지를 재는 치수여야 한다. 없으면 0을 넣는다 — 짐작해서 채우지 않는다.",
+  "  도면 전체의 가로·세로 치수를 어느 한 실의 치수로 옮겨 적지 않는다. 거실이 넓다고 해서",
+  "  건물 전체 치수를 거실 치수로 쓰면 평면이 통째로 늘어난다.",
+  "  실 안에 적힌 면적(24.1m² 같은 글자)은 치수선이 아니다. 그 숫자로 치수를 지어내지 않는다.",
   "- ★ 도면에 적힌 실명(거실·안방·주방·욕실·현관 등)을 하나도 빠뜨리지 말고 rooms에 넣는다.",
   "  방을 가르는 내벽도 전부 walls에 넣는다. 한국 아파트는 보통 실이 5~8개다.",
   "- roomType(전체)은 가장 넓은 실의 종류로 정한다.",
@@ -571,7 +575,8 @@ interface RawPlan {
     name?: string;
     type?: string;
     polygon?: { x?: number; y?: number }[];
-    areaSqm?: number;
+    printedWidthMm?: number;
+    printedDepthMm?: number;
   }[];
   walls?: {
     name?: string;
@@ -802,6 +807,13 @@ export function toPlanAnalysis(raw: RawPlan): RoomAnalysis | null {
     });
   }
 
+  /** 도면에 적힌 치수 하나 — 사람이 사는 방 크기 범위를 벗어나면 잘못 읽은 것으로 본다 */
+  const printed = (value: unknown): number | null => {
+    const millimetres = Number(value);
+    if (!Number.isFinite(millimetres) || millimetres < 600 || millimetres > 30000) return null;
+    return Math.round(millimetres);
+  };
+
   /*
    * 실(방).
    *
@@ -819,11 +831,9 @@ export function toPlanAnalysis(raw: RawPlan): RoomAnalysis | null {
       name: source?.name?.trim() || "실",
       type: normalizeRoomType(source?.type),
       polygon,
-      // 도면에 적힌 면적. 말이 안 되는 값(0.5㎡ 미만·300㎡ 초과)은 안 적힌 것으로 본다.
-      areaSqm:
-        Number.isFinite(source?.areaSqm) && source!.areaSqm! >= 0.5 && source!.areaSqm! <= 300
-          ? source!.areaSqm!
-          : null,
+      // 도면에 치수선으로 적혀 있던 값. 말이 안 되는 값은 안 적힌 것으로 본다.
+      printedWidthMm: printed(source?.printedWidthMm),
+      printedDepthMm: printed(source?.printedDepthMm),
     });
   }
 
