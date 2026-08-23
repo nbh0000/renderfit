@@ -59,3 +59,19 @@ describe("치수선에서 실 치수 고르기", () => {
     expect(byRoom.size).toBe(0);
   });
 });
+
+describe("어느 실인지 모르는 치수선", () => {
+  it("모름으로 표시된 것은 쓰지 않는다", () => {
+    /*
+     * 실 이름을 목록에서 고르게 하되, 정말 모를 때 고를 값을 하나 남겨 뒀다.
+     * 빈 문자열은 스키마의 enum에 넣을 수 없어서 "모름"이라는 말을 쓴다.
+     */
+    const byRoom = dimensionsByRoom([
+      { millimetres: 5700, axis: "x", scope: "room", roomName: "모름" },
+      { millimetres: 2450, axis: "x", scope: "room", roomName: "침실1" },
+    ]);
+
+    expect(byRoom.size).toBe(1);
+    expect(byRoom.get("침실1")).toEqual({ x: 2450 });
+  });
+});

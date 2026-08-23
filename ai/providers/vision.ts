@@ -497,53 +497,64 @@ export function visionModels(): string[] {
  * 3분의 2로 줄어든다 — 실제로 3150mm짜리 침실이 1577mm이 됐다. 그래서 무엇을 재는
  * 치수인지 모델에게 직접 물어 실 전체를 재는 것만 골라 쓴다.
  */
-const DIMENSION_SCHEMA = {
-  type: "object",
-  properties: {
-    dimensions: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          text: { type: "string" },
-          millimetres: { type: "number" },
-          axis: { type: "string", enum: ["x", "y"] },
-          scope: { type: "string", enum: ["room", "segment"] },
-          roomName: { type: "string" },
+/** 어느 실인지 모를 때 고르는 값 — 빈 문자열은 enum에 넣을 수 없다 */
+const UNKNOWN_ROOM = "모름";
+
+function dimensionSchema(roomNames: string[]) {
+  return {
+    type: "object",
+    properties: {
+      dimensions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            text: { type: "string" },
+            millimetres: { type: "number" },
+            axis: { type: "string", enum: ["x", "y"] },
+            scope: { type: "string", enum: ["room", "segment"] },
+            // 본문이 읽은 실 이름 중에서만 고르게 한다 (아래 주석 참고)
+            roomName: { type: "string", enum: [...roomNames, UNKNOWN_ROOM] },
+          },
+          required: ["text", "millimetres", "axis", "scope", "roomName"],
         },
-        required: ["text", "millimetres", "axis", "scope", "roomName"],
       },
     },
-  },
-  required: ["dimensions"],
-} as const;
+    required: ["dimensions"],
+  };
+}
 
-const DIMENSION_PROMPT = [
-  "이 이미지는 실내 평면도다. 도면에 그어진 치수선만 읽는다. 다른 것은 보지 않는다.",
-  "",
-  "치수선이란",
-  "- 양 끝에 화살표나 짧은 사선이 찍힌 가는 선이고, 그 위나 옆에 숫자가 적혀 있다.",
-  "- 실 안에 적힌 면적(24.1m², 3.2평)이나 실 이름은 치수선이 아니다. 넣지 않는다.",
-  "",
-  "무엇을 적나",
-  "- text: 도면에 적힌 그대로 (예: 2.45m, 900, 1.59m).",
-  "- millimetres: 그 값을 mm로 바꾼 정수. m로 적혀 있으면 1000을 곱한다.",
-  "- axis: 가로 길이를 재면 x, 세로 길이를 재면 y.",
-  "- roomName: 그 치수선이 딸린 실의 이름. 어느 실인지 분명하지 않으면 빈 문자열.",
-  "",
-  "■ scope — 가장 중요하다",
-  "- room: 그 실의 안쪽 끝에서 반대쪽 안쪽 끝까지, 실 전체를 재는 치수.",
-  "- segment: 그 밖의 모든 것. 벽 토막, 문 폭, 창 폭, 가구 폭, 여러 실을 함께 재는 치수.",
-  "",
-  "한 실의 한 변에 치수선이 여러 개 나뉘어 적혀 있으면 그중 어느 것도 room이 아니다.",
-  "예를 들어 침실 아래쪽에 2.19m와 0.35m가 나란히 적혀 있다면 둘 다 벽 토막이므로 segment다.",
-  "실 전체를 한 번에 재는 치수선이 하나 그어져 있을 때만 room이라고 적는다.",
-  "확실하지 않으면 segment로 둔다 — 벽 토막을 실 치수로 잘못 쓰면 방이 3분의 2로 줄어든다.",
-  "",
-  "빠뜨리지 않기",
-  "- 도면에 그어진 치수선을 하나도 빠뜨리지 않는다. 짧은 것도 segment로 전부 넣는다.",
-  "- 치수선이 하나도 없으면 빈 배열을 준다. 없는 것을 지어내지 않는다.",
-].join("\n");
+function dimensionPrompt(roomNames: string[]): string {
+  return [
+    "이 이미지는 실내 평면도다. 도면에 그어진 치수선만 읽는다. 다른 것은 보지 않는다.",
+    "",
+    "치수선이란",
+    "- 양 끝에 화살표나 짧은 사선이 찍힌 가는 선이고, 그 위나 옆에 숫자가 적혀 있다.",
+    "- 실 안에 적힌 면적(24.1m², 3.2평)이나 실 이름은 치수선이 아니다. 넣지 않는다.",
+    "",
+    "무엇을 적나",
+    "- text: 도면에 적힌 그대로 (예: 2.45m, 900, 1.59m).",
+    "- millimetres: 그 값을 mm로 바꾼 정수. m로 적혀 있으면 1000을 곱한다.",
+    "- axis: 가로 길이를 재면 x, 세로 길이를 재면 y.",
+    `- roomName: 그 치수선이 딸린 실의 이름. 반드시 다음 중에서 고른다 — ${roomNames.join(", ")}.`,
+    `  도면에 실 이름이 안 적혀 있고 면적(7.8m² 같은 글자)만 적혀 있어도, 그 실이 위 목록의`,
+    `  어느 것인지 위치를 보고 고른다. 면적 숫자를 실 이름 자리에 적지 않는다.`,
+    `  정말 어느 실인지 모르겠으면 ${UNKNOWN_ROOM}이라고 적는다.`,
+    "",
+    "■ scope — 가장 중요하다",
+    "- room: 그 실의 안쪽 끝에서 반대쪽 안쪽 끝까지, 실 전체를 재는 치수.",
+    "- segment: 그 밖의 모든 것. 벽 토막, 문 폭, 창 폭, 가구 폭, 여러 실을 함께 재는 치수.",
+    "",
+    "한 실의 한 변에 치수선이 여러 개 나뉘어 적혀 있으면 그중 어느 것도 room이 아니다.",
+    "예를 들어 침실 아래쪽에 2.19m와 0.35m가 나란히 적혀 있다면 둘 다 벽 토막이므로 segment다.",
+    "실 전체를 한 번에 재는 치수선이 하나 그어져 있을 때만 room이라고 적는다.",
+    "확실하지 않으면 segment로 둔다 — 벽 토막을 실 치수로 잘못 쓰면 방이 3분의 2로 줄어든다.",
+    "",
+    "빠뜨리지 않기",
+    "- 도면에 그어진 치수선을 하나도 빠뜨리지 않는다. 짧은 것도 segment로 전부 넣는다.",
+    "- 치수선이 하나도 없으면 빈 배열을 준다. 없는 것을 지어내지 않는다.",
+  ].join("\n");
+}
 
 export type RawDimension = {
   millimetres?: number;
@@ -556,10 +567,11 @@ export type RawDimension = {
 type GenAI = InstanceType<(typeof import("@google/genai"))["GoogleGenAI"]>;
 
 /** 치수선을 읽어 온다. 실패하면 빈 배열 — 치수선이 없어도 그림만으로 평면은 선다 */
-async function readDimensionLines(
+export async function readDimensionLines(
   ai: GenAI,
   model: string,
-  payload: { data: string; mimeType: string }
+  payload: { data: string; mimeType: string },
+  roomNames: string[]
 ): Promise<RawDimension[]> {
   try {
     const response = await ai.models.generateContent({
@@ -568,7 +580,7 @@ async function readDimensionLines(
         {
           role: "user",
           parts: [
-            { text: DIMENSION_PROMPT },
+            { text: dimensionPrompt(roomNames) },
             { inlineData: { mimeType: payload.mimeType, data: payload.data } },
           ],
         },
@@ -576,7 +588,7 @@ async function readDimensionLines(
       config: {
         ...DETERMINISTIC,
         responseMimeType: "application/json",
-        responseSchema: DIMENSION_SCHEMA as never,
+        responseSchema: dimensionSchema(roomNames) as never,
       },
     });
 
@@ -608,7 +620,7 @@ export function dimensionsByRoom(
 
     const key = (callout.roomName ?? "").replace(/\s+/g, "");
     const millimetres = Math.round(Number(callout.millimetres));
-    if (key.length < 2) continue;
+    if (key.length < 2 || key === UNKNOWN_ROOM) continue;
     if (!Number.isFinite(millimetres) || millimetres < 600 || millimetres > 30000) continue;
 
     const entry = byRoom.get(key) ?? {};
@@ -639,35 +651,23 @@ export class GeminiVisionProvider implements VisionProvider {
 
     for (const model of visionModels()) {
       try {
-        /*
-         * 평면과 치수선을 나란히 부른다.
-         *
-         * 한 번에 물으면 모델이 벽·실·가구를 세느라 도면 가장자리의 숫자를 대충 본다.
-         * 치수선만 따로 물으면 그 일에만 집중해서, 도면에 그어진 치수를 하나도 빠뜨리지
-         * 않고 무엇을 재는 치수인지까지 구분해 준다. 사진에는 치수선이 없으니 부르지 않는다.
-         */
-        const [response, callouts] = await Promise.all([
-          ai.models.generateContent({
-            model,
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  { text: promptFor(image.kind) },
-                  { inlineData: { mimeType: payload.mimeType, data: payload.data } },
-                ],
-              },
-            ],
-            config: {
-              ...DETERMINISTIC,
-              responseMimeType: "application/json",
-              responseSchema: PLAN_SCHEMA as never,
+        const response = await ai.models.generateContent({
+          model,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: promptFor(image.kind) },
+                { inlineData: { mimeType: payload.mimeType, data: payload.data } },
+              ],
             },
-          }),
-          image.kind === "floorplan"
-            ? readDimensionLines(ai, model, payload)
-            : Promise.resolve([] as RawDimension[]),
-        ]);
+          ],
+          config: {
+            ...DETERMINISTIC,
+            responseMimeType: "application/json",
+            responseSchema: PLAN_SCHEMA as never,
+          },
+        });
 
         const text = response.text;
         if (!text) {
@@ -675,7 +675,29 @@ export class GeminiVisionProvider implements VisionProvider {
           continue;
         }
 
-        const analysis = toPlanAnalysis(JSON.parse(text) as RawPlan, callouts);
+        const raw = JSON.parse(text) as RawPlan;
+
+        /*
+         * 치수선은 따로 한 번 더 묻는다.
+         *
+         * 한 번에 물으면 모델이 벽·실·가구를 세느라 도면 가장자리의 숫자를 대충 본다.
+         * 치수선만 물으면 그 일에만 집중해서 도면에 그어진 것을 거의 다 읽어 오고,
+         * 무엇을 재는 치수인지(실 전체인지 벽 토막인지)까지 구분해 준다.
+         *
+         * 앞선 답의 실 이름을 함께 넘겨 그 안에서만 고르게 한다. 안 그러면 이름이 안
+         * 적힌 실을 두고 "7.8m²"처럼 안에 쓰인 면적 글자를 실 이름 자리에 적어 와서,
+         * 애써 읽은 치수가 어느 방 것인지 알 수 없게 된다.
+         */
+        const roomNames = (raw.rooms ?? [])
+          .map((room) => room?.name?.trim())
+          .filter((name): name is string => Boolean(name));
+
+        const callouts =
+          image.kind === "floorplan" && roomNames.length > 0
+            ? await readDimensionLines(ai, model, payload, roomNames)
+            : [];
+
+        const analysis = toPlanAnalysis(raw, callouts);
         if (!analysis) {
           errors.push(`${model}: 평면이 성립하지 않음`);
           continue;
