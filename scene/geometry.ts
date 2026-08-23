@@ -427,3 +427,18 @@ export function levelBelow(levels: Level[], levelId: string): Level | null {
   const index = levels.findIndex((level) => level.id === levelId);
   return index > 0 ? levels[index - 1] : null;
 }
+
+/**
+ * 건물 바깥 테두리에 붙은 벽인지.
+ *
+ * 3D는 카메라를 가로막는 벽을 숨겨야 방 안이 보인다. 그런데 그 규칙을 안쪽
+ * 칸막이에까지 적용하면 아파트에서 방을 나누는 내벽이 각도에 따라 나타났다 사라진다.
+ * 테두리 벽만 숨기고 칸막이는 늘 세워 두기 위해 둘을 가른다.
+ */
+export function isPerimeterWall(wall: WallSegment, room: RoomSpec): boolean {
+  const { width, length } = room.dimensions;
+  const [mx, my] = pointAlongWall(wall, wallLength(wall) / 2);
+  const margin = Math.max(400, wall.thickness * 2);
+
+  return mx <= margin || my <= margin || mx >= width - margin || my >= length - margin;
+}

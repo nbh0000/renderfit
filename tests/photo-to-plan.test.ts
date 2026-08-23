@@ -5,7 +5,13 @@ import { buildPlanSvg, toPlanData } from "@/services/cadExport";
 import { buildElevationSvg } from "@/services/elevationExport";
 import { mountingOf, planCenter } from "@/scene/placement";
 import { toPlanAnalysis } from "@/ai/providers/vision";
-import { wallLength } from "@/scene/geometry";
+import {
+  isPerimeterWall,
+  polygonArea,
+  polygonCentroid,
+  toSquareMeters,
+  wallLength,
+} from "@/scene/geometry";
 
 /**
  * 사진 → 평면도·입면도·3D.
@@ -247,5 +253,43 @@ describe("다실 평면", () => {
   it("전체 크기는 외곽선을 따른다", () => {
     expect(apartment.room.dimensions.width).toBe(8000);
     expect(apartment.room.dimensions.length).toBe(9000);
+  });
+});
+
+describe("3D에서 벽 가리기", () => {
+  const apartment = analysisToScene(createEmptyScene(), toPlanAnalysis(APARTMENT)!);
+
+  /*
+   * 카메라를 가로막는 바깥벽은 숨겨야 방 안이 보인다. 그런데 그 규칙을 칸막이에까지
+   * 적용하면 방을 나누는 내벽이 각도에 따라 나타났다 사라진다.
+   */
+  it("바깥 테두리 벽은 가릴 수 있는 것으로 본다", () => {
+    const room = apartment.room;
+    const south = room.walls!.find(
+      (wall) => wall.start[1] === 0 && wall.end[1] === 0
+    )!;
+    expect(isPerimeterWall(south, room)).toBe(true);
+  });
+
+  it("방을 나누는 칸막이는 절대 가리지 않는다", () => {
+    const room = apartment.room;
+    // 거실·주방을 가르는 y=5000 위의 벽 (양 끝이 건물 안쪽에 있다)
+    const partition = room.walls!.find(
+      (wall) =>
+        wall.start[1] === 5000 &&
+        wall.end[1] === 5000 &&
+        Math.max(wall.start[0], wall.end[0]) < room.dimensions.width - 500
+    )!;
+    expect(partition).toBeDefined();
+    expect(isPerimeterWall(partition, room)).toBe(false);
+  });
+
+  it("실이 여럿이면 이름표를 붙일 중심점이 다 나온다", () => {
+    for (const area of apartment.room.areas ?? []) {
+      const [cx, cy] = polygonCentroid(area.points);
+      expect(Number.isFinite(cx)).toBe(true);
+      expect(Number.isFinite(cy)).toBe(true);
+      expect(toSquareMeters(polygonArea(area.points))).toBeGreaterThan(0);
+    }
   });
 });

@@ -2,18 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { ContactShadows, Environment, Lightformer, OrbitControls } from "@react-three/drei";
+import { ContactShadows, Environment, Html, Lightformer, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useEditorStore } from "@/lib/editor/store";
-import type { Scene, SceneObject } from "@/scene/types";
+import type { Scene, SceneObject, WallSegment } from "@/scene/types";
 import { FurnitureMesh } from "./FurnitureMesh";
 import { NavGizmo, type GizmoHandlers } from "./NavGizmo";
 import { imageTexture, woodTexture, paintTexture } from "./textures";
 import {
   ensureRoom,
+  isPerimeterWall,
   levelIdOf,
   levelsOf,
   pointAlongWall,
+  polygonArea,
+  polygonCentroid,
+  toSquareMeters,
   wallAngle,
   wallLength,
   wallSpans,
@@ -248,7 +252,49 @@ function RoomShell({ scene }: { scene: Scene }) {
         <planeGeometry args={[width, length]} />
         <meshStandardMaterial color="#f7f7f7" roughness={1} />
       </mesh>
+
+      <RoomLabels room={room} />
     </group>
+  );
+}
+
+/**
+ * 실 이름표.
+ *
+ * 실이 하나일 때는 필요 없었지만, 아파트 도면을 세우면 방이 열 개 넘게 생긴다.
+ * 어느 칸이 거실이고 어느 칸이 욕실인지 3D에서 구분할 방법이 없으면 못 쓴다.
+ *
+ * 한글 때문에 3D 텍스트(폰트 파일이 필요하다) 대신 DOM 오버레이를 쓴다.
+ */
+function RoomLabels({ room }: { room: Scene["room"] }) {
+  const areas = room.areas ?? [];
+  // 실이 하나뿐이면 방 이름이 화면을 가리기만 한다.
+  if (areas.length < 2) return null;
+
+  return (
+    <>
+      {areas.map((area) => {
+        const [cx, cy] = polygonCentroid(area.points);
+        const [x, z] = worldFromPlan([cx, cy], room);
+        const squareMeters = toSquareMeters(polygonArea(area.points));
+
+        return (
+          <Html
+            key={area.id}
+            position={[x, 0.05, z]}
+            center
+            distanceFactor={10}
+            occlude={false}
+            style={{ pointerEvents: "none", userSelect: "none" }}
+          >
+            <div className="whitespace-nowrap rounded bg-white/85 px-1.5 py-0.5 text-center shadow-sm">
+              <p className="text-[11px] font-medium leading-tight text-ink">{area.name}</p>
+              <p className="text-[9.5px] leading-tight text-muted">{squareMeters.toFixed(1)}㎡</p>
+            </div>
+          </Html>
+        );
+      })}
+    </>
   );
 }
 
@@ -259,7 +305,7 @@ function WallMesh({
   color,
   map,
 }: {
-  wall: import("@/scene/types").WallSegment;
+  wall: WallSegment;
   room: Scene["room"];
   color: string;
   map?: THREE.Texture;
@@ -279,13 +325,21 @@ function WallMesh({
     [wall, room]
   );
 
+const perimeter = useMemo(() => isPerimeterWall(wall, room), [wall, room]);
+
   /**
-   * 카메라와 방 사이를 가로막는 벽은 숨긴다.
+   * 카메라와 방 사이를 가로막는 바깥벽은 숨긴다.
    * (방 밖에서 볼 때 앞벽이 시야를 막지 않도록 — 인테리어 3D 뷰의 일반적인 동작)
+   * 안쪽 칸막이는 그 방의 형태 자체라 늘 세워 둔다.
    */
   useFrame(({ camera }) => {
     const group = groupRef.current;
     if (!group) return;
+
+    if (!perimeter) {
+      group.visible = true;
+      return;
+    }
 
     const [mx, mz] = midpoint;
     const scale = Math.hypot(mx, mz) || 1;
