@@ -117,6 +117,41 @@ function ObjectMesh({
   );
 }
 
+/**
+ * 다시 그릴 계기를 만들어 준다.
+ *
+ * frameloop="demand"는 R3F가 "무언가 바뀌었다"고 알 때만 프레임을 그린다. 그런데
+ * 텍스처와 모델은 나중에 비동기로 도착하고, 3D 탭으로 막 전환한 순간에는 아직
+ * 아무것도 준비돼 있지 않다. 그래서 3D를 열면 빈 화면이 그대로 멈춰 있었다 —
+ * 마우스로 한 번 돌려야 비로소 그려졌다.
+ *
+ * 장면이 바뀔 때와 그 직후 몇 번, 그리고 외부 파일이 도착할 때 다시 그리게 한다.
+ */
+function RenderPump({ signature }: { signature: string }) {
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    invalidate();
+    // 텍스처·모델이 도착하는 시점을 미리 알 수 없어 몇 번 나눠 두드린다.
+    const timers = [80, 300, 900, 2000, 4000].map((ms) => window.setTimeout(invalidate, ms));
+    return () => timers.forEach(window.clearTimeout);
+  }, [invalidate, signature]);
+
+  useEffect(() => {
+    const manager = THREE.DefaultLoadingManager;
+    const previous = manager.onLoad;
+    manager.onLoad = () => {
+      previous?.();
+      invalidate();
+    };
+    return () => {
+      manager.onLoad = previous;
+    };
+  }, [invalidate]);
+
+  return null;
+}
+
 /* ───────────────────────────── 공간 ───────────────────────────── */
 
 /** 생성된 AI 이미지를 뒷벽에 붙인다 */
@@ -591,8 +626,24 @@ function PlacementController({
   return null;
 }
 
-/** 카메라 초기 정렬 — OrbitControls가 첫 프레임에 엉뚱한 방향을 보는 문제 보정 */
-function CameraRig({ target }: { target: [number, number, number] }) {
+/**
+ * 카메라 초기 배치.
+ *
+ * <Canvas camera={...}>는 마운트할 때 한 번만 반영된다. 그런데 편집기는 장면을 받기 전에
+ * 캔버스를 먼저 띄우므로, 그 순간의 카메라는 "기본 방 크기(5×6m)" 기준으로 잡힌다.
+ * 그 뒤 10m짜리 아파트 평면이 들어와도 카메라는 그대로라 벽 안에 갇히고, 화면은
+ * 새까맣게 남았다 — 마우스로 한 번 돌려야 비로소 방이 보였다.
+ *
+ * 그래서 방 크기가 정해지면 여기서 카메라를 직접 옮긴다.
+ * OrbitControls는 나중에 붙기 때문에, 붙고 난 뒤 한 번 더 맞춰 준다.
+ */
+function CameraRig({
+  target,
+  position,
+}: {
+  target: [number, number, number];
+  position: [number, number, number];
+}) {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
   const controls = useThree((state) => state.controls) as {
@@ -601,15 +652,18 @@ function CameraRig({ target }: { target: [number, number, number] }) {
   } | null;
 
   useEffect(() => {
+    camera.position.set(position[0], position[1], position[2]);
     camera.lookAt(target[0], target[1], target[2]);
     camera.updateProjectionMatrix();
+
     if (controls?.target) {
       controls.target.set(target[0], target[1], target[2]);
       controls.update?.();
     }
     // frameloop="demand"라 카메라를 옮긴 뒤 직접 한 프레임을 요청해야 한다.
     invalidate();
-  }, [camera, controls, invalidate, target]);
+    (window as unknown as { __cam?: unknown }).__cam = camera;
+  }, [camera, controls, invalidate, position, target]);
 
   return null;
 }
@@ -808,28 +862,57 @@ export function Canvas3D() {
   const [draft, setDraft] = useState<DragState | null>(null);
   const [gizmo, setGizmo] = useState<GizmoHandlers | null>(null);
 
+  const roomWidth = (scene?.room?.dimensions.width ?? 5000) * MM;
   const roomLength = (scene?.room?.dimensions.length ?? 6000) * MM;
   const roomHeight = (scene?.room?.dimensions.height ?? 2700) * MM;
   const fov = scene?.camera?.fov ?? 50;
 
   const target = useMemo<[number, number, number]>(() => [0, roomHeight * 0.35, 0], [roomHeight]);
-  const cameraConfig = useMemo(
-    () => ({
-      position: [0, Math.max(1.5, roomHeight * 0.55), roomLength / 2 + 2.6] as [
-        number,
-        number,
-        number,
-      ],
+
+  /*
+   * 처음 보이는 시점.
+   *
+   * 예전에는 앞벽에서 2.6m 뒤에 눈높이로 고정돼 있었다. 방 하나짜리에는 맞지만
+   * 가로 10m가 넘는 아파트 평면에서는 벽 한 장이 화면을 다 덮어 아무것도 안 보였다
+   * (3D를 열면 새까만 화면이 나오던 것이 이것이다).
+   *
+   * 바닥 전체가 화각에 들어올 만큼 물러서고, 넓을수록 높이 올라가 내려다본다.
+   */
+  const cameraConfig = useMemo(() => {
+    const radius = Math.hypot(roomWidth, roomLength) / 2;
+    const fit = radius / Math.tan((fov * Math.PI) / 360);
+
+    const distance = Math.max(roomLength / 2 + 2.6, fit * 0.85);
+    const elevation = Math.max(roomHeight * 0.55, distance * 0.55);
+
+    return {
+      position: [0, elevation, distance] as [number, number, number],
       fov,
       near: 0.05,
-      far: 60,
-    }),
-    [roomHeight, roomLength, fov]
-  );
+      // 넓은 평면에서는 뒤로 많이 물러서므로 먼 클리핑도 함께 늘린다.
+      far: Math.max(60, distance * 4),
+    };
+  }, [roomWidth, roomLength, roomHeight, fov]);
 
   const onDragStart = useCallback((_event: ThreeEvent<PointerEvent>, object: SceneObject) => {
     setDraft({ id: object.id, x: object.screen.x, depth: object.depth });
   }, []);
+
+  /*
+   * 열자마자 잠깐은 매 프레임 그린다.
+   *
+   * frameloop="demand"는 GPU를 아끼지만, 장면이 자리를 잡는 과정(카메라 배치,
+   * OrbitControls 부착, 텍스처·모델 도착)이 여러 틱에 걸쳐 일어나서 그 사이에
+   * 프레임 요청을 놓치면 화면이 빈 채로 멈춘다 — 실제로 3D를 열면 새까맣게 있다가
+   * 마우스로 한 번 돌려야 그려졌다. invalidate를 아무리 걸어도 이 구간을 못 덮었다.
+   * 처음 2초만 연속으로 돌리고 그 뒤에는 다시 요청 기반으로 돌아간다.
+   */
+  const [settling, setSettling] = useState(true);
+  useEffect(() => {
+    setSettling(true);
+    const timer = window.setTimeout(() => setSettling(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [scene?.sceneId, scene?.room?.dimensions.width, scene?.room?.dimensions.length]);
 
   if (!scene?.room) return null;
 
@@ -858,7 +941,7 @@ export function Canvas3D() {
       <Canvas
         shadows
         // 가만히 두면 프레임을 그리지 않는다. 카메라 조작·드래그·상태 변경 때만 렌더한다.
-        frameloop="demand"
+        frameloop={settling ? "always" : "demand"}
         dpr={DPR}
         gl={GL_CONFIG}
         camera={cameraConfig}
@@ -866,6 +949,7 @@ export function Canvas3D() {
         onPointerMissed={() => select([])}
       >
         <CanvasBridge />
+        <RenderPump signature={shadowSignature} />
 
         <SceneLights scene={scene} />
         <directionalLight position={[-3, 3.2, 3]} intensity={0.5} color="#ffe9cf" />
@@ -933,7 +1017,7 @@ export function Canvas3D() {
           rotateSpeed={0.75}
           zoomSpeed={0.8}
         />
-        <CameraRig target={target} />
+        <CameraRig target={target} position={cameraConfig.position} />
         <ShadowUpdater signature={shadowSignature} />
         <AdaptiveResolution />
         <GizmoBridge target={target} onReady={setGizmo} />
