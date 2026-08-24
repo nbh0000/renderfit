@@ -16,7 +16,8 @@
     "seed": "node scripts/seed/index.mjs",
     "assets": "node scripts/assets/polyhaven.mjs && node scripts/assets/textures.mjs && node scripts/assets/generate.mjs",
     "prebuild": "npm run assets",
-    "build:check": "node scripts/build-check.mjs"
+    "build:check": "node scripts/build-check.mjs",
+    "serve": "node scripts/serve-prod.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.17.1",
