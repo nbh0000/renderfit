@@ -12,6 +12,14 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
 
   let body: {
     isPublic?: boolean;
+    /**
+     * 이름 없이 올린다.
+     *
+     * 남의 집 사진이다. 스타일은 자랑하고 싶어도 자기 이름이 붙는 것은 꺼리는 사람이
+     * 많아서, 그 한 가지 때문에 공개를 안 누른다. 갤러리는 시안이 쌓여야 사는 곳이라
+     * 이름을 빼는 선택지를 준다. (표시는 "익명"으로 나간다)
+     */
+    anonymous?: boolean;
     // 로컬 mock 모드에서만 사용
     imageUrl?: string;
     roomId?: string;
@@ -102,11 +110,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
    * 갤러리에 보여 줄 값들을 공개 시점에 확정한다.
    * profiles는 본인만 조회할 수 있어 갤러리에서 조인이 안 되므로 이름을 복사해 둔다.
    */
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", viewer.userId)
-    .maybeSingle();
+  const { data: profile } = body.anonymous
+    ? { data: null }
+    : await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", viewer.userId)
+        .maybeSingle();
 
   const beforePath = await copySourceForGallery(writer, id, viewer.userId);
 
@@ -114,7 +124,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const { error: metaError } = await writer
     .from("generation_results")
     .update({
-      author_name: displayNameFor(profile ?? {}),
+      // 익명이면 이름 칸을 비운다. 갤러리는 빈 칸을 "익명"으로 읽는다.
+      author_name: body.anonymous ? null : displayNameFor(profile ?? {}),
       ...(beforePath ? { before_path: beforePath } : {}),
     })
     .eq("id", id)

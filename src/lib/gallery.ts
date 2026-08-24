@@ -205,6 +205,17 @@ function orderColumn(sort: GallerySort, tier: (typeof TIERS)[number]): string {
   return "created_at";
 }
 
+/**
+ * 갤러리에 찍을 작성자 이름.
+ *
+ * 익명으로 올리면 이름 칸이 비어 있다. 따로 플래그를 두지 않은 이유는, 두면
+ * "익명인데 이름은 남아 있는" 상태가 생겨서다 — 이름 자체를 적지 않으면
+ * 새어 나갈 것이 없다.
+ */
+export function authorLabel(name: string | null | undefined): string {
+  return name?.trim() || "익명";
+}
+
 function toItem(supabase: SupabaseClient, row: PublicRow, viewerId?: string | null): GalleryItem {
   const roomId = (row.generation_jobs?.room_id ?? "living-room") as RoomId;
   const styleId = (row.generation_jobs?.style_id ?? "modern") as StyleId;
@@ -219,7 +230,7 @@ function toItem(supabase: SupabaseClient, row: PublicRow, viewerId?: string | nu
     width: row.width,
     height: row.height,
     createdAt: row.created_at,
-    authorName: row.author_name?.trim() || "익명",
+    authorName: authorLabel(row.author_name),
     viewCount: row.view_count ?? 0,
     likeCount: row.like_count ?? 0,
     // 내가 눌렀는지는 gallery_likes를 따로 읽어 채운다 (markLiked)

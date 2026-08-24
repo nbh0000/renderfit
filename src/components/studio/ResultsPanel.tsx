@@ -40,8 +40,14 @@ export function ResultsPanel({
   const [published, setPublished] = useState<Record<string, string>>({});
   const [publishing, setPublishing] = useState<string | null>(null);
 
-  /** 사용자가 동의한 결과만 갤러리에 공개한다. */
-  const publish = async (result: GenerationJob["results"][number]) => {
+  /**
+   * 사용자가 동의한 결과만 갤러리에 공개한다.
+   *
+   * @param anonymous 이름 없이 올린다. 남의 집 사진이라 스타일은 자랑하고 싶어도
+   *                  자기 이름이 붙는 건 꺼리는 사람이 많다 — 그 한 가지 때문에
+   *                  공개를 안 누르는 것을 막는다.
+   */
+  const publish = async (result: GenerationJob["results"][number], anonymous: boolean) => {
     if (!job) return;
     setPublishing(result.id);
     try {
@@ -50,6 +56,7 @@ export function ResultsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           isPublic: true,
+          anonymous,
           imageUrl: result.url,
           roomId: job.settings.roomId,
           styleId: job.settings.styleId,
@@ -60,7 +67,7 @@ export function ResultsPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "공개하지 못했습니다.");
       setPublished((prev) => ({ ...prev, [result.id]: data.slug as string }));
-      toast("갤러리에 공개되었습니다", "success");
+      toast(anonymous ? "익명으로 갤러리에 공개되었습니다" : "갤러리에 공개되었습니다", "success");
     } catch (err) {
       toast(err instanceof Error ? err.message : "공개하지 못했습니다.", "error");
     } finally {
@@ -144,7 +151,7 @@ export function ResultsPanel({
             onFloorplan={() => onFloorplan(result)}
             onOpenInEditor={onOpenInEditor}
             openingEditor={openingEditor}
-            onPublish={() => void publish(result)}
+            onPublish={(anonymous) => void publish(result, anonymous)}
             publishedSlug={published[result.id] ?? null}
             publishing={publishing === result.id}
           />
