@@ -16,13 +16,17 @@ export interface GalleryMarqueeItem {
 }
 
 /**
- * 열마다 속도와 시작 높이를 다르게 준다.
- * 같은 속도로 나란히 흐르면 표처럼 보여서, 어긋나게 두어야 흐름이 살아난다.
+ * 열마다 속도와 시작 높이를 조금씩 다르게 준다.
+ *
+ * 셋이 똑같이 흐르면 표처럼 보이고, 너무 다르게 흐르면 눈이 어디를 봐야 할지 모른다.
+ * 처음에는 속도를 0.88~1.22로 벌리고 카드까지 좌우로 번갈아 붙였는데, 그러니 사진이
+ * 제각기 튀어 "멋대로"라는 말을 들었다. 어긋남은 시작 높이로만 주고 속도 차이는
+ * 눈치채지 못할 만큼만 남긴다.
  */
 const COLUMNS = [
   { speedFactor: 1, headOffset: "0px" },
-  { speedFactor: 1.22, headOffset: "3.5rem" },
-  { speedFactor: 0.88, headOffset: "1.5rem" },
+  { speedFactor: 1.08, headOffset: "4.5rem" },
+  { speedFactor: 0.94, headOffset: "9rem" },
 ];
 
 /** 열 하나가 너무 짧으면 한 바퀴가 금방 돌아 버린다 — 최소 이만큼은 채운다 */
@@ -31,27 +35,29 @@ const MIN_CARDS = 9;
 /** 카드 한 장이 지나가는 데 걸리는 시간(초). 읽을 수 있을 만큼 느리게. */
 const SECONDS_PER_CARD = 7.5;
 
-/** 세로로 지나치게 길거나 납작한 사진이 열의 리듬을 깨지 않도록 비율을 가둔다 */
+/**
+ * 세로로 지나치게 길거나 납작한 사진이 열의 리듬을 깨지 않도록 비율을 가둔다.
+ *
+ * 인테리어 사진은 거의 다 가로가 길다(4:3, 3:2). 그 사이에 세로 사진 한 장이 끼면
+ * 열 하나만 쑥 길어져 흐름이 끊긴다. 그래서 3:2보다 넓지도, 정사각보다 좁지도 않게
+ * 가둔다 — 사진마다 높이가 조금씩 다른 정도가 보기 좋고, 그 이상은 산만하다.
+ */
 function cardRatio(width: number, height: number): number {
   if (!width || !height) return 4 / 3;
-  return Math.min(1.45, Math.max(0.68, width / height));
+  return Math.min(1.5, Math.max(1, width / height));
 }
 
 function Card({
   item,
-  index,
   duplicate,
 }: {
   item: GalleryMarqueeItem;
-  index: number;
   /** 이음매용 사본 — 링크가 두 벌 생기므로 보조기술과 탭 이동에서는 감춘다 */
   duplicate: boolean;
 }) {
   return (
-    <div
-      className={`w-[88%] pb-3 sm:pb-4 ${index % 2 === 0 ? "mr-auto" : "ml-auto"}`}
-      aria-hidden={duplicate || undefined}
-    >
+    // 열 너비를 그대로 채운다. 좌우로 번갈아 붙이면 세로선이 사라져 어수선해진다.
+    <div className="w-full pb-3 sm:pb-4" aria-hidden={duplicate || undefined}>
       <Link
         href={`/gallery/${encodeURIComponent(item.slug)}`}
         tabIndex={duplicate ? -1 : undefined}
@@ -109,12 +115,7 @@ function Column({
         {[0, 1].map((copy) => (
           <div key={copy}>
             {cards.map((item, index) => (
-              <Card
-                key={`${copy}-${index}-${item.slug}`}
-                item={item}
-                index={index}
-                duplicate={copy === 1}
-              />
+              <Card key={`${copy}-${index}-${item.slug}`} item={item} duplicate={copy === 1} />
             ))}
           </div>
         ))}
@@ -124,16 +125,33 @@ function Column({
 }
 
 /**
+ * 열 하나에 태울 목록을 만든다.
+ *
+ * 공개된 시안이 두세 장뿐일 때가 문제다. 앞에서부터 세 열로 나눠 담으면 세 열이
+ * 같은 사진으로 시작해서, 같은 거실이 화면에 세 번 겹쳐 보인다. 열마다 목록을
+ * 한 칸씩 돌려서 시작 사진을 다르게 한다.
+ *
+ * 시안이 열 수보다 적으면 돌려도 겹치는 열이 생긴다(두 장을 세 열에 나눌 수는 없다).
+ * 그때는 위 COLUMNS 의 시작 높이 차이가 같은 사진을 다른 자리에 앉혀 준다.
+ */
+function cardsForColumn(items: GalleryMarqueeItem[], column: number): GalleryMarqueeItem[] {
+  const rotated = items.map((_, index) => items[(index + column) % items.length]);
+
+  const cards = [...rotated];
+  while (cards.length < MIN_CARDS) cards.push(...rotated);
+
+  return cards;
+}
+
+/**
  * 메인에 얹는 갤러리 띠.
  *
- * 바둑판 대신 열을 어긋나게 세우고 카드를 좌우로 번갈아 붙여 지그재그를 만든다.
- * 세 열이 저마다 다른 속도로 아래에서 위로 흐르고, 마우스를 올리면 멈춘다.
+ * 세 열이 아래에서 위로 흐른다. 시작 높이를 어긋나게 두어 바둑판처럼 보이지 않게
+ * 하되, 카드 자체는 열 너비를 그대로 채운다 — 좌우로 번갈아 붙였더니 세로선이
+ * 사라져 사진이 제각기 튀어 보였다. 마우스를 올리면 멈춘다.
  */
 export function GalleryMarquee({ items }: { items: GalleryMarqueeItem[] }) {
   if (items.length === 0) return null;
-
-  const filled = [...items];
-  while (filled.length < MIN_CARDS) filled.push(...items);
 
   return (
     <div
@@ -147,7 +165,7 @@ export function GalleryMarquee({ items }: { items: GalleryMarqueeItem[] }) {
         {COLUMNS.map((column, index) => (
           <div key={index} className={index === 2 ? "hidden lg:block" : undefined}>
             <Column
-              cards={filled.filter((_, i) => i % COLUMNS.length === index)}
+              cards={cardsForColumn(items, index)}
               speedFactor={column.speedFactor}
               headOffset={column.headOffset}
             />
