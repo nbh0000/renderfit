@@ -56,7 +56,7 @@ export type DailyStat = {
 
 export async function GET(request: Request) {
   const viewer = await getViewer();
-  if (!isAdminEmail(viewer.profile?.email)) {
+  if (!isAdminEmail(viewer.authEmail)) {
     return Response.json({ error: "권한이 없습니다." }, { status: 403 });
   }
 

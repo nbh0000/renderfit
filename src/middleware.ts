@@ -32,6 +32,16 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+/*
+ * API 요청에는 걸지 않는다.
+ *
+ * 이 미들웨어가 하는 일은 요청마다 auth.getUser() 를 불러 세션 쿠키를 갱신하는 것인데,
+ * 그것은 Supabase 인증 서버로 나가는 네트워크 왕복이다. API 라우트는 저마다 getViewer()
+ * 로 다시 확인하므로 여기서 한 번 더 다녀오면 같은 왕복을 두 번 하는 셈이다.
+ * 쿠키 갱신은 페이지 요청에서 이뤄지므로 세션은 그대로 유지된다.
+ */
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|gif|ico)$).*)"],
+  matcher: [
+    "/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|gif|ico)$).*)",
+  ],
 };

@@ -103,3 +103,28 @@ describe("사용 기록 이름", () => {
     expect(isEventName(null)).toBe(false);
   });
 });
+
+describe("권한은 고칠 수 없는 값으로 판단한다", () => {
+  it("Viewer 에 인증 이메일이 따로 있다", async () => {
+    /*
+     * profiles 행은 본인이 UPDATE 할 수 있으므로 profile.email 로 관리자를 가르면
+     * 자기 이메일을 관리자 것으로 바꿔 통과할 수 있다. 인증 서버가 확인해 준
+     * authEmail 로만 판단해야 한다.
+     */
+    const source = await import("node:fs").then((fs) =>
+      fs.promises.readFile("src/lib/auth.ts", "utf8")
+    );
+    expect(source).toContain("authEmail");
+  });
+
+  it("관리자 화면과 API 가 profile.email 을 보지 않는다", async () => {
+    const fs = await import("node:fs");
+    for (const file of ["src/app/admin/page.tsx", "src/app/api/admin/stats/route.ts"]) {
+      const source = await fs.promises.readFile(file, "utf8");
+      expect(source, `${file} 이 고칠 수 있는 값으로 권한을 가른다`).toContain(
+        "isAdminEmail(viewer.authEmail)"
+      );
+      expect(source).not.toContain("isAdminEmail(viewer.profile");
+    }
+  });
+});

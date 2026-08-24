@@ -18,6 +18,14 @@ export interface Viewer {
   configured: boolean;
   userId: string | null;
   profile: Profile | null;
+  /**
+   * 인증 서버가 확인해 준 이메일.
+   *
+   * profile.email 과 달리 사용자가 고칠 수 없다. profiles 행은 본인이 UPDATE 할 수
+   * 있으므로, 관리자인지 같은 판단을 profile.email 로 하면 자기 이메일을 관리자
+   * 것으로 바꿔 통과할 수 있다. 권한을 가르는 자리에는 반드시 이 값을 쓴다.
+   */
+  authEmail: string | null;
 }
 
 interface ProfileRow {
@@ -103,17 +111,17 @@ export async function loadProfile(
 /** 서버 컴포넌트/라우트에서 현재 사용자를 읽는다. */
 export async function getViewer(): Promise<Viewer> {
   if (!isSupabaseConfigured()) {
-    return { configured: false, userId: null, profile: null };
+    return { configured: false, userId: null, profile: null, authEmail: null };
   }
 
   const supabase = await createServerSupabase();
-  if (!supabase) return { configured: false, userId: null, profile: null };
+  if (!supabase) return { configured: false, userId: null, profile: null, authEmail: null };
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { configured: true, userId: null, profile: null };
+  if (!user) return { configured: true, userId: null, profile: null, authEmail: null };
 
   const profile = await loadProfile(supabase, user.id, {
     email: user.email,
@@ -121,5 +129,5 @@ export async function getViewer(): Promise<Viewer> {
     avatarUrl: (user.user_metadata?.avatar_url as string | undefined) ?? null,
   });
 
-  return { configured: true, userId: user.id, profile };
+  return { configured: true, userId: user.id, profile, authEmail: user.email ?? null };
 }

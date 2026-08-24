@@ -19,3 +19,4 @@ tsconfig.tsbuildinfo
 /public/textures/
 
 # public/assets 는 커밋한다 — 빌드마다 재생성하면 비용이 들고 결과가 매번 달라진다
+.next-check/

@@ -604,6 +604,14 @@ export function enqueueGenerate(
  * 한 번에 적용하지 않고 결과만 돌려주며, 사용자가 고른 뒤 applyGeneratedImage로 반영한다.
  * 같은 프롬프트로 두 번 부르면 캐시 때문에 같은 그림이 나오므로 방향을 다르게 준다.
  */
+/**
+ * 2안 비교에서 만들 방향의 수.
+ *
+ * 라우트가 이 값을 보고 크레딧을 매긴다. 여기만 늘리고 과금을 안 고치면 원가의
+ * 절반만 받게 되므로 함께 내보낸다.
+ */
+export const VARIANT_COUNT = 2;
+
 const VARIANT_DIRECTIONS = [
   { label: "A · 따뜻하게", fragment: "Layered warm textiles, softer lighting, cosier styling." },
   {

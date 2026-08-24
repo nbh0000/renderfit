@@ -21,7 +21,7 @@ export default async function AdminPage() {
   if (!hasAdmins()) notFound();
 
   const viewer = await getViewer();
-  if (!isAdminEmail(viewer.profile?.email)) notFound();
+  if (!isAdminEmail(viewer.authEmail)) notFound();
 
   return <AdminDashboard />;
 }

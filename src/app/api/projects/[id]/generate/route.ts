@@ -1,6 +1,11 @@
 import { chargeCredits, isDenied, EDITOR_COST } from "@/lib/credits";
 import { getViewer } from "@/lib/auth";
-import { enqueueGenerate, enqueueGenerateVariants, loadProject } from "@/services/projectService";
+import {
+  enqueueGenerate,
+  enqueueGenerateVariants,
+  loadProject,
+  VARIANT_COUNT,
+} from "@/services/projectService";
 
 /** 스타일 기반 AI 생성 시작 (background job) */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -27,13 +32,20 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
 
   // variants=2 → 두 방향으로 만들어 고르게 한다 (바로 적용하지 않는다)
   const options = { styleId: body.styleId ?? null, prompt: body.prompt };
-  const charge = await chargeCredits(EDITOR_COST.renderFinal);
+  const compare = Boolean(body.variants && body.variants > 1);
+
+  /*
+   * 2안 비교는 이미지 생성을 두 번 부른다. 한 번 값만 받으면 가장 비싼 작업에서
+   * 원가의 절반만 받는 셈이라, 만드는 장수만큼 받는다.
+   */
+  const charge = await chargeCredits(
+    compare ? EDITOR_COST.renderFinal * VARIANT_COUNT : EDITOR_COST.renderFinal
+  );
   if (isDenied(charge)) return charge.denied;
 
-  const job =
-    body.variants && body.variants > 1
-      ? enqueueGenerateVariants(loaded, options, charge.refund)
-      : enqueueGenerate(loaded, options, charge.refund);
+  const job = compare
+    ? enqueueGenerateVariants(loaded, options, charge.refund)
+    : enqueueGenerate(loaded, options, charge.refund);
 
   return Response.json({ job });
 }
