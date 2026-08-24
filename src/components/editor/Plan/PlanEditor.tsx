@@ -478,10 +478,22 @@ export function PlanEditor() {
       // 천장에 다는 것은 벽으로 끌어당기지 않는다 — 천장등은 방 가운데 매단다
       const near = spec.mount === "wall" ? nearestWallAt(point, walls) : null;
 
+      /*
+       * 회로 번호를 매겨 둔다.
+       *
+       * 전기 도면은 설비마다 어느 차단기에 물리는지를 적는다. 나중에 사람이 고칠 수
+       * 있게 하되, 비워 두면 도면에서 회로를 못 읽으므로 일단 순서대로 붙인다.
+       * 조명과 그 밖의 것은 회로를 나눈다 — 실제로도 조명 회로는 따로 뽑는다.
+       */
+      const lighting = electricalKind === "ceiling-light" || electricalKind === "wall-light";
+      const prefix = lighting ? "L" : "P";
+      const used = fixtures.filter((item) => (item.circuit ?? "").startsWith(prefix)).length;
+
       void runTool("add_fixture", {
         kind: electricalKind,
         name: spec.label,
         height: spec.defaultHeight,
+        circuit: `${prefix}${used + 1}`,
         ...(near
           ? { wallId: near.wallId, offset: Math.round(near.offset) }
           : { point: [Math.round(point[0]), Math.round(point[1])] }),
@@ -556,8 +568,21 @@ export function PlanEditor() {
       }
 
       void commitAnnotation("polyline", curve, { dashed: true, thickness: 12 });
+
+      /*
+       * 이어 놓은 둘은 같은 회로다.
+       *
+       * 스위치에서 시작했으면 그 스위치의 회로를 조명에 물려 준다 — 도면에서 "이
+       * 스위치가 저 등을 켠다"를 회로 번호로도 읽을 수 있어야 한다.
+       */
+      if (from.circuit && hit.circuit !== from.circuit) {
+        void runTool("update_fixture", { fixtureId: hit.id, circuit: from.circuit });
+      }
+
       setCircuitFrom(null);
-      setHint("배선을 그렸습니다");
+      setHint(
+        from.circuit ? `배선을 그렸습니다 (회로 ${from.circuit})` : "배선을 그렸습니다"
+      );
       return;
     }
 

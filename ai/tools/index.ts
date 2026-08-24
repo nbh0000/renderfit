@@ -920,6 +920,7 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
         wallId,
         offset: typeof args.offset === "number" ? args.offset : 0,
         ...(point && !wallId ? { point } : {}),
+        ...(typeof args.circuit === "string" && args.circuit ? { circuit: args.circuit } : {}),
         height: typeof args.height === "number" ? args.height : spec.defaultHeight,
       });
       return toResult(command, result, `${spec.label}을(를) 추가했습니다.`);
@@ -934,6 +935,7 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       }
       if (typeof args.wallId === "string") patch.wallId = args.wallId || null;
       if (typeof args.name === "string") patch.name = args.name;
+      if (typeof args.circuit === "string") patch.circuit = args.circuit || null;
       return toResult(command, engine.updateFixture(fixtureId, patch), "설비를 수정했습니다.");
     }
 

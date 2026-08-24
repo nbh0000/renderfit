@@ -201,6 +201,15 @@ export interface ElectricalFixture {
   point?: [number, number];
   /** 바닥에서의 설치 높이 (mm) */
   height: number;
+  /**
+   * 회로 번호 (분전반 기준).
+   *
+   * 전기 도면은 설비마다 어느 차단기에 물리는지를 적는다. 시공자가 배선을 나눌 때
+   * 보는 값이고, 나중에 두꺼비집을 내릴 때도 이 번호로 찾는다.
+   *
+   * 배선을 이으면 스위치의 번호가 조명에도 따라붙는다 — 같은 회로이기 때문이다.
+   */
+  circuit?: string | null;
   /** 회로·용량 등 도면 주기 */
   note?: string;
 }

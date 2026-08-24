@@ -78,6 +78,10 @@ export interface PlanData {
   annotations: Annotation[];
   /** 실(방) 영역 — 실명과 면적을 도면에 적는다 */
   areas: RoomArea[];
+  /** 바닥·벽·천장 마감 — 마감재 일람표에 적는다 */
+  finishes: { floor: string | null; wall: string | null; ceiling: string | null };
+  /** 재질 id → 사람이 읽는 이름 (실별 바닥 마감을 풀어 쓰는 데 쓴다) */
+  materialNames: Record<string, string>;
   createdAt: string;
 }
 
@@ -127,6 +131,14 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
     roomType: ROOM_MAP[room.type as RoomId]?.label ?? room.type,
     walls: room.walls ?? [],
     measured: Boolean(room.measured),
+    finishes: {
+      floor: room.finishes?.floor ?? null,
+      wall: room.finishes?.wall ?? null,
+      ceiling: room.finishes?.ceiling ?? null,
+    },
+    materialNames: Object.fromEntries(
+      (scene.materials ?? []).map((material) => [material.id, material.name])
+    ),
     roomWidth,
     roomLength,
     roomHeight: room.dimensions.height,
@@ -650,8 +662,27 @@ export function buildPlanSvg(plan: PlanData): string {
   const margin = 1500;
   const W = plan.roomWidth;
   const L = plan.roomLength;
-  const vbW = W + margin * 2;
-  const vbH = L + margin * 2 + 1700;
+
+  /*
+   * 도면 아래에 일람표 두 개와 타이틀블록이 차례로 온다.
+   *
+   * 예전에는 이 자리를 고정값으로 잡아 두어서, 개구부가 많으면 창호일람표가 타이틀블록을
+   * 뚫고 나가고 마감재 일람표는 그림 밖으로 잘려 나갔다. 표가 몇 줄인지는 도면마다
+   * 다르므로 높이를 세어서 자리를 잡는다.
+   */
+  const TABLE_TOP = L + 1000;
+  const ROW_H = 190;
+  const openingRows = plan.walls.reduce((sum, wall) => sum + (wall.openings?.length ?? 0), 0);
+  const finishCount = plan.areas.length || 1;
+  const tableHeight = ROW_H * (Math.max(openingRows, finishCount) + 2);
+  const titleTop = TABLE_TOP + tableHeight + 400;
+
+  /** 마감재 일람표를 창호일람표 오른쪽에 둔다 */
+  const FINISH_LEFT = 10000;
+  const FINISH_WIDTH = 9800;
+
+  const vbW = Math.max(W, FINISH_LEFT + FINISH_WIDTH) + margin * 2;
+  const vbH = titleTop + 700 + margin;
 
   const esc = (value: string) =>
     value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -761,8 +792,8 @@ export function buildPlanSvg(plan: PlanData): string {
 
   const scheduleSvg = schedule.length
     ? (() => {
-        const top = L + 300;
-        const rowHeight = 190;
+        const top = TABLE_TOP;
+        const rowHeight = ROW_H;
         const cols = [0, 500, 1400, 3200, 4400, 6200, 9000];
         const head = ["부호", "종류", "크기 (W×H)", "창대높이", "여닫이", "위치"];
 
@@ -812,6 +843,56 @@ ${rows.join("\n")}
       })()
     : "";
 
+  /*
+   * 마감재 일람표.
+   *
+   * 도면 한 장으로 견적이 나오려면 실마다 바닥·벽·천장에 무엇을 쓰는지가 있어야 한다.
+   * 실제 도면에도 창호일람표와 나란히 붙는 표다.
+   *
+   * 실별 바닥 마감이 따로 지정돼 있으면 그것을 쓰고, 없으면 방 전체 마감을 따른다.
+   * 아무것도 없으면 "미정"으로 남긴다 — 빈칸으로 두면 빠뜨린 것인지 미정인지 알 수 없다.
+   */
+  const finishRows = (plan.areas.length
+    ? plan.areas.map((area) => ({
+        name: area.name,
+        floor: area.floorMaterialId
+          ? (plan.materialNames[area.floorMaterialId] ?? area.floorMaterialId)
+          : plan.finishes.floor,
+      }))
+    : [{ name: plan.roomType, floor: plan.finishes.floor }]
+  ).map((row) => [row.name, row.floor || "미정", plan.finishes.wall || "미정", plan.finishes.ceiling || "미정"]);
+
+  const finishSvg = (() => {
+    const top = TABLE_TOP;
+    const rowHeight = ROW_H;
+    const left = schedule.length ? FINISH_LEFT : 0;
+    const cols = [0, 1700, 4400, 7100, 9800].map((value) => value + left);
+    const head = ["실", "바닥", "벽", "천장"];
+
+    const rows = finishRows.map((cells, index) => {
+      const y = top + rowHeight * (index + 1);
+      return [
+        `    <line x1="${cols[0]}" y1="${y - rowHeight + 40}" x2="${cols[4]}" y2="${y - rowHeight + 40}" stroke="#d8d5d0" stroke-width="8"/>`,
+        ...cells.map(
+          (cell, col) =>
+            `    <text x="${cols[col] + 60}" y="${y}" font-size="100" fill="#3d3a36">${esc(String(cell).slice(0, 16))}</text>`
+        ),
+      ].join("\n");
+    });
+
+    return `  <g font-family="Pretendard, sans-serif">
+    <text x="${cols[0]}" y="${top - 60}" font-size="120" font-weight="600" fill="#26231f">마감재 일람표</text>
+    <rect x="${cols[0]}" y="${top - 20}" width="${cols[4] - cols[0]}" height="${rowHeight * (finishRows.length + 1)}" fill="none" stroke="#26231f" stroke-width="12"/>
+${head
+  .map(
+    (label, col) =>
+      `    <text x="${cols[col] + 60}" y="${top + 130}" font-size="100" font-weight="600" fill="#26231f">${esc(label)}</text>`
+  )
+  .join("\n")}
+${rows.join("\n")}
+  </g>`;
+  })();
+
   const areaM2 = (W / 1000) * (L / 1000);
 
   /*
@@ -843,14 +924,40 @@ ${rows.join("\n")}
     axis: 0 | 1,
     span: number
   ): number[] => {
-    const wall = plan.walls.find(pick);
     const points = [0, span];
-    for (const opening of wall?.openings ?? []) {
-      const [ax, ay] = pointAlongWall(wall!, opening.offset);
-      const [bx, by] = pointAlongWall(wall!, opening.offset + opening.width);
-      points.push(axis === 0 ? ax : ay, axis === 0 ? bx : by);
+
+    /*
+     * 그 변에 놓인 벽을 모두 본다.
+     *
+     * 예전에는 find 로 첫 벽 하나만 보고 그 벽의 개구부만 넣었다. 그래서 한 변이 여러
+     * 벽으로 이어진 아파트 도면에서는 나머지 벽과 그 문들이 통째로 빠졌고, 결국 전체
+     * 길이 하나만 적힌 치수줄이 됐다. 실제 도면은 벽이 꺾이는 곳과 문이 시작·끝나는
+     * 곳마다 끊어 2.32 / 1.47 / 1.47 / 2.86 처럼 잘게 적는다.
+     */
+    for (const wall of plan.walls.filter(pick)) {
+      points.push(wall.start[axis], wall.end[axis]);
+
+      for (const opening of wall.openings ?? []) {
+        const [ax, ay] = pointAlongWall(wall, opening.offset);
+        const [bx, by] = pointAlongWall(wall, opening.offset + opening.width);
+        points.push(axis === 0 ? ax : ay, axis === 0 ? bx : by);
+      }
     }
-    return [...new Set(points.map((value) => Math.round(value)))].sort((a, b) => a - b);
+
+    /*
+     * 너무 촘촘하면 글자가 겹쳐 못 읽는다. 80mm 안에 있는 점은 같은 자리로 본다 —
+     * 벽 두께 때문에 생기는 미세한 차이까지 끊으면 치수줄이 지네처럼 된다.
+     */
+    const sorted = [...new Set(points.map((value) => Math.round(value)))]
+      .filter((value) => value >= 0 && value <= span)
+      .sort((a, b) => a - b);
+
+    const merged: number[] = [];
+    for (const value of sorted) {
+      if (merged.length === 0 || value - merged[merged.length - 1] > 80) merged.push(value);
+    }
+
+    return merged;
   };
 
   /** 수평 치수줄 (도면 위/아래) */
@@ -969,10 +1076,17 @@ ${label}`;
       const [px, py] = electricalPoint(plan, fixture);
       const x = px;
       const y = fy(py);
-      // 원 안에 기호 문자, 아래에 설치 높이 — 시공자가 도면에서 바로 읽는 두 값이다.
+      /*
+       * 원 안에 기호, 아래에 설치 높이와 회로 번호.
+       *
+       * 시공자가 도면에서 바로 읽는 값들이다 — 무엇을(기호), 얼마 높이에(H), 어느
+       * 차단기에 물려(회로) 다는지.
+       */
+      const circuit = fixture.circuit ? ` · ${fixture.circuit}` : "";
+
       return `  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="110" fill="#ffffff" stroke="#1f5f9c" stroke-width="18"/>
   <text x="${x.toFixed(1)}" y="${(y + 38).toFixed(1)}" font-size="96" text-anchor="middle" fill="#1f5f9c">${esc(spec.symbol)}</text>
-  <text x="${x.toFixed(1)}" y="${(y + 250).toFixed(1)}" font-size="76" text-anchor="middle" fill="#1f5f9c">H${Math.round(fixture.height)}</text>`;
+  <text x="${x.toFixed(1)}" y="${(y + 250).toFixed(1)}" font-size="76" text-anchor="middle" fill="#1f5f9c">H${Math.round(fixture.height)}${esc(circuit)}</text>`;
     })
     .join("\n");
 
@@ -1137,15 +1251,16 @@ ${dimensionChain}
 ${roomDimensions}
   </g>
 
-  <!-- 창호일람표 -->
+  <!-- 창호일람표 · 마감재 일람표 -->
 ${scheduleSvg}
+${finishSvg}
 
   <!-- 타이틀블록 -->
   <g font-family="Pretendard, sans-serif">
-    <rect x="${-margin + 100}" y="${L + 800}" width="${vbW - 200}" height="520" fill="none" stroke="#26231f" stroke-width="16"/>
-    <text x="${-margin + 200}" y="${L + 980}" font-size="170" fill="#26231f">${esc(plan.projectName)}</text>
-    <text x="${-margin + 200}" y="${L + 1120}" font-size="100" fill="#5c5751">${esc(plan.roomType)} · ${Math.round(W)}×${Math.round(L)}×${Math.round(plan.roomHeight)} mm · SCALE 1:1 (mm) · ${plan.createdAt.slice(0, 10)}</text>
-    <text x="${-margin + 200}" y="${L + 1250}" font-size="92" fill="${plan.measured ? "#4f7a55" : "#b4453a"}">${esc(disclaimerFor(plan.measured))}</text>
+    <rect x="${-margin + 100}" y="${titleTop}" width="${vbW - 200}" height="520" fill="none" stroke="#26231f" stroke-width="16"/>
+    <text x="${-margin + 200}" y="${titleTop + 180}" font-size="170" fill="#26231f">${esc(plan.projectName)}</text>
+    <text x="${-margin + 200}" y="${titleTop + 320}" font-size="100" fill="#5c5751">${esc(plan.roomType)} · ${Math.round(W)}×${Math.round(L)}×${Math.round(plan.roomHeight)} mm · SCALE 1:1 (mm) · ${plan.createdAt.slice(0, 10)}</text>
+    <text x="${-margin + 200}" y="${titleTop + 450}" font-size="92" fill="${plan.measured ? "#4f7a55" : "#b4453a"}">${esc(disclaimerFor(plan.measured))}</text>
   </g>
 </svg>`;
 }

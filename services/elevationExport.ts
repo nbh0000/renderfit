@@ -84,7 +84,7 @@ ${glass}
       return `  <line x1="${x.toFixed(1)}" y1="${fy(0).toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#1f5f9c" stroke-width="8" stroke-dasharray="40 40"/>
   <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="105" fill="#ffffff" stroke="#1f5f9c" stroke-width="18"/>
   <text x="${x.toFixed(1)}" y="${(y + 36).toFixed(1)}" font-size="92" text-anchor="middle" fill="#1f5f9c">${esc(spec.symbol)}</text>
-  <text x="${x.toFixed(1)}" y="${(y - 160).toFixed(1)}" font-size="78" text-anchor="middle" fill="#1f5f9c">H${Math.round(fixture.height)}</text>`;
+  <text x="${x.toFixed(1)}" y="${(y - 160).toFixed(1)}" font-size="78" text-anchor="middle" fill="#1f5f9c">H${Math.round(fixture.height)}${fixture.circuit ? ` · ${esc(fixture.circuit)}` : ""}</text>`;
     })
     .join("\n");
 
