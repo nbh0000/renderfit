@@ -1010,6 +1010,64 @@ ${label}`;
    * 실(방) 영역.
    * 건축 평면도에서 실명과 면적은 가장 먼저 읽는 정보라 벽보다 아래, 가구보다 아래에 깐다.
    */
+  /*
+   * 실별 안목 치수.
+   *
+   * 지금까지는 도면 바깥 둘레에만 치수가 있었다. 그런데 시공자가 실제로 재는 것은
+   * 실 하나하나의 안목 치수다 — 벽지를 몇 롤 사고 마루를 몇 장 까는지가 거기서 나온다.
+   * 실제 도면도 실마다 가로·세로 치수를 적어 둔다.
+   *
+   * 실 안쪽에 짧은 치수줄을 그린다. 바깥 둘레 치수줄과 섞이지 않게 안쪽에 두고,
+   * 글자가 들어갈 자리가 없는 좁은 실에는 그리지 않는다 — 억지로 넣으면 도면이
+   * 다시 글자밭이 된다.
+   */
+  const roomDimensions = plan.areas
+    .map((area) => {
+      const xs = area.points.map(([x]) => x);
+      const ys = area.points.map(([, y]) => y);
+      const x0 = Math.min(...xs);
+      const x1 = Math.max(...xs);
+      const y0 = Math.min(...ys);
+      const y1 = Math.max(...ys);
+
+      const width = Math.round(x1 - x0);
+      const depth = Math.round(y1 - y0);
+
+      /** 치수줄을 벽에서 이만큼 안쪽에 둔다 */
+      const inset = 260;
+      /** 이보다 짧으면 글자가 치수줄보다 길어져 읽을 수 없다 */
+      const MIN = 1200;
+
+      const parts: string[] = [];
+
+      if (width >= MIN) {
+        const y = fy(y1) + inset;
+        parts.push(
+          `    <line x1="${x0 + 60}" y1="${y}" x2="${x1 - 60}" y2="${y}"/>`,
+          `    <line x1="${x0 + 60}" y1="${y - 45}" x2="${x0 + 60}" y2="${y + 45}"/>`,
+          `    <line x1="${x1 - 60}" y1="${y - 45}" x2="${x1 - 60}" y2="${y + 45}"/>`,
+          `    <text x="${(x0 + x1) / 2}" y="${y - 70}" font-size="88" text-anchor="middle" stroke="none">${width}</text>`
+        );
+      }
+
+      if (depth >= MIN) {
+        const x = x0 + inset;
+        const top = fy(y1) + 60;
+        const bottom = fy(y0) - 60;
+        const mid = (top + bottom) / 2;
+        parts.push(
+          `    <line x1="${x}" y1="${top}" x2="${x}" y2="${bottom}"/>`,
+          `    <line x1="${x - 45}" y1="${top}" x2="${x + 45}" y2="${top}"/>`,
+          `    <line x1="${x - 45}" y1="${bottom}" x2="${x + 45}" y2="${bottom}"/>`,
+          `    <text x="${x - 70}" y="${mid}" font-size="88" text-anchor="middle" stroke="none" transform="rotate(-90 ${x - 70} ${mid})">${depth}</text>`
+        );
+      }
+
+      return parts.join("\n");
+    })
+    .filter(Boolean)
+    .join("\n");
+
   const areasSvg = plan.areas
     .map((area) => {
       const pts = area.points.map(([x, y]) => `${x.toFixed(1)},${fy(y).toFixed(1)}`).join(" ");
@@ -1069,9 +1127,14 @@ ${wholeLabel}
     <text x="${W - 500}" y="${-margin + 700}" font-size="96" text-anchor="middle" stroke="none">1 m</text>
   </g>
 
-  <!-- 치수 -->
+  <!-- 치수 (바깥 둘레) -->
   <g stroke="#8a8a8a" stroke-width="12" fill="#8a8a8a" font-size="110">
 ${dimensionChain}
+  </g>
+
+  <!-- 치수 (실별 안목) — 바깥 것보다 옅게 그려 둘이 섞여 보이지 않게 한다 -->
+  <g stroke="#b0aca6" stroke-width="9" fill="#8a8a8a" paint-order="stroke" font-size="88">
+${roomDimensions}
   </g>
 
   <!-- 창호일람표 -->
