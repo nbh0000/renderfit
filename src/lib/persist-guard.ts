@@ -1,3 +1,4 @@
+import { recordIncident } from "@/lib/incidents";
 import { PersistError } from "@/lib/db";
 
 /**
@@ -16,7 +17,10 @@ export async function withPersistGuard(run: () => Promise<Response>): Promise<Re
   } catch (error) {
     if (!(error instanceof PersistError)) throw error;
 
-    console.error("[persist] 저장 실패:", error.message);
+    void recordIncident({
+      kind: "save_failed",
+      message: error.message,
+    });
     return Response.json(
       {
         error: "저장하지 못했습니다. 편집 내용은 화면에 그대로 있으니 잠시 후 다시 시도해 주세요.",

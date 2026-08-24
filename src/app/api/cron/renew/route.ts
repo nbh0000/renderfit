@@ -1,9 +1,10 @@
+import { recordIncident } from "@/lib/incidents";
 import { getPlan, type PlanId } from "@/config/plans";
 import { canSellOnServer, tossAuthHeader, TOSS_API } from "@/lib/payments/server";
 import {
   afterFailure,
   decideRenewal,
-  nextPeriodEnd,
+  MAX_ATTEMPTS,
   type SubscriptionRow,
 } from "@/lib/payments/renewal";
 import { createAdminSupabase } from "@/lib/supabase/server";
@@ -167,7 +168,12 @@ export async function POST(request: Request) {
         tally.failed += 1;
       }
 
-      console.warn(`[cron] 자동결제 실패 ${row.id} (${next.failed_attempts}회) — ${reason}`);
+      await recordIncident({
+        kind: "payment_failed",
+        userId: row.user_id,
+        message: `자동결제 실패 (${next.failed_attempts}/${MAX_ATTEMPTS}회) — ${reason}`,
+        context: { subscriptionId: row.id, orderId: action.orderId, plan: action.plan, amount: action.amount },
+      });
     }
   }
 

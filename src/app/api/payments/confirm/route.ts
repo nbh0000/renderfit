@@ -1,3 +1,4 @@
+import { recordIncident } from "@/lib/incidents";
 import { getViewer } from "@/lib/auth";
 import { getPlan, type PlanId } from "@/config/plans";
 import { canSellOnServer, tossAuthHeader, TOSS_API } from "@/lib/payments/server";
@@ -120,7 +121,12 @@ export async function GET(request: Request) {
 
     if (applyError) {
       // 돈은 받았는데 요금제가 안 올라간 상태 — 조용히 넘기면 안 된다
-      console.error("[payments] 요금제 반영 실패:", applyError.message, orderId);
+      await recordIncident({
+        kind: "payment_orphaned",
+        userId: viewer.userId,
+        message: `결제는 승인됐는데 요금제 반영에 실패했습니다 — ${applyError.message}`,
+        context: { orderId, plan: plan.id, amount: order.amount, paymentKey: payment.paymentKey },
+      });
       return fail("결제는 됐지만 요금제 반영에 실패했습니다. 문의해 주세요.");
     }
 

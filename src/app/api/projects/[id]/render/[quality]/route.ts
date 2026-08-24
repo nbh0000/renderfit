@@ -1,3 +1,4 @@
+import { recordEvent } from "@/lib/events";
 import { chargeCredits, isDenied, EDITOR_COST } from "@/lib/credits";
 import { getViewer } from "@/lib/auth";
 import { enqueueRender, loadProject } from "@/services/projectService";
@@ -32,6 +33,16 @@ export async function POST(
     quality === "final" ? EDITOR_COST.renderFinal : EDITOR_COST.renderPreview
   );
   if (isDenied(charge)) return charge.denied;
+
+  void recordEvent({
+    name: "render_start",
+    userId: viewer.userId,
+    props: {
+      credits: quality === "final" ? EDITOR_COST.renderFinal : EDITOR_COST.renderPreview,
+      quality,
+      projectId: id,
+    },
+  });
 
   const job = enqueueRender(loaded, quality, { viewportImage }, charge.refund);
   return Response.json({ job });

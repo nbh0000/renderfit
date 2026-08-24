@@ -1,3 +1,4 @@
+import { PageViewTracker } from "@/components/PageViewTracker";
 import type { Metadata, Viewport } from "next";
 import { Noto_Serif_KR } from "next/font/google";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-dvh bg-canvas text-ink antialiased">
+        <PageViewTracker />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

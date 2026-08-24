@@ -1,3 +1,4 @@
+import { recordIncident } from "@/lib/incidents";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -93,7 +94,15 @@ export async function chargeCredits(amount: number): Promise<CreditResult> {
 
       const { error: refundError } = await supabase.rpc("refund_credits", { p_amount: amount });
       if (refundError) {
-        console.error("[credits] 되돌려 주지 못했습니다:", refundError.message);
+        /*
+         * 되돌려 주지 못하면 사용자 크레딧이 그냥 사라진다.
+         * 조용히 넘기면 "돈은 냈는데 못 썼다"는 문의로 돌아오므로 사고로 남긴다.
+         */
+        await recordIncident({
+          kind: "credit_failed",
+          message: `크레딧 ${amount}을 되돌려 주지 못했습니다 — ${refundError.message}`,
+          context: { amount },
+        });
       }
     },
   };

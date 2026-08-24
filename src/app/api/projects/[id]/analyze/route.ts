@@ -1,3 +1,4 @@
+import { recordEvent } from "@/lib/events";
 import { chargeCredits, isDenied, EDITOR_COST } from "@/lib/credits";
 import { getViewer } from "@/lib/auth";
 import { enqueueAnalyze, loadProject } from "@/services/projectService";
@@ -16,6 +17,12 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
 
   const charge = await chargeCredits(EDITOR_COST.analyze);
   if (isDenied(charge)) return charge.denied;
+
+  void recordEvent({
+    name: "analyze_start",
+    userId: viewer.userId,
+    props: { credits: EDITOR_COST.analyze, projectId: id },
+  });
 
   const job = enqueueAnalyze(loaded, charge.refund);
   return Response.json({ job });
