@@ -16,6 +16,8 @@ export type IconName =
   | "wall"
   | "room"
   | "polyline"
+  | "outlet"
+  | "circuit"
   | "arrange"
   | "undo"
   | "redo"
@@ -63,6 +65,22 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M2 12l4-6 3 3 5-6" />
       <circle cx="2" cy="12" r="1.2" />
       <circle cx="14" cy="3" r="1.2" />
+    </>
+  ),
+  /* 전기 설비 — 콘센트 구멍 두 개 */
+  outlet: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="9.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="14.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+    </>
+  ),
+  /* 배선 — 스위치와 등을 잇는 곡선 */
+  circuit: (
+    <>
+      <circle cx="5" cy="18" r="2.2" />
+      <circle cx="19" cy="6" r="2.2" />
+      <path d="M6.6 16.4C10 15 13 12 15.5 8.2" />
     </>
   ),
   arrange: (

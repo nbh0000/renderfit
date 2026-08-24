@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { DesignProject, Scene, SceneObject } from "@/scene/types";
+import type { DesignProject, ElectricalKind, Scene, SceneObject } from "@/scene/types";
 import type { Job } from "@/lib/queue";
 import { SceneEngine } from "@/scene/engine/SceneEngine";
 import { executeCommand } from "@/ai/tools";
@@ -30,7 +30,17 @@ export type EditorTool = "select" | "move" | "rotate" | "scale";
  * 3D 객체 조작 도구(EditorTool)와 분리해 둔다 — 평면도에서는 벽을 긋고 치수를 재는
  * 일이 주가 되고, 3D에서는 가구를 옮기는 일이 주가 되어 필요한 도구가 다르다.
  */
-export type PlanTool = "select" | "wall" | "room" | "dimension" | "text" | "polyline";
+export type PlanTool =
+  | "select"
+  | "wall"
+  | "room"
+  | "dimension"
+  | "text"
+  | "polyline"
+  /** 콘센트·스위치·조명을 찍어 놓는다 */
+  | "electrical"
+  /** 스위치와 조명을 이어 배선을 그린다 */
+  | "circuit";
 
 export interface ToolCallResult {
   ok: boolean;
@@ -69,6 +79,8 @@ interface EditorState {
   showGrid: boolean;
   /** 평면도 그리기 도구 */
   planTool: PlanTool;
+  /** 전기 도구로 찍을 때 놓을 설비 종류 */
+  electricalKind: ElectricalKind;
   /** 격자 스냅 간격 (mm). 0이면 스냅하지 않는다 */
   snapMm: number;
   /**
@@ -109,6 +121,7 @@ interface EditorState {
   toggleBackdrop: () => void;
   setZoom: (zoom: number) => void;
   setPlanTool: (tool: PlanTool) => void;
+  setElectricalKind: (kind: ElectricalKind) => void;
   setSnapMm: (snap: number) => void;
   setActiveLevel: (levelId: string | null) => void;
   setVariants: (variants: { label: string; imageUrl: string }[] | null) => void;
@@ -204,6 +217,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   clipboard: null,
   showGrid: true,
   planTool: "select",
+  electricalKind: "outlet",
   snapMm: 100,
   activeLevelId: null,
   renderUrl: null,
@@ -245,6 +259,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   toggleBackdrop: () => set((state) => ({ showBackdrop: !state.showBackdrop })),
   setZoom: (zoom) => set({ zoom: Math.min(3, Math.max(0.4, zoom)) }),
   setPlanTool: (planTool) => set({ planTool }),
+  setElectricalKind: (electricalKind) => set({ electricalKind }),
   setSnapMm: (snapMm) => set({ snapMm: Math.max(0, snapMm) }),
   // 층을 바꾸면 이전 층의 선택은 의미가 없다.
   setActiveLevel: (activeLevelId) => set({ activeLevelId, selectedIds: [] }),

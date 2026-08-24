@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditorStore } from "@/lib/editor/store";
 import { electricalSpec } from "@/config/electrical";
+import { projectOntoWall } from "@/scene/openings";
 import {
   ensureRoom,
   levelBelow,
@@ -78,6 +79,9 @@ export function PlanEditor() {
   const selectedIds = useEditorStore((state) => state.selectedIds);
   const select = useEditorStore((state) => state.select);
   const runTool = useEditorStore((state) => state.runTool);
+  const electricalKind = useEditorStore((state) => state.electricalKind);
+  /** 배선을 그리는 중일 때, 먼저 찍은 설비 */
+  const [circuitFrom, setCircuitFrom] = useState<string | null>(null);
   /** 이번 드래그에서 손이 실제로 움직였는가 — 제자리 클릭은 서버로 보내지 않는다 */
   const draggedRef = useRef(false);
   const planTool = useEditorStore((state) => state.planTool);
@@ -358,6 +362,67 @@ export function PlanEditor() {
     [annotations, areas, objectCenter, objects, walls]
   );
 
+  /**
+   * 찍은 자리에서 가장 가까운 벽.
+   *
+   * 이 거리 안이면 그 벽에 붙이려던 것으로 본다. 벽에서 멀면 천장등처럼 허공에 놓는
+   * 설비이므로 좌표를 그대로 쓴다.
+   */
+  const nearestWallAt = useCallback(
+    (point: [number, number], list: typeof walls) => {
+      /*
+       * 이만큼 안이면 그 벽에 붙이려던 것으로 본다.
+       *
+       * 처음에 700mm으로 뒀더니 화면에서는 벽에 붙여 찍었는데도 자유 좌표로 떨어졌다.
+       * 도면을 축소해 보고 있으면 1m가 손가락 몇 개 폭이라 정확히 찍기 어렵다.
+       * 벽에서 1.5m 안쪽에 놓인 콘센트는 사실상 그 벽의 것이므로 넉넉히 잡는다.
+       */
+      const REACH = 1500;
+      let best: { wallId: string; offset: number; distance: number } | null = null;
+
+      for (const wall of list) {
+        const { distance, offset } = projectOntoWall(wall, point);
+        if (distance > REACH) continue;
+        if (!best || distance < best.distance) best = { wallId: wall.id, offset, distance };
+      }
+
+      return best;
+    },
+    []
+  );
+
+  /** 설비 하나가 평면 어디에 있는지 */
+  const fixturePoint = useCallback(
+    (fixture: { wallId: string | null; offset: number; point?: [number, number] }) => {
+      const wall = walls.find((item) => item.id === fixture.wallId);
+      return wall
+        ? pointAlongWall(wall, fixture.offset)
+        : (fixture.point ?? [(roomWidthMm ?? 0) / 2, (roomLengthMm ?? 0) / 2]);
+    },
+    [roomLengthMm, roomWidthMm, walls]
+  );
+
+  /** 찍은 자리에서 가장 가까운 설비 (배선을 이을 때 쓴다) */
+  const nearestFixtureAt = useCallback(
+    (point: [number, number]) => {
+      const REACH = 600;
+      let best: (typeof fixtures)[number] | null = null;
+      let bestDistance = Infinity;
+
+      for (const fixture of fixtures) {
+        const [fx, fy] = fixturePoint(fixture);
+        const distance = Math.hypot(point[0] - fx, point[1] - fy);
+        if (distance <= REACH && distance < bestDistance) {
+          best = fixture;
+          bestDistance = distance;
+        }
+      }
+
+      return best;
+    },
+    [fixturePoint, fixtures]
+  );
+
   /* ────────────────────────── 포인터 ────────────────────────── */
 
   const onPointerDown = (event: React.PointerEvent) => {
@@ -397,6 +462,102 @@ export function PlanEditor() {
       if (!selectedIds.includes(target.id)) select([target.id]);
       const mode = beginDragFor(target, point);
       if (mode) setDrag(mode);
+      return;
+    }
+
+    /*
+     * 전기 설비를 찍어 놓는다.
+     *
+     * 콘센트·스위치는 벽에 붙는 물건이라, 가까운 벽을 찾아 그 벽의 몇 mm 지점인지로
+     * 기록한다. 그래야 나중에 벽을 옮겨도 설비가 따라오고 입면도에도 제자리에 선다.
+     * 천장등처럼 벽에서 먼 것은 평면 좌표를 그대로 쓴다.
+     */
+    if (planTool === "electrical") {
+      const spec = electricalSpec(electricalKind);
+
+      // 천장에 다는 것은 벽으로 끌어당기지 않는다 — 천장등은 방 가운데 매단다
+      const near = spec.mount === "wall" ? nearestWallAt(point, walls) : null;
+
+      void runTool("add_fixture", {
+        kind: electricalKind,
+        name: spec.label,
+        height: spec.defaultHeight,
+        ...(near
+          ? { wallId: near.wallId, offset: Math.round(near.offset) }
+          : { point: [Math.round(point[0]), Math.round(point[1])] }),
+        ...(currentLevelId ? { levelId: currentLevelId } : {}),
+      });
+
+      setHint(
+        near
+          ? `${spec.label}을(를) 벽에 붙였습니다 (H${spec.defaultHeight}mm)`
+          : `${spec.label}을(를) 놓았습니다 — 벽에서 멀어 좌표로 고정됩니다`
+      );
+      return;
+    }
+
+    /*
+     * 배선.
+     *
+     * 전기 도면은 스위치와 그 스위치가 켜는 조명을 곡선으로 잇는다. 직선으로 그으면
+     * 벽선·치수선과 헷갈리기 때문에 관행이 곡선이다.
+     *
+     * 두 번 찍어 만든다 — 처음 찍은 설비를 기억했다가 다음에 찍은 설비와 잇는다.
+     * 같은 것을 두 번 찍으면 취소로 본다.
+     */
+    if (planTool === "circuit") {
+      const hit = nearestFixtureAt(point);
+
+      if (!hit) {
+        setHint("설비를 찍어 주세요 (스위치 → 조명 순서)");
+        return;
+      }
+
+      if (!circuitFrom) {
+        setCircuitFrom(hit.id);
+        setHint(`${electricalSpec(hit.kind).label}에서 시작 — 이을 조명을 찍으세요`);
+        return;
+      }
+
+      if (circuitFrom === hit.id) {
+        setCircuitFrom(null);
+        setHint("배선을 취소했습니다");
+        return;
+      }
+
+      const from = fixtures.find((item) => item.id === circuitFrom);
+      if (!from) {
+        setCircuitFrom(null);
+        return;
+      }
+
+      const a = fixturePoint(from);
+      const b = fixturePoint(hit);
+
+      /*
+       * 두 점을 잇는 곡선을 몇 개의 점으로 나눠 폴리라인으로 남긴다.
+       * 주석은 점 목록만 담을 수 있어서 곡선을 잘게 쪼개 넣는다.
+       */
+      const midX = (a[0] + b[0]) / 2;
+      const midY = (a[1] + b[1]) / 2;
+      const bow = Math.hypot(b[0] - a[0], b[1] - a[1]) * 0.18;
+      const nx = -(b[1] - a[1]);
+      const ny = b[0] - a[0];
+      const norm = Math.hypot(nx, ny) || 1;
+      const cx = midX + (nx / norm) * bow;
+      const cy = midY + (ny / norm) * bow;
+
+      const curve: [number, number][] = [];
+      for (let i = 0; i <= 12; i += 1) {
+        const t = i / 12;
+        const x = (1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * cx + t * t * b[0];
+        const y = (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * cy + t * t * b[1];
+        curve.push([Math.round(x), Math.round(y)]);
+      }
+
+      void commitAnnotation("polyline", curve, { dashed: true, thickness: 12 });
+      setCircuitFrom(null);
+      setHint("배선을 그렸습니다");
       return;
     }
 
@@ -1078,6 +1239,13 @@ function AreaShape({
         stroke={selected ? "#2f5d4e" : "#d6d3cc"}
         strokeWidth={selected ? 2 : 1}
       />
+      {/*
+        이름표는 클릭을 받지 않는다.
+
+        받게 두면 실 한가운데에 설비를 놓거나 벽을 그릴 수 없다 — 글자 위를 찍으면
+        글자가 클릭을 삼켜서 아무 일도 일어나지 않고, 왜 안 되는지도 알 수 없다.
+      */}
+      <g pointerEvents="none">
       <text
         x={cx}
         y={cy}
@@ -1100,6 +1268,7 @@ function AreaShape({
           {squareMeters.toFixed(1)}㎡ ({(squareMeters / 3.3058).toFixed(1)}평)
         </text>
       )}
+      </g>
     </g>
   );
 }

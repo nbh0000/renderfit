@@ -1,3 +1,4 @@
+import { symbolFor } from "@/services/planSymbols";
 import type {
   Annotation,
   RoomArea,
@@ -49,6 +50,8 @@ const WALL_THICKNESS = 150;
 export interface PlanObject {
   id: string;
   name: string;
+  /** 기호를 고르는 데 쓴다 — 같은 사각형이라도 침대와 변기는 다르게 그린다 */
+  type: SceneObject["type"];
   layer: string;
   /** 도면 좌표계(mm), 사각형 중심 */
   cx: number;
@@ -108,6 +111,7 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
       return {
         id: object.id,
         name: object.name,
+        type: object.type,
         layer: LAYER_BY_GROUP[OBJECT_GROUP_OF[object.type] ?? "furniture"] ?? "I-FURN",
         cx: clamp(cx, 0, roomWidth),
         cy: clamp(cy, 0, roomLength),
@@ -655,7 +659,17 @@ export function buildPlanSvg(plan: PlanData): string {
   // SVG는 y축이 아래로 증가하므로 방 좌표를 뒤집어 그린다.
   const fy = (y: number) => L - y;
 
-  // 벽체: 개구부로 끊긴 구간만 그리고, 문·창은 별도 색으로 표기한다
+  /*
+   * 개구부 부호와 일람표.
+   *
+   * 도면 위에는 D1·W1 만 적고, 종류·크기·여닫이 방향은 아래 표로 뺀다.
+   * 창호일람표는 실제 도면에 늘 붙는 것이고, 시공자가 발주할 때 이 표를 본다.
+   */
+  const schedule: { tag: string; opening: WallOpening }[] = [];
+  let doorNo = 0;
+  let windowNo = 0;
+
+  // 벽체: 개구부로 끊긴 구간만 그리고, 문·창은 부호로 표기한다
   const wallsSvg = plan.walls.length
     ? plan.walls
         .map((wall) => {
@@ -694,11 +708,22 @@ export function buildPlanSvg(plan: PlanData): string {
               `  <line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#ffffff" stroke-width="${wall.thickness + 4}"/>`
             );
 
+            /*
+             * 도면 위에는 부호만 적는다.
+             *
+             * 예전에는 "침실1창 1863×1200 (미닫이) 안열림" 같은 주기를 개구부마다 붙였다.
+             * 그래서 창이 몇 개만 있어도 글자가 도면을 덮었고, 정작 벽선이 안 보였다.
+             * 실제 도면은 D1·W1 같은 부호만 달고 자세한 것은 아래 창호일람표로 뺀다.
+             */
+            const tag = `${opening.type === "door" ? "D" : "W"}${
+              opening.type === "door" ? ++doorNo : ++windowNo
+            }`;
+            schedule.push({ tag, opening });
+
+            const tagSvg = `  <text x="${midX.toFixed(1)}" y="${(midY - 120).toFixed(1)}" font-size="110" text-anchor="middle" font-weight="600" fill="#5c5751" paint-order="stroke" stroke="#ffffff" stroke-width="50">${tag}</text>`;
+
             if (opening.type === "door") {
-              pieces.push(
-                ...doorSymbol(opening, sx, sy, ex, ey),
-                `  <text x="${midX.toFixed(1)}" y="${(midY - 140).toFixed(1)}" font-size="96" text-anchor="middle" fill="#bf6242">${esc(label)} ${esc(doorNote(opening))}</text>`
-              );
+              pieces.push(...doorSymbol(opening, sx, sy, ex, ey), tagSvg);
             } else {
               // 창: 벽 두께 안에 유리선 3줄
               const offsets = [-wall.thickness / 2, 0, wall.thickness / 2];
@@ -711,9 +736,7 @@ export function buildPlanSvg(plan: PlanData): string {
                   `  <line x1="${(sx + ox).toFixed(1)}" y1="${(sy + oy).toFixed(1)}" x2="${(ex + ox).toFixed(1)}" y2="${(ey + oy).toFixed(1)}" stroke="#4d4d4d" stroke-width="14"/>`
                 );
               }
-              pieces.push(
-                `  <text x="${midX.toFixed(1)}" y="${(midY - 140).toFixed(1)}" font-size="96" text-anchor="middle" fill="#4d4d4d">${esc(label)}</text>`
-              );
+              pieces.push(tagSvg);
             }
           }
 
@@ -722,7 +745,87 @@ export function buildPlanSvg(plan: PlanData): string {
         .join("\n")
     : `  <rect x="0" y="0" width="${W}" height="${L}" fill="none" stroke="#26231f" stroke-width="24"/>`;
 
+  /*
+   * 창호일람표.
+   *
+   * 도면 아래에 표로 붙인다. 부호·종류·크기·창대높이·여닫이 방향 — 시공자가 창호를
+   * 발주할 때 그대로 읽는 값들이다. 개구부가 없으면 표도 그리지 않는다.
+   */
+  /** 문 종류를 사람이 읽는 말로 */
+  const DOOR_LABEL: Record<string, string> = {
+    hinged: "여닫이문",
+    sliding: "미닫이문",
+    folding: "접이문",
+    opening: "개구부",
+  };
+
+  const scheduleSvg = schedule.length
+    ? (() => {
+        const top = L + 300;
+        const rowHeight = 190;
+        const cols = [0, 500, 1400, 3200, 4400, 6200, 9000];
+        const head = ["부호", "종류", "크기 (W×H)", "창대높이", "여닫이", "위치"];
+
+        const rows = schedule.map((entry, index) => {
+          const y = top + rowHeight * (index + 1);
+          const { opening } = entry;
+          const kind =
+            opening.type === "door"
+              ? DOOR_LABEL[
+                  opening.doorType ?? "hinged"
+                ] ?? "문"
+              : "창";
+          const swing =
+            opening.type === "door" && (opening.doorType ?? "hinged") === "hinged"
+              ? `${opening.hinge === "end" ? "우" : "좌"}힌지 · ${opening.swing === "out" ? "밖" : "안"}열림`
+              : "—";
+
+          const cells = [
+            entry.tag,
+            kind,
+            `${Math.round(opening.width)} × ${Math.round(opening.height)}`,
+            opening.type === "window" ? `${Math.round(opening.sillHeight)}` : "—",
+            swing,
+            opening.name,
+          ];
+
+          return [
+            `    <line x1="${cols[0]}" y1="${y - rowHeight + 40}" x2="${cols[6]}" y2="${y - rowHeight + 40}" stroke="#d8d5d0" stroke-width="8"/>`,
+            ...cells.map(
+              (cell, col) =>
+                `    <text x="${cols[col] + 60}" y="${y}" font-size="100" fill="#3d3a36">${esc(cell)}</text>`
+            ),
+          ].join("\n");
+        });
+
+        return `  <g font-family="Pretendard, sans-serif">
+    <text x="0" y="${top - 60}" font-size="120" font-weight="600" fill="#26231f">창호일람표</text>
+    <rect x="${cols[0]}" y="${top - 20}" width="${cols[6]}" height="${rowHeight * (schedule.length + 1)}" fill="none" stroke="#26231f" stroke-width="12"/>
+${head
+  .map(
+    (label, col) =>
+      `    <text x="${cols[col] + 60}" y="${top + 130}" font-size="100" font-weight="600" fill="#26231f">${esc(label)}</text>`
+  )
+  .join("\n")}
+${rows.join("\n")}
+  </g>`;
+      })()
+    : "";
+
   const areaM2 = (W / 1000) * (L / 1000);
+
+  /*
+   * 방 전체 이름표.
+   *
+   * 실이 따로 잡혀 있으면 실마다 이름과 면적이 이미 찍히므로, 전체 이름표는 그 위에
+   * 겹쳐 그려질 뿐이다. 실이 없을 때(원룸·사진 한 장)만 그린다.
+   */
+  const wholeLabel = plan.areas.length
+    ? ""
+    : `  <g font-family="Pretendard, sans-serif" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="60" stroke-linejoin="round">
+    <text x="${W / 2}" y="${fy(L) + 320}" font-size="150" fill="#26231f">${esc(plan.roomType)}</text>
+    <text x="${W / 2}" y="${fy(L) + 470}" font-size="105" fill="#666666">${areaM2.toFixed(1)}㎡ (${(areaM2 / 3.3058).toFixed(1)}평)</text>
+  </g>`;
 
   /*
    * 사방 치수 체인.
@@ -811,14 +914,52 @@ export function buildPlanSvg(plan: PlanData): string {
     .filter(Boolean)
     .join("\n");
 
+  /*
+   * 가구는 기호로 그린다.
+   *
+   * 예전에는 빈 사각형에 이름과 치수를 적었다. 그러면 도면을 펼쳤을 때 글자만 빼곡하고
+   * 실제 도면처럼 보이지 않는다 — 도면을 읽는 사람은 글자가 아니라 모양으로 안다.
+   * 침대는 베개와 이불선이 있고, 변기는 변기 모양이고, 의자는 등받이가 테이블을 본다.
+   *
+   * 기호는 자기 좌표계(-0.5~0.5)에서 그려 두고 여기서 크기·회전·위치를 입힌다.
+   * 글자는 큰 가구에만 작게 남긴다. 협탁까지 이름을 달면 그게 다시 글자밭이 된다.
+   */
   const objects = plan.objects
     .map((object) => {
-      const corners = rectCorners(object)
-        .map(([x, y]) => `${x.toFixed(1)},${fy(y).toFixed(1)}`)
-        .join(" ");
-      return `  <polygon points="${corners}" fill="#f2f2f2" stroke="#4d4d4d" stroke-width="18"/>
-  <text x="${object.cx}" y="${fy(object.cy)}" font-size="110" text-anchor="middle" fill="#26231f">${esc(object.name)}</text>
-  <text x="${object.cx}" y="${fy(object.cy) + 130}" font-size="86" text-anchor="middle" fill="#666666">${Math.round(object.width)}×${Math.round(object.depth)}</text>`;
+      const symbol = symbolFor(object);
+      const x = object.cx;
+      const y = fy(object.cy);
+
+      // SVG는 y가 아래로 커지므로 도면 회전과 방향이 반대다
+      const transform = `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(-object.rotation).toFixed(1)}) scale(${object.width.toFixed(1)} ${object.depth.toFixed(1)})`;
+
+      const outline = symbol?.outline || `<rect x="-0.5" y="-0.5" width="1" height="1"/>`;
+
+      /*
+       * 선 두께는 크기를 입히기 전 좌표계에서 정해지므로, 가구가 클수록 선이 굵어진다.
+       * 어느 가구든 도면에서 같은 굵기로 보이도록 크기로 나눠 준다.
+       */
+      const stroke = (18 / Math.max(object.width, object.depth)).toFixed(5);
+
+      /*
+       * 이름은 글자가 들어갈 자리가 있을 때만 적는다.
+       *
+       * 넓이만 보면 1800×450 거실장 같은 가늘고 긴 가구가 통과해 버려서, 좁은 변에
+       * 긴 이름이 눌려 뭉갠다. 짧은 변도 함께 보고, 이름이 길면 잘라 쓴다.
+       */
+      const short = Math.min(object.width, object.depth);
+      const name = object.name.length > 10 ? object.name.slice(0, 9) + "…" : object.name;
+
+      const label =
+        short >= 700 && object.width * object.depth >= 500_000
+          ? `  <text x="${x.toFixed(1)}" y="${(y + 40).toFixed(1)}" font-size="96" text-anchor="middle" fill="#4d4d4d" paint-order="stroke" stroke="#ffffff" stroke-width="40">${esc(name)}</text>`
+          : "";
+
+      return `  <g transform="${transform}" fill="none" stroke="#3d3a36" stroke-width="${stroke}" stroke-linejoin="round">
+    <g fill="#ffffff">${outline}</g>
+    ${symbol?.detail ?? ""}
+  </g>
+${label}`;
     })
     .join("\n");
 
@@ -911,11 +1052,8 @@ ${electrical}
 ${annotations}
   </g>
 
-  <!-- 실 이름 · 면적 -->
-  <g font-family="Pretendard, sans-serif" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="60" stroke-linejoin="round">
-    <text x="${W / 2}" y="${fy(L) + 320}" font-size="150" fill="#26231f">${esc(plan.roomType)}</text>
-    <text x="${W / 2}" y="${fy(L) + 470}" font-size="105" fill="#666666">${areaM2.toFixed(1)}㎡ (${(areaM2 / 3.3058).toFixed(1)}평)</text>
-  </g>
+  <!-- 실 이름 · 면적 (실이 따로 잡혀 있으면 그쪽에 이미 적혀 있으므로 생략한다) -->
+${wholeLabel}
 
   <!-- 방위 · 축척 -->
   <g stroke="#26231f" stroke-width="14" fill="#26231f" font-family="Pretendard, sans-serif">
@@ -935,6 +1073,9 @@ ${annotations}
   <g stroke="#8a8a8a" stroke-width="12" fill="#8a8a8a" font-size="110">
 ${dimensionChain}
   </g>
+
+  <!-- 창호일람표 -->
+${scheduleSvg}
 
   <!-- 타이틀블록 -->
   <g font-family="Pretendard, sans-serif">

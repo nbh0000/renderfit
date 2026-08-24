@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { BRAND } from "@/config/brand";
+import { ELECTRICAL_SPECS } from "@/config/electrical";
+import type { ElectricalKind } from "@/scene/types";
 import { useEditorStore, type PlanTool, type ViewMode } from "@/lib/editor/store";
 import { Icon, type IconName } from "./icons";
 
@@ -149,6 +151,13 @@ export function Ribbon() {
               }}
             />
             <Button action={draw("select", "선택", "select", "클릭·드래그로 고르고 옮깁니다")} />
+          </Group>
+
+          <Group title="전기">
+            <ElectricalPicker />
+            <Button
+              action={draw("circuit", "배선", "circuit", "스위치를 찍고 조명을 찍으면 이어집니다")}
+            />
           </Group>
 
           <Group title="주석">
@@ -376,5 +385,61 @@ function ExportPng() {
     >
       이미지 (PNG)
     </button>
+  );
+}
+
+/**
+ * 전기 설비 도구.
+ *
+ * 무엇을 놓을지 고르고 평면도를 찍으면 그 자리에 선다. 벽 가까이 찍으면 그 벽에
+ * 붙고(콘센트·스위치), 벽에서 멀면 좌표 그대로 놓인다(천장등).
+ *
+ * 종류를 고르는 순간 도구가 전기로 바뀐다 — 고르고 나서 버튼을 또 누르게 하면
+ * 한 번에 될 일이 두 번이 된다.
+ */
+function ElectricalPicker() {
+  const planTool = useEditorStore((state) => state.planTool);
+  const setPlanTool = useEditorStore((state) => state.setPlanTool);
+  const kind = useEditorStore((state) => state.electricalKind);
+  const setKind = useEditorStore((state) => state.setElectricalKind);
+  const setViewMode = useEditorStore((state) => state.setViewMode);
+  const viewMode = useEditorStore((state) => state.viewMode);
+
+  const active = planTool === "electrical";
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => {
+          if (viewMode !== "plan") setViewMode("plan");
+          setPlanTool(active ? "select" : "electrical");
+        }}
+        title="평면도를 찍어 콘센트·스위치·조명을 놓습니다"
+        className={[
+          "flex h-[54px] w-[58px] flex-col items-center justify-center gap-1 rounded-[var(--radius-control)] text-[11px]",
+          active ? "bg-ink text-surface" : "text-ink-soft hover:bg-sunken",
+        ].join(" ")}
+      >
+        <Icon name="outlet" />
+        설비
+      </button>
+
+      <select
+        value={kind}
+        onChange={(event) => {
+          setKind(event.target.value as ElectricalKind);
+          if (viewMode !== "plan") setViewMode("plan");
+          setPlanTool("electrical");
+        }}
+        className="h-7 rounded-[var(--radius-control)] border border-line bg-surface px-1.5 text-[11.5px]"
+      >
+        {ELECTRICAL_SPECS.map((spec) => (
+          <option key={spec.kind} value={spec.kind}>
+            {spec.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }

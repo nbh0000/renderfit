@@ -900,6 +900,18 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
       if (!spec) return fail("알 수 없는 설비 종류입니다.");
 
       const wallId = typeof args.wallId === "string" && args.wallId ? args.wallId : null;
+
+      /*
+       * 벽에 안 붙는 설비도 있다 — 천장등이 그렇다.
+       * 그때는 평면 좌표를 그대로 받는다.
+       */
+      const given = args.point as unknown;
+      const pair = Array.isArray(given) ? (given as unknown[]) : null;
+      const point =
+        pair && pair.length === 2 && pair.every((value) => Number.isFinite(Number(value)))
+          ? ([Math.round(Number(pair[0])), Math.round(Number(pair[1]))] as [number, number])
+          : undefined;
+
       const result = engine.addFixture({
         id: `fx_${Math.random().toString(36).slice(2, 10)}`,
         ...(typeof args.levelId === "string" ? { levelId: String(args.levelId) } : {}),
@@ -907,6 +919,7 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
         kind,
         wallId,
         offset: typeof args.offset === "number" ? args.offset : 0,
+        ...(point && !wallId ? { point } : {}),
         height: typeof args.height === "number" ? args.height : spec.defaultHeight,
       });
       return toResult(command, result, `${spec.label}을(를) 추가했습니다.`);

@@ -17,11 +17,20 @@ export interface ElectricalSpec {
   symbol: string;
   /** 목록 설명 */
   note: string;
+  /**
+   * 어디에 붙는가.
+   *
+   * 벽에 붙는 것은 평면도에서 찍으면 가까운 벽에 달라붙어 "그 벽의 몇 mm 지점"으로
+   * 기록된다. 천장에 다는 것은 벽에 붙이면 안 된다 — 천장등은 방 가운데 매다는 것이라
+   * 벽으로 끌려가면 자리가 통째로 틀어진다.
+   */
+  mount: "wall" | "ceiling";
 }
 
 export const ELECTRICAL_SPECS: ElectricalSpec[] = [
   {
     kind: "outlet",
+    mount: "wall",
     label: "콘센트",
     defaultHeight: 300,
     layer: "E-POWR",
@@ -30,6 +39,7 @@ export const ELECTRICAL_SPECS: ElectricalSpec[] = [
   },
   {
     kind: "outlet-aircon",
+    mount: "wall",
     label: "에어컨 콘센트",
     defaultHeight: 2000,
     layer: "E-POWR",
@@ -38,6 +48,7 @@ export const ELECTRICAL_SPECS: ElectricalSpec[] = [
   },
   {
     kind: "switch",
+    mount: "wall",
     label: "스위치",
     defaultHeight: 1200,
     layer: "E-LITE",
@@ -46,6 +57,7 @@ export const ELECTRICAL_SPECS: ElectricalSpec[] = [
   },
   {
     kind: "switch-3way",
+    mount: "wall",
     label: "3로 스위치",
     defaultHeight: 1200,
     layer: "E-LITE",
@@ -54,6 +66,7 @@ export const ELECTRICAL_SPECS: ElectricalSpec[] = [
   },
   {
     kind: "ceiling-light",
+    mount: "ceiling",
     label: "천장 조명",
     defaultHeight: 2400,
     layer: "E-LITE",
@@ -62,6 +75,7 @@ export const ELECTRICAL_SPECS: ElectricalSpec[] = [
   },
   {
     kind: "wall-light",
+    mount: "wall",
     label: "벽 조명",
     defaultHeight: 1800,
     layer: "E-LITE",
@@ -70,6 +84,7 @@ export const ELECTRICAL_SPECS: ElectricalSpec[] = [
   },
   {
     kind: "data",
+    mount: "wall",
     label: "인터넷",
     defaultHeight: 300,
     layer: "E-COMM",
@@ -78,6 +93,7 @@ export const ELECTRICAL_SPECS: ElectricalSpec[] = [
   },
   {
     kind: "tv-jack",
+    mount: "wall",
     label: "TV 단자",
     defaultHeight: 300,
     layer: "E-COMM",
@@ -86,6 +102,7 @@ export const ELECTRICAL_SPECS: ElectricalSpec[] = [
   },
   {
     kind: "panel",
+    mount: "wall",
     label: "분전반",
     defaultHeight: 1800,
     layer: "E-POWR",
