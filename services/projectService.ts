@@ -477,35 +477,28 @@ export function enqueueAnalyze(loaded: LoadedProject, onFailure?: OnFailure): Jo
           kind: reloaded.engine.getScene().source.kind ?? "photo",
         });
 
-        update(45, "객체를 분리하고 있습니다...");
+        /*
+         * 예전에는 여기서 세그먼테이션 맵과 깊이 맵을 만들어 Scene에 붙였다.
+         *
+         * 그런데 그 둘을 읽는 곳이 없다. 실사 렌더 provider(Gemini)는 원본 사진과
+         * 프롬프트만 쓰고, 두 맵을 받아 놓고도 쓰지 않는다. 결국 분석할 때마다 아무도
+         * 열어 보지 않는 SVG 두 장을 만들어 저장소에 쌓고 있었고, "깊이를 추정하고
+         * 있습니다"라는 진행 문구도 실제로는 아무 일도 하지 않았다.
+         *
+         * 그래서 그 단계를 걷어냈다. Scene 타입의 segmentationUrl·depthMapUrl은 예전에
+         * 만든 프로젝트가 들고 있으므로 남겨 두고, 값이 있으면 지금처럼 렌더에 그대로
+         * 넘긴다 — 그 맵을 쓰는 provider가 생기면 그때 다시 만든다.
+         */
+        update(60, "가구를 배치하고 있습니다...");
         const scene = analysisToScene(reloaded.engine.getScene(), analysis);
         const engine = new SceneEngine(scene, {
           operations: reloaded.engine.getOperations(),
           redo: reloaded.engine.getRedoStack(),
         });
 
-        const segmentation = await providers.segmentation.segment({ url: imageUrl });
-
-        update(70, "깊이를 추정하고 있습니다...");
-        const depth = await providers.depth.estimateDepth({ url: imageUrl });
-
-        const withMaps: Scene = {
-          ...engine.getScene(),
-          source: {
-            ...engine.getScene().source,
-            segmentationUrl: segmentation.segmentationUrl,
-            depthMapUrl: depth.depthMapUrl,
-          },
-        };
-
-        const finalEngine = new SceneEngine(withMaps, {
-          operations: engine.getOperations(),
-          redo: engine.getRedoStack(),
-        });
-
         update(90, "장면을 구성하고 있습니다...");
         const saved = await persist(
-          { project: reloaded.project, engine: finalEngine },
+          { project: reloaded.project, engine },
           { status: "ready" }
         );
 

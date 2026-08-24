@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { DailyStat } from "@/app/api/admin/stats/route";
+import type { Activity, DailyStat, PlanUsage, TopUser } from "@/app/api/admin/stats/route";
 
 /**
  * 관리자 대시보드.
@@ -36,11 +36,24 @@ type Stats = {
   incidents: Incident[];
   payments: Payment[];
   members: { total: number; byPlan: Record<string, number> };
+  planUsage: PlanUsage[];
+  activity: Activity[];
+  topUsers: TopUser[];
+  usageReady: boolean;
 };
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 const day = (iso: string) => iso.slice(5, 10).replace("-", "/");
 const time = (iso: string) => new Date(iso).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
+
+const ACTIVITY_LABEL: Record<string, string> = {
+  analyze_start: "사진·도면 분석",
+  render_start: "렌더",
+  generate_asset: "가구 만들기",
+  ai_command: "AI 명령",
+  editor_open: "편집기 열기",
+  gallery_publish: "갤러리 공개",
+};
 
 const KIND_LABEL: Record<string, string> = {
   payment_failed: "결제 실패",
@@ -227,6 +240,130 @@ export function AdminDashboard() {
           </table>
         </div>
       </section>
+
+      {/* 요금제별 수익과 사용량 */}
+      {stats.usageReady && stats.planUsage.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-[13px] font-semibold text-muted">요금제별 수익 · 사용량</h2>
+          <p className="mt-1 text-[11.5px] text-muted">
+            사용률은 지급한 크레딧 중 실제로 쓴 비율입니다. 100%에 붙으면 크레딧을 더 주거나
+            값을 올릴 때고, 너무 낮으면 결제만 하고 안 쓰는 것이라 곧 해지합니다.
+          </p>
+
+          <div className="mt-2 overflow-x-auto rounded-[var(--radius-card)] border border-line">
+            <table className="w-full min-w-[620px] text-[12px] tabular-nums">
+              <thead className="bg-sunken text-[11px] text-muted">
+                <tr>
+                  {["요금제", "회원", "결제", "매출", "지급 크레딧", "쓴 크레딧", "사용률", "AI 작업"].map(
+                    (head) => (
+                      <th key={head} className="px-3 py-2 text-right font-medium first:text-left">
+                        {head}
+                      </th>
+                    )
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {stats.planUsage.map((row) => {
+                  const rate = row.credits_granted
+                    ? Math.round((row.credits_spent / row.credits_granted) * 100)
+                    : 0;
+
+                  return (
+                    <tr key={row.plan} className="border-t border-line">
+                      <td className="px-3 py-1.5 font-medium">{row.plan}</td>
+                      <td className="px-3 py-1.5 text-right">{row.members}</td>
+                      <td className="px-3 py-1.5 text-right">{row.paid_count}</td>
+                      <td className="px-3 py-1.5 text-right">{row.revenue ? won(row.revenue) : "—"}</td>
+                      <td className="px-3 py-1.5 text-right">{row.credits_granted}</td>
+                      <td className="px-3 py-1.5 text-right">{row.credits_spent}</td>
+                      <td
+                        className={[
+                          "px-3 py-1.5 text-right font-medium",
+                          rate >= 90 ? "text-danger" : rate >= 40 ? "text-accent" : "text-muted",
+                        ].join(" ")}
+                      >
+                        {row.credits_granted ? `${rate}%` : "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right">{row.ai_jobs}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* 사람별 */}
+      {stats.usageReady && stats.topUsers.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-[13px] font-semibold text-muted">사람별 수익 · 사용량</h2>
+          <div className="mt-2 overflow-x-auto rounded-[var(--radius-card)] border border-line">
+            <table className="w-full min-w-[640px] text-[12px] tabular-nums">
+              <thead className="bg-sunken text-[11px] text-muted">
+                <tr>
+                  {["사용자", "요금제", "매출", "쓴 크레딧", "AI 작업", "남은 크레딧", "마지막 사용"].map(
+                    (head) => (
+                      <th key={head} className="px-3 py-2 text-right font-medium first:text-left">
+                        {head}
+                      </th>
+                    )
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {stats.topUsers.map((row, index) => (
+                  <tr key={`${row.email}-${index}`} className="border-t border-line">
+                    <td className="max-w-[220px] truncate px-3 py-1.5">{row.email ?? "(탈퇴)"}</td>
+                    <td className="px-3 py-1.5 text-right">{row.plan}</td>
+                    <td className="px-3 py-1.5 text-right">{row.revenue ? won(row.revenue) : "—"}</td>
+                    <td className="px-3 py-1.5 text-right">{row.credits_spent}</td>
+                    <td className="px-3 py-1.5 text-right">{row.ai_jobs}</td>
+                    <td className="px-3 py-1.5 text-right">{row.credits_left}</td>
+                    <td className="px-3 py-1.5 text-right text-muted">
+                      {row.last_seen ? time(row.last_seen) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* 작업 내역 */}
+      {stats.usageReady && stats.activity.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-[13px] font-semibold text-muted">최근 작업</h2>
+          <ul className="mt-2 space-y-1">
+            {stats.activity.map((item) => (
+              <li
+                key={item.id}
+                className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[12px]"
+              >
+                <span className="shrink-0 font-medium">
+                  {ACTIVITY_LABEL[item.name] ?? item.name}
+                </span>
+                {item.credits > 0 && (
+                  <span className="shrink-0 tabular-nums text-muted">−{item.credits}크레딧</span>
+                )}
+                <span className="min-w-0 flex-1 truncate text-ink-soft">
+                  {item.email ?? "(비로그인)"}
+                  {item.plan ? ` · ${item.plan}` : ""}
+                </span>
+                <span className="shrink-0 text-[11px] text-muted">{time(item.created_at)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {!stats.usageReady && (
+        <p className="mt-8 rounded-[var(--radius-card)] border border-line bg-sunken px-4 py-3 text-[12.5px] text-muted">
+          수익·사용량 분석을 보려면 <code>supabase/migrations-admin-usage.sql</code>을 실행해 주세요.
+        </p>
+      )}
 
       {/* 사고 */}
       <section className="mt-8">
