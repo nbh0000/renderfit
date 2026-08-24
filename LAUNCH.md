@@ -85,3 +85,50 @@ Supabase SQL Editor에서 `supabase/migrations-billing.sql`을 실행한다.
 
 값을 바꾸려면 `EDITOR_COST`만 고치면 된다. Supabase가 없는 로컬·데모 모드에서는
 걷지 않는다 — 그때는 Mock provider라 비용도 들지 않는다.
+
+---
+
+## 자동결제 스케줄러 (붙였음)
+
+`POST /api/cron/renew` 를 하루 한 번 부르면 된다. `x-cron-secret` 헤더로 보호한다.
+
+```bash
+# 환경변수
+CRON_SECRET=<아무 긴 임의 문자열>
+
+# 부르는 법
+curl -X POST https://<도메인>/api/cron/renew -H "x-cron-secret: $CRON_SECRET"
+```
+
+### 거는 방법 두 가지
+
+**Railway cron** — 프로젝트에 cron 서비스를 하나 더 만들고 위 curl을 매일 돌린다.
+가장 간단하다.
+
+**Supabase pg_cron** — DB에서 직접 부른다. 서버가 자다 깨는 일이 없다.
+
+```sql
+select cron.schedule(
+  'renderfit-renew', '0 3 * * *',
+  $$ select net.http_post(
+       url := 'https://<도메인>/api/cron/renew',
+       headers := '{"x-cron-secret": "<CRON_SECRET>"}'::jsonb
+     ) $$
+);
+```
+
+### 규칙
+
+| 상황 | 어떻게 |
+| --- | --- |
+| 주기가 남음 | 건드리지 않는다 |
+| 주기 끝 · 정상 | 빌링키로 청구 → 크레딧 채우고 주기 한 달 연장 |
+| 주기 끝 · 해지 예약 | 청구하지 않고 무료로 되돌린다 |
+| 청구 실패 | 1일 → 3일 → 5일 뒤 재시도, 3회 실패하면 구독 종료 |
+
+같은 달을 두 번 걷지 않도록 주문번호를 `구독id + 주기끝` 으로 정해 두었고
+`payments.order_id` 에 유니크 제약이 걸려 있다. 스케줄러가 겹쳐 돌아도 두 번째는
+DB가 막는다.
+
+규칙은 `src/lib/payments/renewal.ts` 에 결제대행사 호출과 떼어 두었고
+`tests/renewal.test.ts` 16개로 검증한다 — 토스 키 없이도 확인된다.

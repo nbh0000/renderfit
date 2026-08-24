@@ -14,24 +14,30 @@ create table if not exists public.subscriptions (
   plan text not null check (plan in ('basic', 'pro')),
   -- 결제대행사가 발급한 빌링키. 이것으로 매월 자동결제를 건다.
   billing_key text not null,
-  -- active: 정상, canceled: 해지 예약(주기 끝까지 사용), expired: 종료
-  status text not null default 'active' check (status in ('active', 'canceled', 'expired')),
+  -- active: 정상, past_due: 자동결제 실패(재시도 중), canceled: 해지 예약(주기 끝까지 사용),
+  -- expired: 종료
+  status text not null default 'active'
+    check (status in ('active', 'past_due', 'canceled', 'expired')),
   -- 이번 주기의 시작·끝. 끝나는 날 자동결제를 건다.
   period_start timestamptz not null default now(),
   period_end timestamptz not null,
+  -- 자동결제가 연달아 실패한 횟수. 한도를 넘으면 구독을 끝낸다.
+  failed_attempts integer not null default 0 check (failed_attempts >= 0),
+  -- 다음에 다시 시도할 시각 (실패했을 때만)
+  retry_at timestamptz,
   canceled_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
--- 한 사람이 살아 있는 구독을 둘 가질 수는 없다
+-- 한 사람이 살아 있는 구독을 둘 가질 수는 없다 (재시도 중인 것도 살아 있는 것으로 본다)
 create unique index if not exists subscriptions_active_user
   on public.subscriptions (user_id)
-  where status = 'active';
+  where status in ('active', 'past_due');
 
 create index if not exists subscriptions_renewal
   on public.subscriptions (period_end)
-  where status = 'active';
+  where status in ('active', 'past_due', 'canceled');
 
 alter table public.subscriptions enable row level security;
 
