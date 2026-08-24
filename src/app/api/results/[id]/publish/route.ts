@@ -1,5 +1,5 @@
 import { getViewer } from "@/lib/auth";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
 import { displayNameFor, memoryPublish, publishResult, unpublishResultById } from "@/lib/gallery";
 import { RESULTS_BUCKET, SOURCES_BUCKET } from "@/lib/supabase/env";
 
@@ -55,18 +55,35 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const supabase = await createServerSupabase();
   if (!supabase) return Response.json({ error: "서버 설정 오류입니다." }, { status: 500 });
 
+  /*
+   * 공개 여부를 적는 것은 서비스 롤로 한다.
+   *
+   * generation_results 는 사용자 세션으로 고칠 수 없게 막혀 있다 — status나
+   * credits_charged 를 사용자가 고쳐 쓰지 못하게 하려고 UPDATE 권한을 통째로
+   * 거둬들였기 때문이다(migrations-profile-lockdown.sql). 그 바람에 갤러리 공개도
+   * 함께 막혀서 "공개 처리에 실패했습니다"만 돌아왔다.
+   *
+   * 대신 소유 확인을 우리가 직접 한다 — 아래 조회의 user_id 조건과, 갱신 자체에
+   * 붙는 user_id 조건 두 군데다.
+   */
+  const writer = createAdminSupabase();
+  if (!writer) {
+    return Response.json({ error: "서버 설정 오류입니다." }, { status: 500 });
+  }
+
   if (body.isPublic === false) {
-    const ok = await unpublishResultById(supabase, id);
+    const ok = await unpublishResultById(writer, id, viewer.userId);
     return ok
       ? Response.json({ ok: true, slug: null })
       : Response.json({ error: "공개 설정을 바꾸지 못했습니다." }, { status: 500 });
   }
 
-  // 방/스타일은 소유한 job에서 읽는다 (RLS로 본인 것만 조회된다).
+  // 방/스타일은 소유한 job에서 읽는다. 공개된 남의 시안도 조회는 되므로 user_id로 못 박는다.
   const { data, error } = await supabase
     .from("generation_results")
     .select("id, generation_jobs!inner (room_id, style_id)")
     .eq("id", id)
+    .eq("user_id", viewer.userId)
     .maybeSingle();
 
   if (error || !data) {
@@ -76,7 +93,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const job = (data as unknown as { generation_jobs: { room_id: string; style_id: string } })
     .generation_jobs;
 
-  const published = await publishResult(supabase, id, job.room_id, job.style_id);
+  const published = await publishResult(writer, id, viewer.userId, job.room_id, job.style_id);
   if (!published) {
     return Response.json({ error: "공개 처리에 실패했습니다." }, { status: 500 });
   }
@@ -91,16 +108,17 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     .eq("id", viewer.userId)
     .maybeSingle();
 
-  const beforePath = await copySourceForGallery(supabase, id, viewer.userId);
+  const beforePath = await copySourceForGallery(writer, id, viewer.userId);
 
   // 갤러리 컬럼이 아직 없는 DB에서는 조용히 넘어간다 (공개 자체는 이미 끝났다).
-  const { error: metaError } = await supabase
+  const { error: metaError } = await writer
     .from("generation_results")
     .update({
       author_name: displayNameFor(profile ?? {}),
       ...(beforePath ? { before_path: beforePath } : {}),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", viewer.userId);
 
   if (metaError && metaError.code !== "42703") {
     console.warn("갤러리 메타 기록 실패", metaError.message);
@@ -117,7 +135,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
  * 실패해도 공개 자체는 유지한다 — 비교 슬라이더만 빠진다.
  */
 async function copySourceForGallery(
-  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabase>>>,
+  supabase: NonNullable<ReturnType<typeof createAdminSupabase>>,
   resultId: string,
   userId: string
 ): Promise<string | null> {
@@ -126,6 +144,7 @@ async function copySourceForGallery(
       .from("generation_results")
       .select("job_id, generation_jobs!inner (source_path)")
       .eq("id", resultId)
+      .eq("user_id", userId)
       .maybeSingle();
 
     const sourcePath = (result as unknown as { generation_jobs: { source_path: string | null } })

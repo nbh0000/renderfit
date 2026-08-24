@@ -112,13 +112,50 @@ export async function generateImages(params: GenerateImagesParams): Promise<Gene
   return images;
 }
 
-/** 잠시 뒤 다시 시도하면 풀릴 수 있는 오류인지 */
+/**
+ * 잠시 뒤 다시 시도하면 풀릴 수 있는 오류인지.
+ *
+ * 숫자는 앞뒤를 막아 둔다. 그러지 않으면 "1500px" 같은 말이 섞인 오류가 전부
+ * 500번대로 읽혀서, 다시 시도해도 소용없는 오류까지 계속 다시 던지게 된다.
+ */
 function isTransient(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error);
-  return /429|RESOURCE_EXHAUSTED|rate limit|500|502|503|504|UNAVAILABLE|INTERNAL|fetch failed|ETIMEDOUT|ECONNRESET/i.test(
+  return /\b(429|500|502|503|504)\b|RESOURCE_EXHAUSTED|rate limit|UNAVAILABLE|INTERNAL|overloaded|fetch failed|ETIMEDOUT|ECONNRESET/i.test(
     text
   );
 }
+
+/**
+ * 설정을 몰라서 난 오류인지.
+ *
+ * 모델마다 받는 config가 달라서(imageSize를 모르는 모델 등) 단계를 낮춰 가며 다시
+ * 부르는데, 그 되물림은 "이 설정을 모른다"는 오류일 때만 뜻이 있다. 서버가 붐벼서
+ * 503을 준 것까지 되물리면 같은 요청을 네 번 던지고, 그마저 실패하면 처음부터 또
+ * 네 번 던진다 — 붐비는 서버를 여덟 배로 두드리는 셈이고, 클릭 한 번에 오류가
+ * 여덟 건씩 쌓인다. (실제로 하루에 503이 60건 넘게 잡힌 적이 있다.)
+ */
+function isArgumentError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /\b400\b|INVALID_ARGUMENT|Unknown name|Cannot find field|not supported|unsupported|unrecognized/i.test(
+    text
+  );
+}
+
+/** 다시 시도하기까지 기다리는 시간 — 붐빔은 대개 몇 초면 풀린다 */
+const RETRY_WAITS = [1200, 4000, 9000];
+
+/** 같은 순간에 몰린 요청이 같은 순간에 다시 몰리지 않게 조금씩 흩는다 */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms + Math.random() * 400));
+}
+
+/**
+ * 모델마다 어떤 config 단계가 통했는지 기억한다.
+ *
+ * 모델이 imageSize를 모른다는 사실은 한 번 배우면 되는 것인데, 기억하지 않으면
+ * 요청마다 실패를 한 번씩 겪으며 다시 배운다.
+ */
+const configSteps = new Map<string, number>();
 
 /**
  * API 오류를 사용자에게 보여 줄 한국어 문장으로 바꾼다.
@@ -194,27 +231,37 @@ async function generateOne(
     {},
   ];
 
+  const model = imageModel(params.model);
+
   let response: unknown;
   let lastError: unknown;
 
-  for (const config of configs) {
+  for (let step = configSteps.get(model) ?? 0; step < configs.length; step += 1) {
+    const config = configs[step];
     try {
       response = await ai.models.generateContent({
-        model: imageModel(params.model),
+        model,
         contents: [{ role: "user", parts }],
         ...(Object.keys(config).length > 0 ? { config } : {}),
       } as never);
+      configSteps.set(model, step);
       lastError = null;
       break;
     } catch (error) {
       lastError = error;
+      // 설정을 몰라서 난 오류일 때만 한 단계 낮춘다. 나머지는 낮춰 봐야 똑같이 실패한다.
+      if (!isArgumentError(error)) break;
     }
   }
 
   if (lastError) {
-    // 쿼터·일시 장애는 한 번만 더 시도한다. 그 이상은 사용자를 기다리게 하는 쪽이 더 나쁘다.
-    if (attempt === 0 && isTransient(lastError)) {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+    /*
+     * 붐벼서 난 오류는 잠시 뒤면 풀린다. 다만 곧바로 다시 던지면 같은 혼잡에 다시
+     * 걸리므로 기다리는 시간을 늘려 가며 세 번까지 시도한다. 한 번만 시도하고 포기하면
+     * 사용자에게는 "그냥 안 되는 서비스"로 보이고, 크레딧 환불까지 오가게 된다.
+     */
+    if (attempt < RETRY_WAITS.length && isTransient(lastError)) {
+      await sleep(RETRY_WAITS[attempt]);
       return generateOne(params, index, attempt + 1);
     }
     throw new Error(describeImageError(lastError));
@@ -263,6 +310,28 @@ async function generateOne(
  *    1024×768로 기록된 파일이 실제로는 1184×864인 경우가 있었다.
  * 2) PNG 원본은 장당 2MB에 가깝다. WebP로 다시 인코딩해 저장·전송 비용을 줄인다.
  */
+/**
+ * 큰 그림에 얼마나 날을 세울지.
+ *
+ * 모델이 돌려주는 4K는 실제로 4K만큼 그려서 주는 것이 아니다. 2400px쯤 그린 뒤
+ * 늘려서 4800px로 준다. 우리가 잰 값이 그렇다 — 같은 그림을 2400px로 줄이면
+ * 화소당 또렷함이 다섯 배가 된다. 그래서 4K로 받은 그림을 100%로 열어 보면
+ * 창틀도 나뭇결도 뭉개져 보인다. 큰 값을 주고 산 사람이 가장 먼저 확대해 본다.
+ *
+ * 늘리면서 사라진 경계를 다시 세워 준다. m1을 0으로 두는 것이 핵심이다 —
+ * 평평한 벽면은 건드리지 않고 경계에만 듣게 해서, 매끈한 벽에 얼룩이 생기거나
+ * 창틀에 흰 테가 도는 일을 막는다.
+ *
+ * 기본 해상도(1024px)는 손대지 않는다. 그 크기는 모델이 실제로 그려 낸 크기라
+ * 날을 세우면 오히려 거칠어진다.
+ */
+function crispenFor(width: number, height: number): { sigma: number; m1: number; m2: number } | null {
+  const long = Math.max(width, height);
+  if (long >= 4000) return { sigma: 1, m1: 0, m2: 2.5 };
+  if (long >= 2000) return { sigma: 0.7, m1: 0, m2: 1.5 };
+  return null;
+}
+
 async function finalize(
   data: Buffer,
   mimeType: string,
@@ -276,7 +345,13 @@ async function finalize(
     const sharp = (await import("sharp")).default;
     // 고해상도 결제분은 화질을 더 남기되, 4K는 파일이 너무 커지지 않게 조인다.
     const quality = requestedSize >= 4096 ? 90 : requestedSize >= 2048 ? 93 : 90;
-    const output = await sharp(data).webp({ quality }).toBuffer();
+
+    const pipeline = sharp(data);
+    const source = await pipeline.metadata();
+    const edge = crispenFor(source.width ?? 0, source.height ?? 0);
+    if (edge) pipeline.sharpen(edge);
+
+    const output = await pipeline.webp({ quality }).toBuffer();
     const meta = await sharp(output).metadata();
     return {
       data: output,
@@ -371,11 +446,12 @@ export async function generateProductImage(description: string, size = 1024): Pr
   ];
 
   let lastError = "이미지를 만들지 못했습니다.";
+  const model = imageModel();
 
   for (const config of configs) {
     try {
       const response = await ai.models.generateContent({
-        model: imageModel(),
+        model,
         contents: [{ role: "user", parts }],
         config,
       });
@@ -397,6 +473,8 @@ export async function generateProductImage(description: string, size = 1024): Pr
       };
     } catch (error) {
       lastError = error instanceof Error ? error.message.slice(0, 160) : lastError;
+      // 위와 같은 이유로, 설정 문제가 아니면 단계를 낮춰 봐야 같은 실패만 늘어난다.
+      if (!isArgumentError(error)) break;
     }
   }
 

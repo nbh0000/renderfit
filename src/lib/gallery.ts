@@ -354,10 +354,15 @@ export async function toggleLike(
  *
  * 시안 자체는 지우지 않는다 — 공개만 해제하고 갤러리용 원본 사본을 정리한다.
  * 결과물은 본인 보관함에 그대로 남아 다시 공개할 수 있다.
- * RLS의 "결과 수정은 본인만" 정책이 남의 항목을 막아 준다.
+ *
+ * 읽기와 쓰기의 주인이 다르다. 읽기는 사용자 세션으로 해서 "내 것인가"를 RLS가
+ * 한 번 더 봐 주게 하고, 쓰기는 서비스 롤로 한다 — generation_results 는 사용자
+ * 세션으로 고칠 수 없게 막아 뒀기 때문이다(migrations-profile-lockdown.sql).
+ * 어느 쪽이든 user_id 조건을 조회와 갱신 양쪽에 붙여 남의 항목은 건드리지 않는다.
  */
 export async function unpublishResult(
   supabase: SupabaseClient,
+  writer: SupabaseClient,
   slug: string,
   userId: string
 ): Promise<boolean> {
@@ -384,16 +389,19 @@ export async function unpublishResult(
   const patch: Record<string, unknown> = { is_public: false, slug: null };
   if ("before_path" in row) patch.before_path = null;
 
-  const { error } = await supabase
+  const { error } = await writer
     .from("generation_results")
     .update(patch)
     .eq("id", row.id)
     .eq("user_id", userId);
 
-  if (error) return false;
+  if (error) {
+    console.error("갤러리 내리기 실패", error.code, error.message);
+    return false;
+  }
 
   const beforePath = (row as { before_path?: string | null }).before_path ?? null;
-  if (beforePath) await supabase.storage.from(RESULTS_BUCKET).remove([beforePath]);
+  if (beforePath) await writer.storage.from(RESULTS_BUCKET).remove([beforePath]);
 
   return true;
 }
@@ -403,44 +411,75 @@ export async function bumpViewCount(supabase: SupabaseClient, slug: string): Pro
   await supabase.rpc("increment_gallery_view", { p_slug: slug });
 }
 
-/** 공개 동의 처리 — 중복되지 않는 slug를 붙여 준다. */
+/**
+ * 공개 동의 처리 — 중복되지 않는 slug를 붙여 준다.
+ *
+ * 쓰기는 서비스 롤(writer)로 한다. generation_results 는 사용자 세션으로 고칠 수
+ * 없게 막아 뒀기 때문이다. 대신 user_id 조건을 붙여 내 것만 공개되게 한다.
+ */
 export async function publishResult(
-  supabase: SupabaseClient,
+  writer: SupabaseClient,
   resultId: string,
+  userId: string,
   roomId: string,
   styleId: string
 ): Promise<{ slug: string } | null> {
   const base = buildSlug(roomId, styleId);
 
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
-    const { error } = await supabase
+  const mark = (slug: string) =>
+    writer
       .from("generation_results")
       .update({ is_public: true, slug })
-      .eq("id", resultId);
+      .eq("id", resultId)
+      .eq("user_id", userId)
+      .select("id");
 
-    if (!error) return { slug };
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
+    const { data, error } = await mark(slug);
+
+    if (!error) {
+      /*
+       * 오류가 없는데 고쳐진 행도 없다면 조건에 맞는 행이 없었다는 뜻이다.
+       * 이것을 성공으로 돌려주면 "공개했습니다"라고 해 놓고 갤러리에는
+       * 아무것도 안 올라간다 — 사용자가 원인을 알 수 없는 종류의 실패다.
+       */
+      if (!data || data.length === 0) {
+        console.error("갤러리 공개 실패 — 대상 행 없음", { resultId, userId });
+        return null;
+      }
+      return { slug };
+    }
+
     // 23505 = unique_violation → 다음 후보로
-    if ((error as { code?: string }).code !== "23505") return null;
+    if ((error as { code?: string }).code !== "23505") {
+      console.error("갤러리 공개 실패", error.code, error.message);
+      return null;
+    }
   }
 
   const fallback = `${base}-${Math.random().toString(36).slice(2, 7)}`;
-  const { error } = await supabase
-    .from("generation_results")
-    .update({ is_public: true, slug: fallback })
-    .eq("id", resultId);
+  const { data, error } = await mark(fallback);
 
-  return error ? null : { slug: fallback };
+  if (error) {
+    console.error("갤러리 공개 실패", error.code, error.message);
+    return null;
+  }
+  return data && data.length > 0 ? { slug: fallback } : null;
 }
 
 /** 결과 id로 공개를 해제한다 (스튜디오 결과 카드에서 되돌릴 때) */
 export async function unpublishResultById(
-  supabase: SupabaseClient,
-  resultId: string
+  writer: SupabaseClient,
+  resultId: string,
+  userId: string
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await writer
     .from("generation_results")
     .update({ is_public: false, slug: null })
-    .eq("id", resultId);
+    .eq("id", resultId)
+    .eq("user_id", userId);
+
+  if (error) console.error("갤러리 내리기 실패", error.code, error.message);
   return !error;
 }

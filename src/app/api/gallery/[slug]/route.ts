@@ -1,5 +1,5 @@
 import { getViewer } from "@/lib/auth";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { createAdminSupabase, createServerSupabase } from "@/lib/supabase/server";
 import { unpublishResult } from "@/lib/gallery";
 
 /**
@@ -17,9 +17,12 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ slug: s
   }
 
   const supabase = await createServerSupabase();
-  if (!supabase) return Response.json({ error: "서버 설정 오류입니다." }, { status: 500 });
+  const writer = createAdminSupabase();
+  if (!supabase || !writer) {
+    return Response.json({ error: "서버 설정 오류입니다." }, { status: 500 });
+  }
 
-  const ok = await unpublishResult(supabase, decodeURIComponent(slug), viewer.userId);
+  const ok = await unpublishResult(supabase, writer, decodeURIComponent(slug), viewer.userId);
   if (!ok) {
     return Response.json({ error: "내가 공개한 시안만 내릴 수 있습니다." }, { status: 403 });
   }

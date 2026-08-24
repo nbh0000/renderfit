@@ -483,6 +483,21 @@ export function visionModels(): string[] {
   return pinned ? [pinned] : MODEL_CANDIDATES;
 }
 
+/**
+ * 다음 모델로 넘어가 봐야 소용없는 오류인지.
+ *
+ * 모델을 바꿔 가며 다시 부르는 것은 "이 모델이 지금 붐빈다"는 문제에만 듣는다.
+ * 키가 틀렸거나 하루 한도를 넘긴 것은 프로젝트 전체의 문제라서, 모델을 바꿔도
+ * 똑같이 거절당한다 — 다섯 번 거절당하고 끝날 뿐이고 콘솔에는 오류만 다섯 배로
+ * 쌓인다. 그런 오류는 첫 번째에서 멈춘다.
+ */
+export function isFatalApiError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /\b(401|403|429)\b|API key|API_KEY_INVALID|PERMISSION_DENIED|RESOURCE_EXHAUSTED|quota/i.test(
+    text
+  );
+}
+
 
 /* ───────────────────── 치수선만 따로 읽기 ───────────────────── */
 
@@ -717,6 +732,7 @@ export class GeminiVisionProvider implements VisionProvider {
         return analysis;
       } catch (error) {
         errors.push(`${model}: ${error instanceof Error ? error.message.slice(0, 120) : "실패"}`);
+        if (isFatalApiError(error)) break;
       }
     }
 
@@ -1269,8 +1285,9 @@ export async function estimateFurniture(description: string): Promise<EstimatedF
           depth: Math.round(clamp(raw.depthMm ?? 0, 50, 3000, 600)),
         },
       };
-    } catch {
-      // 다음 모델로
+    } catch (error) {
+      // 키·한도 문제라면 다음 모델도 똑같이 거절당한다.
+      if (isFatalApiError(error)) break;
     }
   }
 
