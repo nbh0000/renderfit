@@ -109,6 +109,29 @@ export async function loadProfile(
 }
 
 /** 서버 컴포넌트/라우트에서 현재 사용자를 읽는다. */
+/**
+ * 로그인한 사람의 id만 가져온다.
+ *
+ * getViewer 는 프로필까지 읽는다 — DB를 한 번 더 다녀오고, 결제 주기가 넘어갔으면
+ * 크레딧 갱신까지 쓴다. 그런데 화면 대부분은 "누가 보고 있나"만 알면 된다. 갤러리가
+ * 그렇다: 좋아요를 눌렀는지 표시하는 데 id 하나면 충분한데, 요금제와 크레딧까지 읽느라
+ * 페이지가 느려졌다.
+ *
+ * 요금제·크레딧이 필요한 화면(스튜디오·요금제)은 그대로 getViewer 를 쓴다.
+ */
+export async function getViewerId(): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null;
+
+  const supabase = await createServerSupabase();
+  if (!supabase) return null;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return user?.id ?? null;
+}
+
 export async function getViewer(): Promise<Viewer> {
   if (!isSupabaseConfigured()) {
     return { configured: false, userId: null, profile: null, authEmail: null };

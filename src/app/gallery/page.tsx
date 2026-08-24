@@ -13,7 +13,7 @@ import {
   type GallerySort,
 } from "@/lib/gallery";
 import { BRAND } from "@/config/brand";
-import { getViewer } from "@/lib/auth";
+import { getViewerId } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "인테리어 시안 갤러리",
@@ -41,12 +41,13 @@ export default async function GalleryPage({
 }: {
   searchParams: Promise<{ sort?: string }>;
 }) {
-  const [viewer, params] = await Promise.all([getViewer(), searchParams]);
+  // 좋아요 표시에 필요한 것은 id 하나다 — 요금제·크레딧까지 읽으면 그만큼 느려진다
+  const [viewerId, params] = await Promise.all([getViewerId(), searchParams]);
   const sort = parseSort(params.sort);
-  const items = await loadItems(sort, viewer.userId);
+  const items = await loadItems(sort, viewerId);
 
   return (
-    <AppShell active="gallery" authed={Boolean(viewer.userId)}>
+    <AppShell active="gallery" authed={Boolean(viewerId)}>
       <main className="mx-auto max-w-[1100px] px-4 py-10 sm:px-6">
         <h1 className="serif-display text-[26px] leading-tight sm:text-[30px]">
           인테리어 시안 갤러리

@@ -13,7 +13,7 @@ import { extractUserRequest } from "@/lib/prompt";
 import { ROOM_MAP } from "@/config/rooms";
 import { STYLE_MAP } from "@/config/styles";
 import { BRAND } from "@/config/brand";
-import { getViewer } from "@/lib/auth";
+import { getViewerId } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -66,8 +66,9 @@ export default async function GalleryDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const viewer = await getViewer();
-  const item = await loadItem(slug, viewer.userId);
+  // 좋아요 표시에 필요한 것은 id 하나다
+  const viewerId = await getViewerId();
+  const item = await loadItem(slug, viewerId);
   if (!item) notFound();
 
   // 페이지를 연 만큼 조회수를 올린다. 실패해도 화면은 그대로 보여 준다.
@@ -80,7 +81,7 @@ export default async function GalleryDetailPage({
   const styleLabel = item.styleLabel || STYLE_MAP[item.styleId]?.label || "스타일";
 
   return (
-    <AppShell active="gallery" authed={Boolean(viewer.userId)}>
+    <AppShell active="gallery" authed={Boolean(viewerId)}>
 
       <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-6">
         <Link href="/gallery" className="text-[12.5px] text-muted hover:text-ink">
