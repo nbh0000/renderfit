@@ -331,6 +331,12 @@ const FLOORPLAN_HEAD = [
   "  실 안에 적힌 면적(24.1m² 같은 글자)은 치수선이 아니다. 그 숫자로 치수를 지어내지 않는다.",
   "- ★ 도면에 적힌 실명(거실·안방·주방·욕실·현관 등)을 하나도 빠뜨리지 말고 rooms에 넣는다.",
   "  방을 가르는 내벽도 전부 walls에 넣는다. 한국 아파트는 보통 실이 5~8개다.",
+  "- ★ 현관을 빠뜨리지 않는다. 한국 주택 도면에는 반드시 현관이 있다. 좁고 이름이 안 적혀",
+  "  있어도, 바깥으로 나가는 문 안쪽의 작은 공간이 현관이다. 신발장이 그려져 있으면 거기다.",
+  "  현관이 없는 평면은 성립하지 않는다 — 집에 들어갈 수가 없다.",
+  "- ★ 문을 빠뜨리지 않는다. 방마다 최소 하나씩 문이 있고, 바깥으로 나가는 현관문이 있다.",
+  "  벽이 끊긴 자리, 사분원 호(arc)가 그려진 자리가 전부 개구부다. 그 벽의 openings에 넣는다.",
+  "  창만 넣고 문을 빠뜨리면 방마다 들어갈 수 없는 도면이 된다.",
   "- roomType(전체)은 가장 넓은 실의 종류로 정한다.",
   "",
 ].join("\n");
@@ -647,6 +653,127 @@ export async function readDimensionLines(
   }
 }
 
+/* ───────────────────── 문·창만 따로 읽기 ───────────────────── */
+
+/**
+ * 개구부 읽기 전용 스키마.
+ *
+ * 평면 전체를 한 번에 물으면 모델이 문을 통째로 흘린다. 실제로 방 일곱 개짜리
+ * 아파트에서 창 네 개만 돌아오고 문은 하나도 오지 않았다 — 현관문도, 방문도 없었다.
+ * 모델이 실을 나누고 가구를 세느라 바빠서 벽에 그려진 호(arc)를 못 보는 것이다.
+ *
+ * 치수선에서 통했던 방식을 그대로 쓴다. 문만 찾으라고 하면 그 일에만 집중해서
+ * 도면에 그려진 것을 거의 다 읽어 온다.
+ *
+ * 위치는 평면 좌표(mm)의 중심점으로 받는다. "몇 번 벽의 몇 mm 지점"으로 물으면
+ * 모델이 벽 번호를 자주 헷갈리는데, 좌표로 받으면 우리가 가장 가까운 벽에 붙이면
+ * 된다 — 지어내는 게 아니라 그려진 자리를 그대로 쓰는 것이다.
+ */
+export interface RawOpening {
+  kind?: string;
+  name?: string;
+  centerXMm?: number;
+  centerYMm?: number;
+  widthMm?: number;
+  heightMm?: number;
+  sillMm?: number;
+  connects?: string;
+}
+
+const OPENING_SCHEMA = {
+  type: "object",
+  properties: {
+    openings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["door", "window", "glass-partition", "opening"] },
+          name: { type: "string" },
+          centerXMm: { type: "number" },
+          centerYMm: { type: "number" },
+          widthMm: { type: "number" },
+          heightMm: { type: "number" },
+          sillMm: { type: "number" },
+          connects: { type: "string" },
+        },
+        required: ["kind", "name", "centerXMm", "centerYMm", "widthMm", "heightMm", "sillMm", "connects"],
+      },
+    },
+  },
+  required: ["openings"],
+} as const;
+
+function openingPrompt(roomNames: string[], width: number, length: number): string {
+  return [
+    "이 평면도에서 문과 창을 하나도 빠뜨리지 말고 전부 찾는다. 다른 것은 보지 않는다.",
+    "",
+    "■ 도면에서 개구부를 알아보는 법",
+    "- 벽(굵은 두 줄)이 끊긴 자리가 개구부다. 벽이 이어져 있으면 개구부가 아니다.",
+    "- 사분원 호(arc)가 그려져 있으면 여닫이문이다. 호는 문이 열리는 범위를 뜻한다.",
+    "- 벽 안에 얇은 두 줄이 나란히 그려져 있으면 미닫이문이다.",
+    "- 벽 두께 안에 얇은 이중선·삼중선이 들어 있으면 창이다.",
+    "- 호도 선도 없이 그냥 벽이 끊겨 있으면 개구부(문틀 없는 통로)다.",
+    "",
+    "■ 빠뜨리기 쉬운 것 — 반드시 확인한다",
+    "- 현관문. 건물 바깥에서 들어오는 문이다. 보통 도면 아래쪽이나 옆에 있고 호가 크게 그려진다.",
+    "- 방문. 방마다 최소 하나씩 있다. 사람이 들어갈 수 없는 방은 도면에 없다.",
+    "- 욕실문·다용도실문처럼 작은 실의 문. 좁다고 없는 것이 아니다.",
+    "- 발코니로 나가는 큰 창(미닫이 이중창).",
+    "",
+    "■ 어떻게 답하나",
+    `- 좌표는 도면 좌표(mm)다. 원점(0,0)은 좌측 하단, x는 오른쪽, y는 위쪽(안쪽). 도면 전체는 약 ${Math.round(width)}×${Math.round(length)}mm 다.`,
+    "- centerXMm·centerYMm 은 그 개구부의 한가운데 점이다. 벽 위에 있어야 한다.",
+    "- widthMm 은 개구부의 폭이다. 방문 800~900, 현관문 900~1000, 욕실문 700~800,",
+    "  거실 창 1800~2400, 방 창 1200~1500 이 흔하다. 도면에 치수가 적혀 있으면 그 숫자를 쓴다.",
+    "- heightMm 은 높이다. 문 2100, 창 1200~1500 이 흔하다. sillMm 은 바닥에서 창 아래까지 —",
+    "  문은 0, 창은 보통 800~900 이다.",
+    `- connects 에는 이 개구부가 잇는 곳을 적는다. 실 이름은 다음 중에서 고른다: ${roomNames.join(", ")}.`,
+    "  바깥과 통하면 \"외부\"라고 적는다. 예: \"거실-발코니\", \"외부-현관\", \"복도-침실1\".",
+    "- 확실하지 않아도 벽이 끊겨 있으면 넣는다. 빠뜨리는 것이 잘못 넣는 것보다 나쁘다 —",
+    "  문이 없는 방은 도면으로 성립하지 않는다.",
+  ].join("\n");
+}
+
+/** 문·창만 따로 한 번 더 읽는다. 실패해도 본문 결과로 진행한다. */
+export async function readOpenings(
+  ai: GenAI,
+  model: string,
+  payload: { data: string; mimeType: string },
+  roomNames: string[],
+  size: { width: number; length: number }
+): Promise<RawOpening[]> {
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: openingPrompt(roomNames, size.width, size.length) },
+            { inlineData: { mimeType: payload.mimeType, data: payload.data } },
+          ],
+        },
+      ],
+      config: {
+        ...DETERMINISTIC,
+        responseMimeType: "application/json",
+        responseSchema: OPENING_SCHEMA as never,
+      },
+    });
+
+    const text = response.text;
+    if (!text) return [];
+    return (JSON.parse(text) as { openings?: RawOpening[] }).openings ?? [];
+  } catch (error) {
+    console.warn(
+      "[vision] 문·창을 읽지 못했습니다 —",
+      error instanceof Error ? error.message.slice(0, 100) : "실패"
+    );
+    return [];
+  }
+}
+
 /**
  * 실 이름별로 "실 전체를 재는" 치수만 추린다.
  *
@@ -736,13 +863,27 @@ export class GeminiVisionProvider implements VisionProvider {
           .filter((name): name is string => Boolean(name));
 
         const readerRan = image.kind === "floorplan" && roomNames.length > 0;
-        const callouts = readerRan
-          ? await readDimensionLines(ai, model, payload, roomNames)
-          : [];
+
+        /*
+         * 치수선과 문·창을 각각 따로 한 번 더 읽는다.
+         *
+         * 본문 호출은 실을 나누고 가구를 세느라 바빠서 벽에 그려진 것을 흘린다. 실제로
+         * 방 일곱 개짜리 아파트에서 창 넷만 오고 문은 하나도 오지 않았다 — 현관문도
+         * 방문도 없었다. 하나만 찾으라고 하면 그 일에만 집중해서 거의 다 읽어 온다.
+         *
+         * 둘은 서로를 기다릴 이유가 없으므로 함께 던진다.
+         */
+        const [callouts, foundOpenings] = readerRan
+          ? await Promise.all([
+              readDimensionLines(ai, model, payload, roomNames),
+              readOpenings(ai, model, payload, roomNames, planSizeOf(raw)),
+            ])
+          : [[], []];
 
         const analysis = toPlanAnalysis(raw, callouts, {
           fromDrawing: image.kind === "floorplan",
           readerRan,
+          openings: foundOpenings,
         });
         if (!analysis) {
           errors.push(`${model}: 평면이 성립하지 않음`);
@@ -946,6 +1087,126 @@ function wallsFromRooms(rooms: PlanRoom[], given: PlanWall[]): PlanWall[] {
 }
 
 /**
+ * 따로 읽은 문·창을 벽에 붙인다.
+ *
+ * 개구부는 좌표 하나로 온다. 그것을 "몇 번 벽의 몇 mm 지점"으로 바꾸는 일은 순수한
+ * 기하 계산이다 — 가장 가까운 벽에 내려 찍는다. 지어내는 것이 아니라 도면에 그려진
+ * 자리를 그대로 쓰는 것이라, 도면을 고치지 않는다는 원칙에 어긋나지 않는다.
+ *
+ * 본문이 이미 같은 자리에 개구부를 준 경우에는 넣지 않는다. 두 번 세면 벽 하나에
+ * 문이 두 짝 그려진다.
+ */
+/**
+ * 벽마다 개구부를 정리한다.
+ *
+ * 두 가지를 바로잡는다. 둘 다 도면을 고치는 것이 아니라, 도면에 있을 수 없는 상태를
+ * 없애는 것이다.
+ *
+ *  1. 벽 밖으로 나간 것을 안으로 넣는다. 실 경계에서 벽을 다시 짤 때 개구부가 더 짧은
+ *     벽으로 옮겨 앉는 일이 있다 — 4200mm 벽에 4500mm 지점의 창이 달려 있었다.
+ *  2. 겹쳐 달린 것을 하나로 줄인다. 같은 문을 본문과 문 전용 읽기가 각각 조금 다른
+ *     자리에 보고하면 벽 하나에 문이 두 짝 그려진다. 넓은 쪽을 남긴다.
+ */
+export function tidyOpenings(walls: PlanWall[]): PlanWall[] {
+  return walls.map((wall) => {
+    const span = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+
+    const placed: PlanOpening[] = [];
+
+    // 넓은 것부터 자리를 잡는다 — 겹치면 좁은 쪽이 밀려난다
+    for (const opening of [...wall.openings].sort((a, b) => b.widthMm - a.widthMm)) {
+      const width = Math.round(Math.min(opening.widthMm, span));
+      if (width < 400) continue;
+
+      const offset = Math.round(Math.min(Math.max(0, opening.offsetMm), Math.max(0, span - width)));
+      const overlaps = placed.some(
+        (other) => offset < other.offsetMm + other.widthMm - 50 && other.offsetMm < offset + width - 50
+      );
+      if (overlaps) continue;
+
+      placed.push({ ...opening, offsetMm: offset, widthMm: width });
+    }
+
+    return { ...wall, openings: placed.sort((a, b) => a.offsetMm - b.offsetMm) };
+  });
+}
+
+export function attachOpenings(walls: PlanWall[], found: RawOpening[]): PlanWall[] {
+  if (walls.length === 0) return walls;
+  if (found.length === 0) return tidyOpenings(walls);
+
+  const result = walls.map((wall) => ({ ...wall, openings: [...wall.openings] }));
+
+  /** 이 점에서 벽까지의 거리와, 벽 시작점에서 몇 mm 지점인지 */
+  const project = (wall: PlanWall, x: number, y: number) => {
+    const dx = wall.end.x - wall.start.x;
+    const dy = wall.end.y - wall.start.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1) return null;
+
+    const t = ((x - wall.start.x) * dx + (y - wall.start.y) * dy) / (length * length);
+    const clamped = Math.min(1, Math.max(0, t));
+    const nx = wall.start.x + dx * clamped;
+    const ny = wall.start.y + dy * clamped;
+
+    return { distance: Math.hypot(x - nx, y - ny), along: clamped * length, length };
+  };
+
+  for (const raw of found) {
+    const x = Number(raw.centerXMm);
+    const y = Number(raw.centerYMm);
+    const width = Math.round(Number(raw.widthMm));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (!Number.isFinite(width) || width < 400 || width > 6000) continue;
+
+    /* 가장 가까운 벽을 찾되, 개구부가 통째로 들어갈 길이는 돼야 한다 */
+    let best: { index: number; along: number; distance: number } | null = null;
+
+    result.forEach((wall, index) => {
+      const hit = project(wall, x, y);
+      if (!hit || hit.length < width * 0.8) return;
+      if (!best || hit.distance < best.distance) {
+        best = { index, along: hit.along, distance: hit.distance };
+      }
+    });
+
+    /*
+     * 벽에서 너무 멀면 벽 위에 그려진 개구부가 아니다 — 모델이 좌표를 잘못 짚었거나
+     * 방 한가운데를 가리킨 것이다. 벽 두께의 몇 배쯤을 한계로 둔다.
+     */
+    if (!best || (best as { distance: number }).distance > 600) continue;
+
+    const spot = best as { index: number; along: number };
+    const wall = result[spot.index];
+    const span = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+
+    // 벽 밖으로 삐져나가지 않게 안쪽으로 밀어 넣는다
+    const offset = Math.round(Math.min(Math.max(0, spot.along - width / 2), Math.max(0, span - width)));
+
+    // 이미 같은 자리에 있으면 두 번 넣지 않는다
+    const overlaps = wall.openings.some(
+      (existing) => Math.abs(existing.offsetMm - offset) < Math.max(300, width * 0.6)
+    );
+    if (overlaps) continue;
+
+    const isDoor = raw.kind !== "window";
+    wall.openings.push({
+      kind: OPENING_KINDS.has(raw.kind as PlanOpening["kind"])
+        ? (raw.kind as PlanOpening["kind"])
+        : "door",
+      name: raw.name?.trim() || (isDoor ? "문" : "창"),
+      offsetMm: offset,
+      widthMm: width,
+      heightMm: Math.round(clamp(Number(raw.heightMm), 600, 3000, isDoor ? 2100 : 1400)),
+      sillMm: Math.round(clamp(Number(raw.sillMm), 0, 2000, isDoor ? 0 : 850)),
+    });
+  }
+
+  // 두 곳에서 온 개구부가 섞였으니 마지막으로 한 번 정리한다
+  return tidyOpenings(result);
+}
+
+/**
  * 모델이 준 평면을 검증해서 RoomAnalysis로 옮긴다.
  *
  * 외곽선이 성립하지 않으면(점이 3개 미만, 면적이 터무니없음) null을 돌려주고
@@ -963,6 +1224,18 @@ export interface PlanSource {
   fromDrawing: boolean;
   /** 치수선 전용 읽기를 실제로 돌렸는가 */
   readerRan: boolean;
+  /** 문·창만 따로 읽어 온 결과 (본문이 흘린 것을 여기서 채운다) */
+  openings?: RawOpening[];
+}
+
+/** 외곽선에서 도면 전체 크기를 어림한다 — 개구부 읽기에 좌표 범위를 알려 주려고 */
+function planSizeOf(raw: RawPlan): { width: number; length: number } {
+  const xs = (raw.outline ?? []).map((point) => Number(point?.x)).filter(Number.isFinite);
+  const ys = (raw.outline ?? []).map((point) => Number(point?.y)).filter(Number.isFinite);
+  return {
+    width: xs.length ? Math.max(...xs) - Math.min(...xs) : 10000,
+    length: ys.length ? Math.max(...ys) - Math.min(...ys) : 8000,
+  };
 }
 
 export function toPlanAnalysis(
@@ -1151,7 +1424,15 @@ export function toPlanAnalysis(
    * 실이 둘 이상이면 실 경계에서 벽을 다시 짠다.
    * 방 하나짜리 사진은 모델이 준 벽이 이미 충분해서 건드리지 않는다.
    */
-  const finalWalls = rooms.length > 1 ? wallsFromRooms(rooms, walls) : walls;
+  const derivedWalls = rooms.length > 1 ? wallsFromRooms(rooms, walls) : walls;
+
+  /*
+   * 따로 읽은 문·창을 벽에 붙인다.
+   *
+   * 실 경계에서 벽을 다시 짠 뒤에 붙여야 한다 — 방과 방 사이 벽은 여기서 처음
+   * 생기고, 방문은 바로 그 벽에 달리기 때문이다. 먼저 붙이면 붙일 벽이 없다.
+   */
+  const finalWalls = attachOpenings(derivedWalls, origin.openings ?? []);
 
   /*
    * 가구를 상식으로 한 번 걸러 낸다 — 사진일 때만.
