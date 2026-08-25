@@ -16,8 +16,8 @@
  *   node scripts/gallery/seed.mjs 1 3 7      (그 번호만)
  *   node scripts/gallery/seed.mjs --dry      (돈 안 쓰고 계획만 본다)
  *
- * ⚠ 실제 호출이므로 돈이 든다. 4K 한 장 $0.151, 빈 방 사진 $0.039 —
- *   열 벌이면 대략 $1.9 다. 계획을 먼저 --dry 로 확인하고 돌린다.
+ * ⚠ 실제 호출이므로 돈이 든다. 빈 방 2K $0.101 + 시안 4K $0.151 = 한 벌에 $0.25 —
+ *   열 벌이면 대략 $2.5 다. 계획을 먼저 --dry 로 확인하고 돌린다.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -134,6 +134,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 /** 4K 가 실제로 나오는 모델 (config/plans.ts 와 같은 값) */
 const MODEL_HI = "gemini-3.1-flash-image";
+/** 값싼 기본 모델 — 지금은 쓰지 않는다 (빈 방도 2K 로 만들어야 시안이 또렷하다) */
 const MODEL_BASE = "gemini-2.5-flash-image";
 
 /**
@@ -266,12 +267,22 @@ async function seedOne(entry, index, userId) {
   const tag = `${index + 1}/${PLAN.length} ${ROOM_SLUG[entry.room]} · ${STYLE_LABEL[entry.style]}`;
   process.stdout.write(`${tag} — 빈 방`);
 
+  /*
+   * 빈 방 사진도 2K 로 만든다.
+   *
+   * 처음에는 싼 모델로 1K 만 만들어 썼다(1184×864). 그런데 시안이 4K 로 나와도 뿌옇게
+   * 보였다 — 모델은 넣어 준 사진에 없는 결을 지어내지 못하기 때문이다. 1184px 짜리
+   * 방을 주고 4800px 를 받으면, 화소만 네 배지 정보는 그대로다.
+   *
+   * 2400×1792 을 주면 시안의 화소당 또렷함이 눈에 띄게 오른다. 한 벌에 $0.06 을
+   * 더 쓰는 대신 갤러리에 걸리는 사진이 달라진다.
+   */
   const beforeRaw = await callImage({
-    model: MODEL_BASE,
+    model: MODEL_HI,
     parts: [{ text: `${BEFORE_PROMPT}\n\n${entry.before}` }],
-    size: "1K",
+    size: "2K",
   });
-  const before = await sharp(beforeRaw).webp({ quality: 88 }).toBuffer();
+  const before = await sharp(beforeRaw).webp({ quality: 92 }).toBuffer();
 
   process.stdout.write(" → 4K 시안");
   const afterRaw = await callImage({
@@ -364,7 +375,7 @@ if (dry) {
     console.log(`  ${i + 1}. ${ROOM_SLUG[entry.room]} · ${STYLE_LABEL[entry.style]}`);
     console.log(`     ${entry.after.slice(0, 76)}…`);
   });
-  console.log(`\n예상 비용 약 $${(entries.length * 0.19).toFixed(2)} (빈 방 $0.039 + 4K $0.151)`);
+  console.log(`\n예상 비용 약 $${(entries.length * 0.252).toFixed(2)} (빈 방 2K $0.101 + 4K $0.151)`);
   process.exit(0);
 }
 

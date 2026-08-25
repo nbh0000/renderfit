@@ -39,29 +39,58 @@ const FEATURED_STYLES = ["modern", "nordic", "minimal", "natural-wood", "hotel",
  */
 const GALLERY_PREVIEW_COUNT = 12;
 
+/**
+ * 띠에 걸 순서를 섞는다.
+ *
+ * 최신순으로 두면 며칠 동안 같은 사진이 같은 자리에 걸린다. 다시 온 사람에게는
+ * 갤러리가 멈춰 있는 것처럼 보이고, 먼저 올라간 시안만 계속 눈에 띈다.
+ * 들어올 때마다 다른 시안이 앞에 오게 섞는다.
+ *
+ * 서버에서 섞는다 — 이 화면은 요청마다 새로 그리는 화면이라 그래도 되고,
+ * 브라우저에서 섞으면 처음 그린 것과 달라져 화면이 한 번 튄다.
+ */
+function shuffle<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 /** 공개된 시안을 띠에 쓸 형태로 추린다. 없거나 못 읽으면 섹션 자체를 접는다. */
 async function loadGalleryPreview(): Promise<GalleryMarqueeItem[]> {
   let items: GalleryItem[] = [];
 
   if (isSupabaseConfigured()) {
     const supabase = await createServerSupabase();
-    if (supabase) items = await listPublicResults(supabase, { limit: GALLERY_PREVIEW_COUNT });
+    /*
+     * 섞을 것을 넉넉히 가져온다. 딱 띠에 걸 만큼만 가져와 섞으면 늘 같은 열두 장을
+     * 자리만 바꿔 보여 주게 된다 — 순서만 바뀌지 얼굴은 그대로다.
+     */
+    if (supabase) {
+      items = await listPublicResults(supabase, {
+        limit: GALLERY_PREVIEW_COUNT * 4,
+      });
+    }
   } else {
-    items = memoryListGallery().slice(0, GALLERY_PREVIEW_COUNT);
+    items = memoryListGallery();
   }
 
-  return items.map((item) => ({
-    slug: item.slug,
-    imageUrl: item.imageUrl,
-    roomLabel: item.roomLabel,
-    styleLabel: item.styleLabel,
-    blurb: styleBlurb(item.styleId),
-    authorName: item.authorName,
-    viewCount: item.viewCount,
-    likeCount: item.likeCount,
-    width: item.width,
-    height: item.height,
-  }));
+  return shuffle(items)
+    .slice(0, GALLERY_PREVIEW_COUNT)
+    .map((item) => ({
+      slug: item.slug,
+      imageUrl: item.imageUrl,
+      roomLabel: item.roomLabel,
+      styleLabel: item.styleLabel,
+      blurb: styleBlurb(item.styleId),
+      authorName: item.authorName,
+      viewCount: item.viewCount,
+      likeCount: item.likeCount,
+      width: item.width,
+      height: item.height,
+    }));
 }
 
 /**

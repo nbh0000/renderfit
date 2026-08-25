@@ -288,6 +288,8 @@ function ExportMenu({ projectId, onClose }: { projectId: string; onClose: () => 
       {item(`/api/projects/${projectId}/export?format=plan`, "치수 평면도 (SVG)", true)}
       {item(`/api/projects/${projectId}/export?format=elevation`, "입면도 (SVG)", true)}
 
+      <ExportPdf />
+
       <ExportGlb />
 
       <p className="px-2 pb-1 pt-2 text-[10.5px] font-medium text-muted">이미지 · 데이터</p>
@@ -296,6 +298,73 @@ function ExportMenu({ projectId, onClose }: { projectId: string; onClose: () => 
       {item(`/api/projects/${projectId}/export?format=scene`, "Scene JSON")}
       {item(`/api/projects/${projectId}/export?format=project`, "Project JSON")}
     </div>
+  );
+}
+
+/**
+ * 평면도·입면도·3D를 PDF 한 부로 묶어 내려받는다.
+ *
+ * 도면을 주고받는 방식은 장마다 파일 하나가 아니라 "한 부"다. 시공사에도
+ * 집주인에게도 파일 하나만 보내면 되고, 그대로 인쇄하면 도면집이 된다.
+ *
+ * 3D는 브라우저 캔버스에만 있어서 서버가 만들 수 없다(헤드리스 WebGL이 필요하다).
+ * 3D 뷰가 열려 있으면 여기서 찍어 함께 보내고, 아니면 도면만 담는다 —
+ * 3D를 안 켰다고 도면까지 못 받는 것은 곤란하다.
+ */
+function ExportPdf() {
+  const projectId = useEditorStore((state) => state.projectId);
+  const viewportCapture = useEditorStore((state) => state.viewportCapture);
+  const setMessage = useEditorStore((state) => state.setMessage);
+  const [busy, setBusy] = useState(false);
+
+  const download = async () => {
+    setBusy(true);
+    setMessage("도면을 PDF로 묶는 중입니다…");
+
+    try {
+      const viewport = viewportCapture ? viewportCapture() : null;
+
+      const response = await fetch(`/api/projects/${projectId}/export/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ viewport }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? "PDF를 만들지 못했습니다.");
+      }
+
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${useEditorStore.getState().projectName || "도면"}.pdf`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+
+      const sheets = decodeURIComponent(response.headers.get("X-Sheets") ?? "");
+      const count = sheets ? sheets.split(", ").length : 0;
+      setMessage(
+        viewport
+          ? `${count}장을 PDF로 묶었습니다 (3D 포함).`
+          : `${count}장을 PDF로 묶었습니다. 3D 뷰를 열고 다시 누르면 3D도 함께 들어갑니다.`
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "PDF를 만들지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void download()}
+      disabled={busy}
+      className="block w-full rounded px-2 py-1.5 text-left text-[12px] font-medium text-ink hover:bg-sunken disabled:opacity-40"
+    >
+      {busy ? "묶는 중…" : "도면 한 부 (PDF)"}
+    </button>
   );
 }
 

@@ -29,8 +29,13 @@ const COLUMNS = [
   { speedFactor: 0.94, headOffset: "9rem" },
 ];
 
-/** 열 하나가 너무 짧으면 한 바퀴가 금방 돌아 버린다 — 최소 이만큼은 채운다 */
-const MIN_CARDS = 9;
+/**
+ * 열 하나가 너무 짧으면 한 바퀴가 금방 돌아 버린다 — 최소 이만큼은 채운다.
+ *
+ * 다만 목록을 되풀이해 채우는 것은 시안이 정말 모자랄 때뿐이다. 되풀이하면 같은
+ * 사진이 한 화면에 두 번 보일 수 있기 때문이다.
+ */
+const MIN_CARDS = 3;
 
 /** 카드 한 장이 지나가는 데 걸리는 시간(초). 읽을 수 있을 만큼 느리게. */
 const SECONDS_PER_CARD = 7.5;
@@ -125,22 +130,35 @@ function Column({
 }
 
 /**
- * 열 하나에 태울 목록을 만든다.
+ * 세 열에 카드를 나눠 담는다.
  *
- * 공개된 시안이 두세 장뿐일 때가 문제다. 앞에서부터 세 열로 나눠 담으면 세 열이
- * 같은 사진으로 시작해서, 같은 거실이 화면에 세 번 겹쳐 보인다. 열마다 목록을
- * 한 칸씩 돌려서 시작 사진을 다르게 한다.
+ * 한 벌의 카드를 카드패 돌리듯 세 열에 한 장씩 번갈아 준다. 그러면 어떤 사진도
+ * 두 열에 동시에 들어가지 않는다 — 화면에 같은 거실이 두 번 보이는 일이 없다.
  *
- * 시안이 열 수보다 적으면 돌려도 겹치는 열이 생긴다(두 장을 세 열에 나눌 수는 없다).
- * 그때는 위 COLUMNS 의 시작 높이 차이가 같은 사진을 다른 자리에 앉혀 준다.
+ * 앞에서부터 잘라 열마다 몰아 주는 방식은 쓰지 않는다. 시안이 적을 때 열들이 같은
+ * 사진으로 시작해서, 같은 거실이 나란히 세 번 걸린다.
+ *
+ * 시안이 열 수보다도 적어서 빈 열이 생길 때만 목록을 되풀이해 채운다. 그때는
+ * 겹치는 것을 피할 방법이 없고(두 장을 세 열에 나눌 수는 없다), 대신 COLUMNS 의
+ * 시작 높이 차이가 같은 사진을 다른 자리에 앉혀 준다.
  */
-function cardsForColumn(items: GalleryMarqueeItem[], column: number): GalleryMarqueeItem[] {
-  const rotated = items.map((_, index) => items[(index + column) % items.length]);
+export function dealColumns(items: GalleryMarqueeItem[], columns: number): GalleryMarqueeItem[][] {
+  const dealt: GalleryMarqueeItem[][] = Array.from({ length: columns }, () => []);
+  items.forEach((item, index) => dealt[index % columns].push(item));
 
-  const cards = [...rotated];
-  while (cards.length < MIN_CARDS) cards.push(...rotated);
+  return dealt.map((cards, column) => {
+    if (cards.length > 0) {
+      // 열이 짧으면 흐름이 금방 한 바퀴 돈다. 카드가 정말 모자랄 때만 되풀이한다.
+      const filled = [...cards];
+      while (filled.length < MIN_CARDS && items.length > 0) {
+        filled.push(items[filled.length % items.length]);
+      }
+      return filled;
+    }
 
-  return cards;
+    // 시안이 열 수보다 적어 빈 열이 생겼다 — 있는 것으로 채우되 시작을 어긋나게 둔다
+    return items.map((_, index) => items[(index + column) % items.length]);
+  });
 }
 
 /**
@@ -152,6 +170,8 @@ function cardsForColumn(items: GalleryMarqueeItem[], column: number): GalleryMar
  */
 export function GalleryMarquee({ items }: { items: GalleryMarqueeItem[] }) {
   if (items.length === 0) return null;
+
+  const dealt = dealColumns(items, COLUMNS.length);
 
   return (
     <div
@@ -165,7 +185,7 @@ export function GalleryMarquee({ items }: { items: GalleryMarqueeItem[] }) {
         {COLUMNS.map((column, index) => (
           <div key={index} className={index === 2 ? "hidden lg:block" : undefined}>
             <Column
-              cards={cardsForColumn(items, index)}
+              cards={dealt[index]}
               speedFactor={column.speedFactor}
               headOffset={column.headOffset}
             />
