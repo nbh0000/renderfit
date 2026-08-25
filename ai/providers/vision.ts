@@ -735,12 +735,15 @@ export class GeminiVisionProvider implements VisionProvider {
           .map((room) => room?.name?.trim())
           .filter((name): name is string => Boolean(name));
 
-        const callouts =
-          image.kind === "floorplan" && roomNames.length > 0
-            ? await readDimensionLines(ai, model, payload, roomNames)
-            : [];
+        const readerRan = image.kind === "floorplan" && roomNames.length > 0;
+        const callouts = readerRan
+          ? await readDimensionLines(ai, model, payload, roomNames)
+          : [];
 
-        const analysis = toPlanAnalysis(raw, callouts);
+        const analysis = toPlanAnalysis(raw, callouts, {
+          fromDrawing: image.kind === "floorplan",
+          readerRan,
+        });
         if (!analysis) {
           errors.push(`${model}: 평면이 성립하지 않음`);
           continue;
@@ -948,7 +951,25 @@ function wallsFromRooms(rooms: PlanRoom[], given: PlanWall[]): PlanWall[] {
  * 외곽선이 성립하지 않으면(점이 3개 미만, 면적이 터무니없음) null을 돌려주고
  * 호출하는 쪽이 다음 모델로 넘어가게 한다 — 반쯤 망가진 도면을 그리는 것보다 낫다.
  */
-export function toPlanAnalysis(raw: RawPlan, callouts: RawDimension[] = []): RoomAnalysis | null {
+/**
+ * 이 답이 무엇을 보고 나온 것인지.
+ *
+ * 사진과 도면은 다루는 방식이 정반대다. 사진에는 정답이 없어서 모델이 짐작한 값을
+ * 상식으로 걸러 줘야 하지만, 도면은 그 자체가 정답이다. 도면을 "보기 좋게" 고치면
+ * 그건 더 이상 그 도면이 아니다.
+ */
+export interface PlanSource {
+  /** 2D 도면을 옮긴 것인가 (사진이 아니라) */
+  fromDrawing: boolean;
+  /** 치수선 전용 읽기를 실제로 돌렸는가 */
+  readerRan: boolean;
+}
+
+export function toPlanAnalysis(
+  raw: RawPlan,
+  callouts: RawDimension[] = [],
+  origin: PlanSource = { fromDrawing: false, readerRan: false }
+): RoomAnalysis | null {
   const points = (raw.outline ?? [])
     .map((point) => ({ x: Number(point?.x), y: Number(point?.y) }))
     .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
@@ -1045,7 +1066,20 @@ export function toPlanAnalysis(raw: RawPlan, callouts: RawDimension[] = []): Roo
    * 그대로 둔다. 벽 토막을 방 폭으로 쓰느니 그림을 믿는 편이 낫다.
    */
   const measured = dimensionsByRoom(callouts);
-  const readerAnswered = callouts.length > 0;
+
+  /*
+   * 치수선 읽기를 돌렸으면 그 결과만 믿는다 — 침묵까지 포함해서.
+   *
+   * 전에는 읽기가 아무것도 못 찾았을 때 본문이 적어 온 숫자로 돌아갔다. 그런데
+   * 치수선이 하나도 없는 도면에서 본문은 12000×4800, 3600×4200 처럼 그럴싸하게
+   * 반올림된 숫자를 지어내 보낸다. 그 지어낸 숫자를 "도면에 적힌 치수"로 믿고
+   * 평면을 그쪽으로 늘려 버렸다. 도면에 그어져 있지도 않은 치수에 맞춰 방 크기가
+   * 통째로 바뀐 것이다.
+   *
+   * 치수선만 따로 보는 호출이 아무것도 못 찾았다면 그건 "도면에 안 적혀 있다"는
+   * 뜻이다. 그럴 때는 그림에서 읽은 폴리곤을 그대로 둔다.
+   */
+  const trustPrinted = origin.readerRan ? measured.size > 0 : false;
 
   /*
    * 실(방).
@@ -1068,12 +1102,8 @@ export function toPlanAnalysis(raw: RawPlan, callouts: RawDimension[] = []): Roo
       type: normalizeRoomType(source?.type),
       polygon,
       // 도면에 치수선으로 적혀 있던 값. 말이 안 되는 값은 안 적힌 것으로 본다.
-      printedWidthMm: printed(
-        readerAnswered ? measured.get(key)?.x : source?.printedWidthMm
-      ),
-      printedDepthMm: printed(
-        readerAnswered ? measured.get(key)?.y : source?.printedDepthMm
-      ),
+      printedWidthMm: trustPrinted ? printed(measured.get(key)?.x) : null,
+      printedDepthMm: trustPrinted ? printed(measured.get(key)?.y) : null,
     });
   }
 
@@ -1124,21 +1154,27 @@ export function toPlanAnalysis(raw: RawPlan, callouts: RawDimension[] = []): Roo
   const finalWalls = rooms.length > 1 ? wallsFromRooms(rooms, walls) : walls;
 
   /*
-   * 가구를 상식으로 한 번 걸러 낸다.
+   * 가구를 상식으로 한 번 걸러 낸다 — 사진일 때만.
    *
-   * 벽과 실은 모델이 꽤 정확히 읽는데 가구는 자주 무너진다 — 2.4m 방에 폭 2.4m짜리
-   * 침대가 들어오고, 식탁 의자 넷이 식탁 위에 쌓인다. 프롬프트로 당부해도 끝까지 남는
-   * 종류의 오류라, 돌려받은 값을 표준 규격·방 크기·서로 간의 간격으로 다시 앉힌다.
+   * 사진에서 읽은 배치는 자주 무너진다. 2.4m 방에 폭 2.4m짜리 침대가 들어오고, 식탁
+   * 의자 넷이 식탁 위에 쌓인다. 프롬프트로 당부해도 끝까지 남는 종류의 오류라, 돌려받은
+   * 값을 표준 규격·방 크기·서로 간의 간격으로 다시 앉힌다.
+   *
+   * 도면은 그러지 않는다. 도면은 그 자체가 정답이라, 우리가 고치면 그린 것과 다른
+   * 도면이 나온다. 그린 대로 둔다.
    */
-  const repaired = repairPlan({
-    roomType: normalizeRoomType(raw.roomType),
-    ceilingHeightMm: height,
-    cameraWallIndex: raw.cameraWallIndex ?? 0,
-    outline,
-    rooms,
-    walls: finalWalls,
-    furniture,
-  });
+  const repaired = repairPlan(
+    {
+      roomType: normalizeRoomType(raw.roomType),
+      ceilingHeightMm: height,
+      cameraWallIndex: raw.cameraWallIndex ?? 0,
+      outline,
+      rooms,
+      walls: finalWalls,
+      furniture,
+    },
+    origin.fromDrawing ? "drawing" : "photo"
+  );
 
   /*
    * 되맞추면서 도면이 커지거나 작아졌을 수 있다 — 방 크기를 다시 잰다.

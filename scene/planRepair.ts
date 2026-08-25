@@ -867,9 +867,38 @@ export function fitRoomSizes(plan: RoomPlan): RoomPlan {
  * 먼저 도면에 적힌 면적으로 실 크기를 되맞추고, 그다음 가구를 그 안에 앉힌다.
  * 순서가 중요하다 — 방이 실제보다 얕은 채로 가구를 앉히면 어떻게 놓아도 겹친다.
  */
-export function repairPlan(plan: RoomPlan): RoomPlan {
+/**
+ * 얼마나 손대도 되는가.
+ *
+ * 사진과 도면은 정반대다.
+ *
+ * 사진에는 정답이 없다. 모델이 짐작한 값이라 2.4m 방에 폭 2.4m 침대가 들어오고
+ * 식탁 의자 넷이 식탁 위에 쌓인다. 그래서 표준 규격·방 크기·간격으로 다시 앉혀야
+ * 쓸 만한 배치가 된다.
+ *
+ * 도면은 그 자체가 정답이다. 그려진 대로가 맞는 것이고, 우리가 "보기 좋게" 고치면
+ * 그건 더 이상 그 도면이 아니다. 현관이 좁게 그려져 있으면 좁은 게 맞고, 책상이
+ * 벽에서 떨어져 있으면 떨어져 있는 게 맞다. 도면을 넣는 사람은 예쁜 그림이 아니라
+ * 자기 도면을 원한다.
+ */
+export type RepairMode =
+  /** 사진에서 읽은 배치 — 상식으로 앉힌다 */
+  | "photo"
+  /** 도면을 옮긴 것 — 그린 대로 둔다 */
+  | "drawing";
+
+export function repairPlan(plan: RoomPlan, mode: RepairMode = "photo"): RoomPlan {
   const scaled = fitRoomSizes(plan);
   if (scaled.furniture.length === 0) return scaled;
+
+  /*
+   * 도면은 여기서 끝낸다.
+   *
+   * 아래로 내려가면 가구를 표준 규격으로 되돌리고, 벽에 붙이고, 의자를 테이블 둘레에
+   * 앉히고, 겹친 것을 밀어낸다. 사진에는 꼭 필요한 일이지만 도면에는 해서는 안 되는
+   * 일이다 — 그린 것과 다른 도면이 나온다.
+   */
+  if (mode === "drawing") return scaled;
 
   const rooms = scaled.rooms.length > 0 ? scaled.rooms : [];
   const whole = boundsOf(scaled.outline);
