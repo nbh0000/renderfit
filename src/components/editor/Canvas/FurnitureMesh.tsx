@@ -63,25 +63,41 @@ export function useStandardMaterial(material?: Material) {
   }, [material, generation]);
 }
 
-/** 다리 4개 */
+/**
+ * 다리 4개.
+ *
+ * 가구의 원점은 한가운데이므로 바닥은 y = -가구높이/2 다. 그런데 다리를 제 길이의
+ * 절반만큼만 내려 두고 있었다 — 그러면 다리가 바닥이 아니라 가구 한가운데에 매달린다.
+ * 옆에서 보면 상판과 다리가 뚝 떨어져 보이고, 다리 끝은 바닥을 뚫고 내려간다.
+ * 0.75m 짜리 책상이면 0.3m 씩 어긋났다.
+ *
+ * 그래서 바닥 높이(floorY)를 받아 거기서부터 세운다. 다리 윗끝은 floorY + height 이고,
+ * 부르는 쪽은 그 값이 앉는 면·상판 밑면과 맞도록 height 를 준다.
+ */
 function Legs({
   width,
   depth,
   height,
+  floorY,
   radius = 0.022,
   color = "#5b4632",
 }: {
   width: number;
   depth: number;
+  /** 다리 길이 — 바닥에서 앉는 면(또는 상판 밑면)까지 */
   height: number;
+  /** 가구 바닥의 y. 가구 원점이 한가운데라 보통 -가구높이/2 다 */
+  floorY: number;
   radius?: number;
   color?: string;
 }) {
+  const y = floorY + height / 2;
+
   const positions: [number, number, number][] = [
-    [width / 2 - radius * 2.5, -height / 2, depth / 2 - radius * 2.5],
-    [-(width / 2 - radius * 2.5), -height / 2, depth / 2 - radius * 2.5],
-    [width / 2 - radius * 2.5, -height / 2, -(depth / 2 - radius * 2.5)],
-    [-(width / 2 - radius * 2.5), -height / 2, -(depth / 2 - radius * 2.5)],
+    [width / 2 - radius * 2.5, y, depth / 2 - radius * 2.5],
+    [-(width / 2 - radius * 2.5), y, depth / 2 - radius * 2.5],
+    [width / 2 - radius * 2.5, y, -(depth / 2 - radius * 2.5)],
+    [-(width / 2 - radius * 2.5), y, -(depth / 2 - radius * 2.5)],
   ];
 
   return (
@@ -406,7 +422,8 @@ function PrimitiveMesh({ object, material, selected }: MeshProps) {
               castShadow
             />
           ))}
-          <Legs width={w * 0.86} depth={d * 0.8} height={0.12} />
+          {/* 소파는 몸통이 바닥 가까이 앉으므로 다리가 짧다 */}
+          <Legs width={w * 0.86} depth={d * 0.8} height={0.12} floorY={-h / 2} />
           {outline}
         </group>
       );
@@ -433,7 +450,14 @@ function PrimitiveMesh({ object, material, selected }: MeshProps) {
             material={mat}
             castShadow
           />
-          <Legs width={w * 0.86} depth={d * 0.86} height={h * 0.45} radius={0.018} />
+          {/* 앉는 면이 h*0.45 높이에 있으니 다리도 딱 거기까지 */}
+          <Legs
+            width={w * 0.86}
+            depth={d * 0.86}
+            height={h * 0.45}
+            floorY={-h / 2}
+            radius={0.018}
+          />
           {outline}
         </group>
       );
@@ -452,7 +476,14 @@ function PrimitiveMesh({ object, material, selected }: MeshProps) {
             castShadow
             receiveShadow
           />
-          <Legs width={w * 0.9} depth={d * 0.86} height={h - topH} radius={0.02} />
+          {/* 상판 밑면까지 — 이 둘이 어긋나면 옆에서 봤을 때 상판이 떠 보인다 */}
+          <Legs
+            width={w * 0.9}
+            depth={d * 0.86}
+            height={h - topH}
+            floorY={-h / 2}
+            radius={0.02}
+          />
           {outline}
         </group>
       );

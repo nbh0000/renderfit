@@ -7,6 +7,7 @@ import { useEditorStore, useSelectedObject } from "@/lib/editor/store";
 import type { Asset } from "@/scene/types";
 import { DEFAULT_MATERIALS } from "@/models/materials";
 import { STYLE_PRESETS } from "@/models/styles";
+import { FinishPanel } from "../Room/FinishPanel";
 
 type Tab = "assets" | "external" | "materials" | "styles" | "lighting" | "ai";
 
@@ -212,17 +213,42 @@ function AssetGrid({
   );
 }
 
+/**
+ * 재질 고르기 — 공간의 면이 먼저, 고른 가구가 그다음.
+ *
+ * 전에는 이 탭이 가구 전용이라, 아무것도 안 고른 채로 열면 "객체를 먼저 선택하세요"
+ * 한 줄만 보였다. 그런데 사람들이 재질 탭에서 가장 먼저 찾는 것은 벽지와 장판이다 —
+ * 인테리어 시안의 절반이 그 둘이다. 바닥·벽·천장 고르기는 오른쪽 공간 패널 아래쪽에
+ * 있었는데, 거기까지 내려가 보는 사람이 없어서 "바닥·벽 재질을 고를 수 없다"는 말을
+ * 들었다. 있는데 안 보이면 없는 것이다.
+ *
+ * 그래서 면을 위로 올리고, 가구는 골랐을 때만 아래에 붙인다.
+ */
 function MaterialsTab() {
   const selected = useSelectedObject();
   const runTool = useEditorStore((state) => state.runTool);
 
   return (
-    <div className="p-2">
-      <p className="mb-2 text-[11px] text-muted">
-        {selected ? `${selected.name}에 적용` : "객체를 먼저 선택하세요"}
-      </p>
-      <ul className="grid grid-cols-3 gap-1.5">
-        {DEFAULT_MATERIALS.map((material) => (
+    <div className="space-y-3 p-2">
+      <section>
+        <p className="mb-1.5 text-[11.5px] font-medium">공간 마감</p>
+        <FinishPanel />
+      </section>
+
+      <section className="border-t border-line pt-3">
+        <p className="mb-1.5 text-[11.5px] font-medium">
+          가구 재질
+          {selected ? (
+            <span className="ml-1 font-normal text-muted">— {selected.name}</span>
+          ) : null}
+        </p>
+        {!selected && (
+          <p className="mb-2 text-[11px] text-muted">
+            바꿀 가구를 먼저 고르세요. 평면도나 3D에서 클릭하면 됩니다.
+          </p>
+        )}
+        <ul className="grid grid-cols-3 gap-1.5">
+          {DEFAULT_MATERIALS.map((material) => (
           <li key={material.id}>
             <button
               type="button"
@@ -230,17 +256,27 @@ function MaterialsTab() {
               onClick={() =>
                 selected && runTool("change_material", { objectId: selected.id, materialId: material.id })
               }
+              title={material.name}
               className="w-full rounded-md border border-line p-1 text-left transition-colors hover:border-line-strong disabled:opacity-40"
             >
+              {/*
+                무늬가 있는 재질은 무늬를 보여 준다 — 색칩만 두면 마루와 타일이
+                같은 갈색 네모로 보여서 고를 수가 없다.
+              */}
               <span
-                className="block aspect-square w-full rounded"
-                style={{ backgroundColor: material.baseColor }}
+                className="block aspect-square w-full rounded bg-cover bg-center"
+                style={
+                  material.textureUrl
+                    ? { backgroundImage: `url(${material.textureUrl})` }
+                    : { backgroundColor: material.baseColor }
+                }
               />
               <span className="mt-1 block truncate text-[10.5px]">{material.name}</span>
             </button>
           </li>
-        ))}
-      </ul>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
