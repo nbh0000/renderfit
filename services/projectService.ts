@@ -223,6 +223,8 @@ function planToScene(scene: Scene, plan: RoomPlan): Scene {
           scale: [1, 1, 1],
         },
         depth: Math.min(1, Math.max(0, item.yMm / length)),
+        // 도면에 그려진 모양. 네모면 null 이고, 그리는 쪽이 폭×깊이 사각형으로 돌아간다.
+        footprint: item.footprint ?? null,
         confidence: 0.8,
         source: "vision_model",
         mask: null,

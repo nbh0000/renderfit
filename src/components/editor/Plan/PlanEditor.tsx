@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditorStore } from "@/lib/editor/store";
 import { electricalSpec } from "@/config/electrical";
+import { footprintPath } from "@/scene/footprint";
+import { symbolFor } from "@/services/planSymbols";
 import { projectOntoWall } from "@/scene/openings";
 import {
   ensureRoom,
@@ -1386,23 +1388,76 @@ function ObjectShape({
   selected: boolean;
   hovered: boolean;
 }) {
-  const width = object.dimensions.width * object.transform.scale[0] * scale;
-  const depth = object.dimensions.depth * object.transform.scale[2] * scale;
+  const width = Math.max(4, object.dimensions.width * object.transform.scale[0] * scale);
+  const depth = Math.max(4, object.dimensions.depth * object.transform.scale[2] * scale);
   const [cx, cy] = toScreen(center[0], center[1]);
+
+  const fill = selected ? "#e9f0ec" : hovered ? "#eeece8" : "#f4f3f0";
+  const stroke = selected ? "#2f5d4e" : "#8a8a87";
+  const strokeWidth = selected ? 1.6 : 1;
+
+  /*
+   * 도면에 그려진 모양 그대로 그린다.
+   *
+   * 전에는 무엇이든 네모 하나에 이름을 적었다. 그래서 ㄱ자 책상도, 원형 식탁도,
+   * 등받이 있는 의자도 전부 같은 네모로 보였다 — 도면을 읽는 사람은 글자가 아니라
+   * 모양으로 무엇인지 안다.
+   *
+   * 외곽선(footprint)이 있으면 그것을, 없으면 네모를 그린다. 그 위에 가구 기호를
+   * 얹는다(planSymbols) — 침대에는 베개와 이불선이, 의자에는 등받이가 그려진다.
+   */
+  const shape = object.footprint?.length ? footprintPath(object.footprint) : null;
+  const symbol = symbolFor({ name: object.name, type: object.type });
 
   return (
     <g transform={`translate(${cx} ${cy}) rotate(${object.screen.rotation})`} pointerEvents="none">
-      <rect
-        x={-width / 2}
-        y={-depth / 2}
-        width={Math.max(4, width)}
-        height={Math.max(4, depth)}
-        fill={selected ? "#e9f0ec" : hovered ? "#eeece8" : "#f4f3f0"}
-        stroke={selected ? "#2f5d4e" : "#8a8a87"}
-        strokeWidth={selected ? 1.6 : 1}
-        rx={2}
-      />
-      {width > 40 && (
+      {shape ? (
+        // 자기 좌표계(-0.5~0.5)를 실제 크기로 늘린다
+        <g transform={`scale(${width} ${depth})`}>
+          <path
+            d={shape}
+            fill={fill}
+            stroke={stroke}
+            // 늘린 만큼 선이 굵어지므로 되돌려 준다 — 안 그러면 큰 가구만 테두리가 두껍다
+            strokeWidth={strokeWidth / Math.max(width, depth)}
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
+      ) : (
+        <rect
+          x={-width / 2}
+          y={-depth / 2}
+          width={width}
+          height={depth}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          rx={2}
+        />
+      )}
+
+      {/*
+        가구 기호. 작게 보일 때는 그리지 않는다 — 선이 뭉쳐 얼룩처럼 보인다.
+        기호는 -0.5~0.5 좌표계로 그려져 있어 크기만 입히면 된다.
+      */}
+      {symbol && Math.min(width, depth) > 24 && (
+        <g
+          transform={`scale(${width} ${depth})`}
+          fill="none"
+          stroke={selected ? "#2f5d4e" : "#9a9894"}
+          strokeWidth={0.9 / Math.max(width, depth)}
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+          dangerouslySetInnerHTML={{ __html: symbol.detail }}
+        />
+      )}
+
+      {/*
+        이름은 기호가 없을 때만 적는다. 둘 다 그리면 기호 위에 글자가 얹혀
+        도면이 다시 글자밭이 된다.
+      */}
+      {!symbol && width > 40 && (
         <text
           y={3}
           fontSize={Math.min(11, Math.max(8, width / 8))}

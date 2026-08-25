@@ -1,4 +1,5 @@
 import { symbolFor } from "@/services/planSymbols";
+import { footprintPath } from "@/scene/footprint";
 import type {
   Annotation,
   RoomArea,
@@ -60,6 +61,11 @@ export interface PlanObject {
   depth: number;
   /** degree, 반시계 */
   rotation: number;
+  /**
+   * 도면에 그려진 실제 모양 (-0.5~0.5 자기 좌표계).
+   * 네모면 없다 — scene/footprint.ts 참고.
+   */
+  footprint?: [number, number][] | null;
 }
 
 export interface PlanData {
@@ -122,6 +128,7 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
         width: object.dimensions.width * object.transform.scale[0],
         depth: object.dimensions.depth * object.transform.scale[2],
         rotation: object.screen.rotation,
+        footprint: object.footprint ?? null,
       };
     });
 
@@ -1040,7 +1047,13 @@ ${rows.join("\n")}
       // SVG는 y가 아래로 커지므로 도면 회전과 방향이 반대다
       const transform = `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(-object.rotation).toFixed(1)}) scale(${object.width.toFixed(1)} ${object.depth.toFixed(1)})`;
 
-      const outline = symbol?.outline || `<rect x="-0.5" y="-0.5" width="1" height="1"/>`;
+      /*
+       * 바깥 윤곽은 도면에서 읽은 모양이 가장 우선이다. ㄱ자 책상이 그려져 있으면
+       * ㄱ자로 그려야 하고, 그것이 없을 때만 기호의 기본 윤곽이나 네모로 물러난다.
+       */
+      const outline = object.footprint?.length
+        ? `<path d="${footprintPath(object.footprint)}"/>`
+        : symbol?.outline || `<rect x="-0.5" y="-0.5" width="1" height="1"/>`;
 
       /*
        * 선 두께는 크기를 입히기 전 좌표계에서 정해지므로, 가구가 클수록 선이 굵어진다.

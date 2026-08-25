@@ -106,6 +106,11 @@ export interface PlanFurniture {
   mountedOn: "floor" | "wall" | "ceiling";
   material: string | null;
   color: string | null;
+  /**
+   * 평면에서 실제로 차지하는 모양 (-0.5~0.5 자기 좌표계).
+   * 네모면 null 이다 — scene/footprint.ts 참고.
+   */
+  footprint?: [number, number][] | null;
 }
 
 export interface RoomPlan {

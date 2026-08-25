@@ -1131,6 +1131,11 @@ export function createSceneObject(
     visibility: partial.visibility ?? true,
     locked: partial.locked ?? false,
     mask: partial.mask ?? null,
+    /*
+     * 도면에 그려진 모양. 네모면 null 이라 굳이 들고 다니지 않는다.
+     * 여기서 빠뜨리면 ㄱ자 책상이 저장되는 순간 다시 네모가 된다.
+     */
+    footprint: partial.footprint ?? null,
     depth: partial.depth ?? 0.5,
     confidence: partial.confidence ?? 1,
     source: partial.source ?? "user",

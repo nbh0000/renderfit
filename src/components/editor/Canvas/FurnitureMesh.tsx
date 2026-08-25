@@ -353,6 +353,110 @@ export function FurnitureMesh(props: MeshProps) {
   );
 }
 
+/**
+ * 도면에서 읽은 모양을 그대로 세운다.
+ *
+ * 평면도에 ㄱ자 책상이 그려져 있으면 3D 에서도 ㄱ자여야 한다. 네모 상자로 세우면
+ * 도면과 3D 가 서로 다른 가구를 보여 주는 셈이고, 그 순간 둘 다 못 믿게 된다.
+ *
+ * 다각형(-0.5~0.5)을 받아 실제 폭·깊이로 늘리고 높이만큼 뽑아 올린다. 평면의 y 는
+ * 3D 의 z 이고 부호가 반대다(scene/placement 의 규칙) — 여기서 뒤집어 준다.
+ */
+function FootprintSolid({
+  footprint,
+  width,
+  depth,
+  height,
+  y,
+  material,
+  bevel = 0,
+}: {
+  footprint: [number, number][];
+  width: number;
+  depth: number;
+  height: number;
+  /** 이 덩어리의 아래쪽 y */
+  y: number;
+  material: THREE.Material;
+  /** 모서리를 살짝 깎는다 — 상판처럼 얇은 것에 쓰면 날이 서지 않는다 */
+  bevel?: number;
+}) {
+  const geometry = useMemo(() => {
+    const shape = new THREE.Shape();
+
+    footprint.forEach(([fx, fy], index) => {
+      const x = fx * width;
+      // 평면 y 가 커질수록 도면 안쪽 → 3D 에서는 z 가 작아진다
+      const z = -fy * depth;
+      if (index === 0) shape.moveTo(x, z);
+      else shape.lineTo(x, z);
+    });
+    shape.closePath();
+
+    const solid = new THREE.ExtrudeGeometry(shape, {
+      depth: height,
+      bevelEnabled: bevel > 0,
+      bevelSize: bevel,
+      bevelThickness: bevel,
+      bevelSegments: 1,
+      curveSegments: 4,
+    });
+
+    // ExtrudeGeometry 는 z 방향으로 뽑으므로 눕혀서 세운다
+    solid.rotateX(-Math.PI / 2);
+    solid.computeVertexNormals();
+    return solid;
+  }, [footprint, width, depth, height, bevel]);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  return (
+    <mesh geometry={geometry} position={[0, y, 0]} material={material} castShadow receiveShadow />
+  );
+}
+
+/**
+ * 다각형 꼭짓점마다 다리를 세운다.
+ *
+ * ㄱ자 책상에 네 다리를 바깥 사각형 모서리에 박으면 두 개가 허공에 뜬다.
+ * 실제 모양의 꼭짓점을 쓰되, 안쪽으로 조금 당겨 상판 밖으로 나오지 않게 한다.
+ */
+function FootprintLegs({
+  footprint,
+  width,
+  depth,
+  height,
+  floorY,
+  radius = 0.02,
+  color = "#5b4632",
+}: {
+  footprint: [number, number][];
+  width: number;
+  depth: number;
+  height: number;
+  floorY: number;
+  radius?: number;
+  color?: string;
+}) {
+  const y = floorY + height / 2;
+  /** 꼭짓점을 가운데로 당기는 정도 — 다리가 상판 모서리를 뚫지 않을 만큼만 */
+  const inset = 0.86;
+
+  /* 점이 촘촘한 원형·둥근 모양은 꼭짓점마다 다리를 세울 수 없다 */
+  const spots = footprint.length <= 12 ? footprint : [];
+
+  return (
+    <>
+      {spots.map(([fx, fy], index) => (
+        <mesh key={index} position={[fx * width * inset, y, -fy * depth * inset]} castShadow>
+          <cylinderGeometry args={[radius, radius * 0.85, height, 12]} />
+          <meshStandardMaterial color={color} roughness={0.55} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
 function PrimitiveMesh({ object, material, selected }: MeshProps) {
   const w = object.dimensions.width * MM * object.transform.scale[0];
   const h = object.dimensions.height * MM * object.transform.scale[1];
@@ -370,6 +474,47 @@ function PrimitiveMesh({ object, material, selected }: MeshProps) {
       <meshBasicMaterial color="#000000" wireframe />
     </mesh>
   ) : null;
+
+  /*
+   * 도면에서 읽은 모양이 있으면 그 모양으로 세운다.
+   *
+   * 침대·의자는 뺀다. 그 둘은 아래에 결이 살아 있는 형태(머리판·베개·이불, 등받이와
+   * 앉는 면)를 따로 만들어 두었고, 실제로도 거의 다 직사각이라 다각형으로 뽑아 올리면
+   * 오히려 밋밋한 덩어리가 된다.
+   */
+  const shaped = object.footprint?.length && object.type !== "bed" && object.type !== "chair"
+    ? object.footprint
+    : null;
+
+  if (shaped) {
+    /** 상판이 있는 것과 통짜인 것 — 상판이 있으면 다리를 세운다 */
+    const legged = object.type === "table";
+    const topH = legged ? Math.max(0.03, h * 0.1) : h;
+
+    return (
+      <group>
+        <FootprintSolid
+          footprint={shaped}
+          width={w}
+          depth={d}
+          height={topH}
+          y={legged ? h / 2 - topH : -h / 2}
+          material={mat}
+          bevel={legged ? 0.004 : 0}
+        />
+        {legged && (
+          <FootprintLegs
+            footprint={shaped}
+            width={w}
+            depth={d}
+            height={h - topH}
+            floorY={-h / 2}
+          />
+        )}
+        {outline}
+      </group>
+    );
+  }
 
   switch (object.type) {
     case "sofa": {
@@ -429,35 +574,73 @@ function PrimitiveMesh({ object, material, selected }: MeshProps) {
       );
     }
 
+    /*
+     * 의자.
+     *
+     * 앉는 판 하나에 등받이 판 하나면 옆에서 봤을 때 의자로 안 보인다 — 그냥 ㄴ자로
+     * 세운 널빤지다. 실제 의자를 의자로 만드는 것은 네 가지다.
+     *   · 방석이 조금 도톰하고 앞쪽이 둥글다
+     *   · 등받이가 뒤로 살짝 눕는다 (직각이면 사무용 파티션처럼 보인다)
+     *   · 등받이와 앉는 면 사이가 떠 있다
+     *   · 뒷다리가 등받이까지 이어져 올라간다
+     */
     case "chair": {
-      const seatH = h * 0.1;
+      const seatY = -h / 2 + h * 0.45;
+      const seatH = Math.max(0.035, h * 0.07);
+      const backH = h * 0.4;
+      const backY = seatY + seatH / 2 + h * 0.06 + backH / 2;
+      const backZ = -d / 2 + d * 0.1;
+      /** 등받이가 뒤로 눕는 각 — 6도쯤이 앉아 본 느낌이 난다 */
+      const recline = -0.1;
+
       return (
         <group>
+          {/* 방석 */}
           <RoundedBox
-            args={[w, seatH, d]}
-            radius={0.03}
-            smoothness={3}
-            position={[0, -h / 2 + h * 0.45, 0]}
+            args={[w * 0.94, seatH, d * 0.92]}
+            radius={Math.min(0.02, seatH * 0.45)}
+            smoothness={4}
+            position={[0, seatY, d * 0.02]}
             material={mat}
             castShadow
             receiveShadow
           />
-          <RoundedBox
-            args={[w * 0.94, h * 0.45, d * 0.12]}
-            radius={0.03}
-            smoothness={3}
-            position={[0, -h / 2 + h * 0.72, -d / 2 + d * 0.08]}
-            material={mat}
-            castShadow
-          />
-          {/* 앉는 면이 h*0.45 높이에 있으니 다리도 딱 거기까지 */}
-          <Legs
-            width={w * 0.86}
-            depth={d * 0.86}
-            height={h * 0.45}
-            floorY={-h / 2}
-            radius={0.018}
-          />
+
+          {/* 등받이 — 뒤로 눕히고 앉는 면과 띄운다 */}
+          <group position={[0, backY, backZ]} rotation={[recline, 0, 0]}>
+            <RoundedBox
+              args={[w * 0.9, backH, Math.max(0.022, d * 0.07)]}
+              radius={0.018}
+              smoothness={4}
+              material={mat}
+              castShadow
+            />
+          </group>
+
+          {/* 뒷다리는 등받이 높이까지 이어 올린다 */}
+          {[-1, 1].map((side) => (
+            <mesh
+              key={side}
+              position={[side * (w * 0.43 - 0.018), (-h / 2 + backY) / 2, backZ]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.018, 0.016, backY + h / 2, 10]} />
+              <meshStandardMaterial color="#5b4632" roughness={0.55} />
+            </mesh>
+          ))}
+
+          {/* 앞다리 — 앉는 면까지만 */}
+          {[-1, 1].map((side) => (
+            <mesh
+              key={side}
+              position={[side * (w * 0.43 - 0.018), (-h / 2 + seatY) / 2, d / 2 - d * 0.12]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.018, 0.016, seatY + h / 2, 10]} />
+              <meshStandardMaterial color="#5b4632" roughness={0.55} />
+            </mesh>
+          ))}
+
           {outline}
         </group>
       );
@@ -528,10 +711,28 @@ function PrimitiveMesh({ object, material, selected }: MeshProps) {
       );
     }
 
+    /*
+     * 침대.
+     *
+     * 프레임 + 매트리스 + 베개만 있으면 매트리스를 얹은 평상으로 보인다. 침대를
+     * 침대로 만드는 것은 정리된 침구의 결이다.
+     *   · 이불이 매트리스를 덮되 발치 쪽으로 조금 짧다
+     *   · 머리맡에서 이불을 접어 넘긴 단이 있다 (호텔 침구의 그 선)
+     *   · 베개가 머리판에 살짝 기대어 서 있다
+     *   · 머리판이 매트리스보다 확실히 높다
+     *
+     * 머리맡은 y 가 작은 쪽, 즉 -z 다 (회전 0도에서 정면이 도면 아래를 본다).
+     */
     case "bed": {
-      const baseH = h * 0.45;
+      const baseH = h * 0.32;
+      const mattressH = h * 0.24;
+      const mattressY = -h / 2 + baseH + mattressH / 2;
+      const mattressTop = mattressY + mattressH / 2;
+      const headZ = -d / 2;
+
       return (
         <group>
+          {/* 프레임 */}
           <RoundedBox
             args={[w, baseH, d]}
             radius={0.02}
@@ -542,33 +743,62 @@ function PrimitiveMesh({ object, material, selected }: MeshProps) {
           >
             <meshStandardMaterial color="#6b5844" roughness={0.7} />
           </RoundedBox>
+
+          {/* 매트리스 */}
           <RoundedBox
-            args={[w * 0.97, h * 0.3, d * 0.94]}
-            radius={0.05}
-            smoothness={3}
-            position={[0, -h / 2 + baseH + h * 0.15, 0]}
+            args={[w * 0.97, mattressH, d * 0.96]}
+            radius={0.045}
+            smoothness={4}
+            position={[0, mattressY, 0]}
             material={mat}
             castShadow
           />
-          {[-1, 1].map((i) => (
-            <RoundedBox
-              key={i}
-              args={[w * 0.36, h * 0.12, d * 0.16]}
-              radius={0.04}
-              smoothness={3}
-              position={[i * w * 0.22, -h / 2 + baseH + h * 0.34, -d / 2 + d * 0.14]}
-              material={mat}
-              castShadow
-            />
+
+          {/* 이불 — 발치를 덮고 머리맡은 비운다 */}
+          <RoundedBox
+            args={[w * 0.99, h * 0.05, d * 0.62]}
+            radius={0.03}
+            smoothness={4}
+            position={[0, mattressTop + h * 0.02, d * 0.17]}
+            castShadow
+          >
+            <meshStandardMaterial color="#d9d5cc" roughness={0.92} />
+          </RoundedBox>
+
+          {/* 접어 넘긴 단 — 이 선 하나가 정리된 침구로 보이게 한다 */}
+          <RoundedBox
+            args={[w * 0.99, h * 0.055, d * 0.1]}
+            radius={0.025}
+            smoothness={4}
+            position={[0, mattressTop + h * 0.035, -d * 0.15]}
+            castShadow
+          >
+            <meshStandardMaterial color="#efece5" roughness={0.9} />
+          </RoundedBox>
+
+          {/* 베개 둘 — 머리판에 살짝 기대어 눕힌다 */}
+          {[-1, 1].map((side) => (
+            <group
+              key={side}
+              position={[side * w * 0.23, mattressTop + h * 0.055, headZ + d * 0.13]}
+              rotation={[0.28, 0, 0]}
+            >
+              <RoundedBox args={[w * 0.4, h * 0.09, d * 0.17]} radius={0.045} smoothness={4} castShadow>
+                <meshStandardMaterial color="#f6f4ef" roughness={0.95} />
+              </RoundedBox>
+            </group>
           ))}
+
+          {/* 머리판 — 매트리스보다 확실히 높아야 침대로 읽힌다 */}
           <RoundedBox
-            args={[w, h * 0.62, 0.06]}
-            radius={0.02}
-            smoothness={3}
-            position={[0, -h / 2 + h * 0.5, -d / 2 - 0.02]}
+            args={[w, h * 0.66, Math.max(0.05, d * 0.03)]}
+            radius={0.025}
+            smoothness={4}
+            position={[0, -h / 2 + h * 0.52, headZ - d * 0.015]}
             material={mat}
             castShadow
           />
+
           {outline}
         </group>
       );

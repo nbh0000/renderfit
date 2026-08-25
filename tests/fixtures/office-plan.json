@@ -1,0 +1,1110 @@
+{
+  "roomType": "home-office",
+  "roomDimensions": {
+    "width": 12000,
+    "length": 10800,
+    "height": 2600
+  },
+  "objects": [],
+  "styleGuess": null,
+  "lightDirection": [
+    0,
+    0.9,
+    1
+  ],
+  "plan": {
+    "roomType": "home-office",
+    "finishes": {
+      "floor": null,
+      "wall": null,
+      "ceiling": null
+    },
+    "ceilingHeightMm": 2600,
+    "cameraWallIndex": 0,
+    "outline": [
+      {
+        "x": 0,
+        "y": 1800
+      },
+      {
+        "x": 4200,
+        "y": 1800
+      },
+      {
+        "x": 4200,
+        "y": 0
+      },
+      {
+        "x": 10800,
+        "y": 0
+      },
+      {
+        "x": 10800,
+        "y": 1800
+      },
+      {
+        "x": 12000,
+        "y": 1800
+      },
+      {
+        "x": 12000,
+        "y": 7800
+      },
+      {
+        "x": 7200,
+        "y": 7800
+      },
+      {
+        "x": 7200,
+        "y": 10800
+      },
+      {
+        "x": 3600,
+        "y": 10800
+      },
+      {
+        "x": 3600,
+        "y": 9000
+      },
+      {
+        "x": 0,
+        "y": 9000
+      }
+    ],
+    "rooms": [
+      {
+        "name": "사무실",
+        "type": "home-office",
+        "polygon": [
+          {
+            "x": 0,
+            "y": 1800
+          },
+          {
+            "x": 4200,
+            "y": 1800
+          },
+          {
+            "x": 4200,
+            "y": 0
+          },
+          {
+            "x": 10800,
+            "y": 0
+          },
+          {
+            "x": 10800,
+            "y": 1800
+          },
+          {
+            "x": 12000,
+            "y": 1800
+          },
+          {
+            "x": 12000,
+            "y": 4800
+          },
+          {
+            "x": 0,
+            "y": 4800
+          }
+        ],
+        "printedWidthMm": 12000,
+        "printedDepthMm": 4800
+      },
+      {
+        "name": "회의실",
+        "type": "home-office",
+        "polygon": [
+          {
+            "x": 0,
+            "y": 4800
+          },
+          {
+            "x": 3600,
+            "y": 4800
+          },
+          {
+            "x": 3600,
+            "y": 9000
+          },
+          {
+            "x": 0,
+            "y": 9000
+          }
+        ],
+        "printedWidthMm": 3600,
+        "printedDepthMm": 4200
+      },
+      {
+        "name": "로비",
+        "type": "entrance",
+        "polygon": [
+          {
+            "x": 3600,
+            "y": 4800
+          },
+          {
+            "x": 7200,
+            "y": 4800
+          },
+          {
+            "x": 7200,
+            "y": 10800
+          },
+          {
+            "x": 3600,
+            "y": 10800
+          }
+        ],
+        "printedWidthMm": 3600,
+        "printedDepthMm": 6000
+      },
+      {
+        "name": "화장실",
+        "type": "bathroom",
+        "polygon": [
+          {
+            "x": 7200,
+            "y": 4800
+          },
+          {
+            "x": 12000,
+            "y": 4800
+          },
+          {
+            "x": 12000,
+            "y": 7800
+          },
+          {
+            "x": 7200,
+            "y": 7800
+          }
+        ],
+        "printedWidthMm": 4800,
+        "printedDepthMm": 3000
+      }
+    ],
+    "walls": [
+      {
+        "name": "외벽_하단좌측",
+        "start": {
+          "x": 0,
+          "y": 1800
+        },
+        "end": {
+          "x": 4200,
+          "y": 1800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽_하단돌출좌측",
+        "start": {
+          "x": 4200,
+          "y": 1800
+        },
+        "end": {
+          "x": 4200,
+          "y": 0
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽_하단",
+        "start": {
+          "x": 4200,
+          "y": 0
+        },
+        "end": {
+          "x": 10800,
+          "y": 0
+        },
+        "thicknessMm": 200,
+        "openings": [
+          {
+            "kind": "door",
+            "name": "하단출입문",
+            "offsetMm": 1800,
+            "widthMm": 900,
+            "heightMm": 2100,
+            "sillMm": 0
+          }
+        ]
+      },
+      {
+        "name": "외벽_하단돌출우측",
+        "start": {
+          "x": 10800,
+          "y": 0
+        },
+        "end": {
+          "x": 10800,
+          "y": 1800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽_하단우측",
+        "start": {
+          "x": 10800,
+          "y": 1800
+        },
+        "end": {
+          "x": 12000,
+          "y": 1800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽_우측",
+        "start": {
+          "x": 12000,
+          "y": 1800
+        },
+        "end": {
+          "x": 12000,
+          "y": 4800
+        },
+        "thicknessMm": 200,
+        "openings": [
+          {
+            "kind": "window",
+            "name": "화장실창문",
+            "offsetMm": 1800,
+            "widthMm": 1200,
+            "heightMm": 1200,
+            "sillMm": 900
+          }
+        ]
+      },
+      {
+        "name": "내벽_중앙분할",
+        "start": {
+          "x": 12000,
+          "y": 4800
+        },
+        "end": {
+          "x": 0,
+          "y": 4800
+        },
+        "thicknessMm": 200,
+        "openings": [
+          {
+            "kind": "door",
+            "name": "회의실문",
+            "offsetMm": 1200,
+            "widthMm": 900,
+            "heightMm": 2100,
+            "sillMm": 0
+          },
+          {
+            "kind": "door",
+            "name": "로비문",
+            "offsetMm": 4800,
+            "widthMm": 900,
+            "heightMm": 2100,
+            "sillMm": 0
+          }
+        ]
+      },
+      {
+        "name": "외벽 8",
+        "start": {
+          "x": 0,
+          "y": 4800
+        },
+        "end": {
+          "x": 0,
+          "y": 1800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽 9",
+        "start": {
+          "x": 0,
+          "y": 4800
+        },
+        "end": {
+          "x": 3600,
+          "y": 4800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "내벽_회의실_로비",
+        "start": {
+          "x": 3600,
+          "y": 4800
+        },
+        "end": {
+          "x": 3600,
+          "y": 9000
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽_회의실상단",
+        "start": {
+          "x": 3600,
+          "y": 9000
+        },
+        "end": {
+          "x": 0,
+          "y": 9000
+        },
+        "thicknessMm": 200,
+        "openings": [
+          {
+            "kind": "window",
+            "name": "회의실창문",
+            "offsetMm": 1200,
+            "widthMm": 1500,
+            "heightMm": 1200,
+            "sillMm": 900
+          }
+        ]
+      },
+      {
+        "name": "외벽_좌측",
+        "start": {
+          "x": 0,
+          "y": 9000
+        },
+        "end": {
+          "x": 0,
+          "y": 4800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽 13",
+        "start": {
+          "x": 3600,
+          "y": 4800
+        },
+        "end": {
+          "x": 7200,
+          "y": 4800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "내벽_로비_화장실",
+        "start": {
+          "x": 7200,
+          "y": 4800
+        },
+        "end": {
+          "x": 7200,
+          "y": 10800
+        },
+        "thicknessMm": 200,
+        "openings": [
+          {
+            "kind": "opening",
+            "name": "화장실입구",
+            "offsetMm": 1200,
+            "widthMm": 900,
+            "heightMm": 2100,
+            "sillMm": 0
+          }
+        ]
+      },
+      {
+        "name": "외벽_로비상단",
+        "start": {
+          "x": 7200,
+          "y": 10800
+        },
+        "end": {
+          "x": 3600,
+          "y": 10800
+        },
+        "thicknessMm": 200,
+        "openings": [
+          {
+            "kind": "door",
+            "name": "메인출입문",
+            "offsetMm": 1800,
+            "widthMm": 900,
+            "heightMm": 2100,
+            "sillMm": 0
+          }
+        ]
+      },
+      {
+        "name": "외벽_로비좌측",
+        "start": {
+          "x": 3600,
+          "y": 10800
+        },
+        "end": {
+          "x": 3600,
+          "y": 4800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽 17",
+        "start": {
+          "x": 7200,
+          "y": 4800
+        },
+        "end": {
+          "x": 12000,
+          "y": 4800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽 18",
+        "start": {
+          "x": 12000,
+          "y": 4800
+        },
+        "end": {
+          "x": 12000,
+          "y": 7800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽_화장실상단",
+        "start": {
+          "x": 12000,
+          "y": 7800
+        },
+        "end": {
+          "x": 7200,
+          "y": 7800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      },
+      {
+        "name": "외벽 20",
+        "start": {
+          "x": 7200,
+          "y": 7800
+        },
+        "end": {
+          "x": 7200,
+          "y": 4800
+        },
+        "thicknessMm": 200,
+        "openings": []
+      }
+    ],
+    "furniture": [
+      {
+        "type": "table",
+        "name": "L자형 책상",
+        "xMm": 1023,
+        "yMm": 3000,
+        "rotationDeg": 90,
+        "widthMm": 1400,
+        "depthMm": 700,
+        "heightMm": 750,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": [
+          [
+            -0.5,
+            -0.5
+          ],
+          [
+            0.5,
+            -0.5
+          ],
+          [
+            0.5,
+            -0.08
+          ],
+          [
+            -0.08,
+            -0.08
+          ],
+          [
+            -0.08,
+            0.5
+          ],
+          [
+            -0.5,
+            0.5
+          ]
+        ]
+      },
+      {
+        "type": "chair",
+        "name": "사무용 의자 1",
+        "xMm": 353,
+        "yMm": 3000,
+        "rotationDeg": 270,
+        "widthMm": 450,
+        "depthMm": 600,
+        "heightMm": 900,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": [
+          [
+            0.5,
+            0.38
+          ],
+          [
+            0.4909,
+            0.4259
+          ],
+          [
+            0.4649,
+            0.4649
+          ],
+          [
+            0.4259,
+            0.4909
+          ],
+          [
+            0.38,
+            0.5
+          ],
+          [
+            -0.38,
+            0.5
+          ],
+          [
+            -0.4259,
+            0.4909
+          ],
+          [
+            -0.4649,
+            0.4649
+          ],
+          [
+            -0.4909,
+            0.4259
+          ],
+          [
+            -0.5,
+            0.38
+          ],
+          [
+            -0.5,
+            -0.38
+          ],
+          [
+            -0.4909,
+            -0.4259
+          ],
+          [
+            -0.4649,
+            -0.4649
+          ],
+          [
+            -0.4259,
+            -0.4909
+          ],
+          [
+            -0.38,
+            -0.5
+          ],
+          [
+            0.38,
+            -0.5
+          ],
+          [
+            0.4259,
+            -0.4909
+          ],
+          [
+            0.4649,
+            -0.4649
+          ],
+          [
+            0.4909,
+            -0.4259
+          ],
+          [
+            0.5,
+            -0.38
+          ]
+        ]
+      },
+      {
+        "type": "table",
+        "name": "공동 책상 상단",
+        "xMm": 6600,
+        "yMm": 3600,
+        "rotationDeg": 0,
+        "widthMm": 1400,
+        "depthMm": 800,
+        "heightMm": 750,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": null
+      },
+      {
+        "type": "table",
+        "name": "공동 책상 하단",
+        "xMm": 6600,
+        "yMm": 2800,
+        "rotationDeg": 180,
+        "widthMm": 1400,
+        "depthMm": 800,
+        "heightMm": 750,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": null
+      },
+      {
+        "type": "chair",
+        "name": "공동 의자 1",
+        "xMm": 5800,
+        "yMm": 4300,
+        "rotationDeg": 180,
+        "widthMm": 550,
+        "depthMm": 550,
+        "heightMm": 850,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": [
+          [
+            0.5,
+            0.38
+          ],
+          [
+            0.4909,
+            0.4259
+          ],
+          [
+            0.4649,
+            0.4649
+          ],
+          [
+            0.4259,
+            0.4909
+          ],
+          [
+            0.38,
+            0.5
+          ],
+          [
+            -0.38,
+            0.5
+          ],
+          [
+            -0.4259,
+            0.4909
+          ],
+          [
+            -0.4649,
+            0.4649
+          ],
+          [
+            -0.4909,
+            0.4259
+          ],
+          [
+            -0.5,
+            0.38
+          ],
+          [
+            -0.5,
+            -0.38
+          ],
+          [
+            -0.4909,
+            -0.4259
+          ],
+          [
+            -0.4649,
+            -0.4649
+          ],
+          [
+            -0.4259,
+            -0.4909
+          ],
+          [
+            -0.38,
+            -0.5
+          ],
+          [
+            0.38,
+            -0.5
+          ],
+          [
+            0.4259,
+            -0.4909
+          ],
+          [
+            0.4649,
+            -0.4649
+          ],
+          [
+            0.4909,
+            -0.4259
+          ],
+          [
+            0.5,
+            -0.38
+          ]
+        ]
+      },
+      {
+        "type": "chair",
+        "name": "공동 의자 2",
+        "xMm": 7400,
+        "yMm": 4300,
+        "rotationDeg": 180,
+        "widthMm": 550,
+        "depthMm": 550,
+        "heightMm": 850,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": [
+          [
+            0.5,
+            0.38
+          ],
+          [
+            0.4909,
+            0.4259
+          ],
+          [
+            0.4649,
+            0.4649
+          ],
+          [
+            0.4259,
+            0.4909
+          ],
+          [
+            0.38,
+            0.5
+          ],
+          [
+            -0.38,
+            0.5
+          ],
+          [
+            -0.4259,
+            0.4909
+          ],
+          [
+            -0.4649,
+            0.4649
+          ],
+          [
+            -0.4909,
+            0.4259
+          ],
+          [
+            -0.5,
+            0.38
+          ],
+          [
+            -0.5,
+            -0.38
+          ],
+          [
+            -0.4909,
+            -0.4259
+          ],
+          [
+            -0.4649,
+            -0.4649
+          ],
+          [
+            -0.4259,
+            -0.4909
+          ],
+          [
+            -0.38,
+            -0.5
+          ],
+          [
+            0.38,
+            -0.5
+          ],
+          [
+            0.4259,
+            -0.4909
+          ],
+          [
+            0.4649,
+            -0.4649
+          ],
+          [
+            0.4909,
+            -0.4259
+          ],
+          [
+            0.5,
+            -0.38
+          ]
+        ]
+      },
+      {
+        "type": "chair",
+        "name": "공동 의자 3",
+        "xMm": 5800,
+        "yMm": 2100,
+        "rotationDeg": 0,
+        "widthMm": 550,
+        "depthMm": 550,
+        "heightMm": 850,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": [
+          [
+            0.5,
+            0.38
+          ],
+          [
+            0.4909,
+            0.4259
+          ],
+          [
+            0.4649,
+            0.4649
+          ],
+          [
+            0.4259,
+            0.4909
+          ],
+          [
+            0.38,
+            0.5
+          ],
+          [
+            -0.38,
+            0.5
+          ],
+          [
+            -0.4259,
+            0.4909
+          ],
+          [
+            -0.4649,
+            0.4649
+          ],
+          [
+            -0.4909,
+            0.4259
+          ],
+          [
+            -0.5,
+            0.38
+          ],
+          [
+            -0.5,
+            -0.38
+          ],
+          [
+            -0.4909,
+            -0.4259
+          ],
+          [
+            -0.4649,
+            -0.4649
+          ],
+          [
+            -0.4259,
+            -0.4909
+          ],
+          [
+            -0.38,
+            -0.5
+          ],
+          [
+            0.38,
+            -0.5
+          ],
+          [
+            0.4259,
+            -0.4909
+          ],
+          [
+            0.4649,
+            -0.4649
+          ],
+          [
+            0.4909,
+            -0.4259
+          ],
+          [
+            0.5,
+            -0.38
+          ]
+        ]
+      },
+      {
+        "type": "chair",
+        "name": "공동 의자 4",
+        "xMm": 7400,
+        "yMm": 2100,
+        "rotationDeg": 0,
+        "widthMm": 550,
+        "depthMm": 550,
+        "heightMm": 850,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": [
+          [
+            0.5,
+            0.38
+          ],
+          [
+            0.4909,
+            0.4259
+          ],
+          [
+            0.4649,
+            0.4649
+          ],
+          [
+            0.4259,
+            0.4909
+          ],
+          [
+            0.38,
+            0.5
+          ],
+          [
+            -0.38,
+            0.5
+          ],
+          [
+            -0.4259,
+            0.4909
+          ],
+          [
+            -0.4649,
+            0.4649
+          ],
+          [
+            -0.4909,
+            0.4259
+          ],
+          [
+            -0.5,
+            0.38
+          ],
+          [
+            -0.5,
+            -0.38
+          ],
+          [
+            -0.4909,
+            -0.4259
+          ],
+          [
+            -0.4649,
+            -0.4649
+          ],
+          [
+            -0.4259,
+            -0.4909
+          ],
+          [
+            -0.38,
+            -0.5
+          ],
+          [
+            0.38,
+            -0.5
+          ],
+          [
+            0.4259,
+            -0.4909
+          ],
+          [
+            0.4649,
+            -0.4649
+          ],
+          [
+            0.4909,
+            -0.4259
+          ],
+          [
+            0.5,
+            -0.38
+          ]
+        ]
+      },
+      {
+        "type": "table",
+        "name": "로비 테이블",
+        "xMm": 5400,
+        "yMm": 9000,
+        "rotationDeg": 90,
+        "widthMm": 1200,
+        "depthMm": 600,
+        "heightMm": 450,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": null
+      },
+      {
+        "type": "appliance",
+        "name": "변기",
+        "xMm": 7600,
+        "yMm": 6300,
+        "rotationDeg": 90,
+        "widthMm": 450,
+        "depthMm": 700,
+        "heightMm": 800,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": null
+      },
+      {
+        "type": "cabinet",
+        "name": "세면대 수납장",
+        "xMm": 11675,
+        "yMm": 6300,
+        "rotationDeg": 270,
+        "widthMm": 600,
+        "depthMm": 550,
+        "heightMm": 850,
+        "elevationMm": 0,
+        "mountedOn": "floor",
+        "material": null,
+        "color": null,
+        "footprint": null
+      }
+    ]
+  }
+}

@@ -11,6 +11,7 @@ import type {
 } from "./types";
 import type { SceneObject } from "@/scene/types";
 import { ROOMS, ROOM_MAP, type RoomId } from "@/config/rooms";
+import { FOOTPRINT_SHAPES, resolveFootprint } from "@/scene/footprint";
 import { repairPlan } from "@/scene/planRepair";
 
 /**
@@ -174,6 +175,17 @@ export const PLAN_SCHEMA = {
           mountedOn: { type: "string", enum: ["floor", "wall", "ceiling"] },
           material: { type: "string" },
           color: { type: "string" },
+          /*
+           * 평면에서 실제로 차지하는 모양.
+           *
+           * 이것이 없어서 도면에 ㄱ자 책상이 그려져 있어도 우리 평면도에는 네모가
+           * 앉았다. 폭·깊이 두 숫자 안에는 모양이 없기 때문이다.
+           *
+           * shape 는 흔한 형태의 이름이고, outline 은 그 이름으로 담기지 않는
+           * 형태를 위한 실제 외곽선이다. 도면에 그려진 대로 찍어 주면 그대로 쓴다.
+           */
+          shape: { type: "string", enum: FOOTPRINT_SHAPES },
+          outline: { type: "array", items: POINT },
         },
         required: [
           "type",
@@ -275,6 +287,22 @@ const PLAN_PROMPT = [
   "- 천장등·환기 덕트·후드는 mountedOn=ceiling, 벽에 걸린 TV·액자·메뉴판은 wall, 나머지는 floor.",
   "- 사진에 없는 것을 지어내지 않는다. 빈 방이면 furniture는 비워 둔다.",
   "- 이름은 한국어로 짧게 쓴다 (예: 고기 테이블 1, 좌측 유리 칸막이, 방문).",
+  "",
+  "가구의 모양 (shape · outline)",
+  "- 폭과 깊이 두 숫자만으로는 모양을 담을 수 없다. ㄱ자 책상도, 원형 식탁도,",
+  "  카우치가 달린 소파도 그대로 두면 전부 같은 네모로 그려진다.",
+  `- shape에는 다음 중 맞는 것을 고른다: ${FOOTPRINT_SHAPES.join(", ")}.`,
+  "  rect=직사각, rounded=모서리가 둥근 것, circle=원형·타원,",
+  "  l-shape=ㄱ자(다리가 왼쪽으로), l-shape-mirrored=ㄱ자(다리가 오른쪽으로),",
+  "  u-shape=ㄷ자, chaise-left/right=한쪽이 길게 빠진 카우치 소파,",
+  "  corner=모서리가 잘린 코너장, custom=위 어느 것도 아닌 모양.",
+  "- ★ 위 이름으로 담기지 않는 모양이면 shape=custom으로 두고 outline에 실제 외곽선을",
+  "  찍는다. 도면에 그려진 그대로, 시계 반대 방향으로, 꺾이는 자리마다 점을 둔다.",
+  "  좌표는 그 가구의 자기 좌표계로 가로·세로 각각 0~1이면 된다(축척은 우리가 맞춘다).",
+  "  오목하게 파인 모양, 계단처럼 여러 번 꺾인 모양도 그대로 그려도 된다.",
+  "- 직사각이면 outline은 비워 둔다. 대부분의 가구는 직사각이다.",
+  "- 도면(평면도)을 보고 있다면 그려진 기호의 외곽선을 그대로 옮기는 것이 가장 정확하다.",
+  "  책상 여러 개가 붙어 한 덩어리로 보여도 각각 따로 배치하고, 각자의 모양을 준다.",
 ].join("\n");
 
 /**
@@ -793,6 +821,8 @@ interface RawPlan {
     mountedOn?: string;
     material?: string;
     color?: string;
+    shape?: string;
+    outline?: { x?: number; y?: number }[];
   }[];
 }
 
@@ -1073,6 +1103,11 @@ export function toPlanAnalysis(raw: RawPlan, callouts: RawDimension[] = []): Roo
           item.mountedOn === "ceiling" || item.mountedOn === "wall" ? item.mountedOn : "floor",
         material: item.material?.trim() || null,
         color: /^#[0-9a-f]{6}$/i.test(item.color ?? "") ? item.color! : null,
+        /*
+         * 도면에 그려진 모양. 외곽선을 보내 왔으면 그대로 쓰고, 아니면 이름이
+         * 가리키는 흔한 형태로 간다. 둘 다 없으면 null 이고 네모로 그려진다.
+         */
+        footprint: resolveFootprint(item.shape, item.outline),
       };
     });
 

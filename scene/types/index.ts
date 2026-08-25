@@ -113,6 +113,17 @@ export interface SceneObject {
   visibility: boolean;
   locked: boolean;
   mask: ObjectMask | null;
+  /**
+   * 평면에서 실제로 차지하는 모양.
+   *
+   * 없으면 폭×깊이의 사각형이다. ㄱ자 책상·원형 식탁·카우치 소파처럼 네모가 아닌
+   * 가구는 여기에 외곽선을 담는다 — 좌표는 -0.5~0.5 자기 좌표계이고, 그리는 쪽이
+   * 실제 치수를 곱하고 회전을 입힌다 (scene/footprint.ts).
+   *
+   * 대부분의 가구가 네모라, 네모일 때는 일부러 비워 둔다. 전부 다각형으로 저장하면
+   * 장면 파일만 몇 배가 되고 얻는 것이 없다.
+   */
+  footprint?: [number, number][] | null;
   /** 0(가까움)~1(멈) 정규화 깊이 — depth map 평균값 */
   depth: number;
   /** vision 모델 신뢰도 0~1 */
