@@ -16,9 +16,9 @@ function normalizePoints(value: unknown): [number, number][] | null {
 }
 import type { ElectricalKind } from "@/scene/types";
 import type { StructuredCommand, ToolDefinition } from "@/ai/providers/types";
-import type { Asset, SceneObject } from "@/scene/types";
+import type { Asset, ObjectType, SceneObject } from "@/scene/types";
 import { SceneEngine, createSceneObject } from "@/scene/engine/SceneEngine";
-import { ASSET_MAP, searchAssets } from "@/models/assets";
+import { ASSET_MAP, ASSETS, assetsByType, searchAssets } from "@/models/assets";
 import { STYLE_PRESET_MAP } from "@/models/styles";
 import { MATERIAL_MAP } from "@/models/materials";
 import { createOpening, createWall, findFreeOffset } from "@/scene/geometry";
@@ -134,6 +134,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_room",
     description: "방의 실측 치수를 입력한다 (mm).",
     parameters: { width: "number", length: "number", height: "number", measured: "boolean" },
+  },
+  {
+    name: "set_underlay",
+    description:
+      "평면 편집기 밑그림(원본 도면 이미지)의 위치·축척·투명도를 조정한다. remove=true면 걷어 낸다.",
+    parameters: {
+      originXMm: "number",
+      originYMm: "number",
+      mmPerPixel: "number",
+      rotation: "number",
+      opacity: "number",
+      visible: "boolean",
+      locked: "boolean",
+      remove: "boolean",
+    },
   },
   {
     name: "calibrate_scale",
@@ -326,6 +341,8 @@ export function objectFromAsset(
       assetId: asset.id,
       modelUrl: asset.modelUrl ?? null,
       imageUrl: asset.imageUrl ?? null,
+      /* CC-BY 모델은 저작자 표시 의무가 있다 — 씬에 같이 남긴다 */
+      attribution: asset.attribution ?? null,
       materialId: asset.materials[0] ?? null,
       dimensions: asset.dimensions,
       screen: {
@@ -433,9 +450,17 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
 
     case "add_object": {
       const assetId = args.assetId as string | undefined;
+      /*
+       * Poly Pizza 카탈로그(2천여 종)는 서버에만 둔다 — 편집기 번들에 담으면 브라우저가
+       * 목록을 통째로 받는다. 그래서 브라우저에서 도는 이 코드는 그 id 를 모른다.
+       * 패널이 modelUrl·치수·저작자 표시를 함께 보내 오므로, 같은 종류의 기본 항목을
+       * 뼈대로 삼아 그 값으로 덮어쓴다.
+       */
       const asset =
         (assetId ? ASSET_MAP[assetId] : undefined) ??
-        searchAssets((args.name as string) ?? (args.type as string) ?? "", 1)[0];
+        searchAssets((args.name as string) ?? (args.type as string) ?? "", 1)[0] ??
+        (args.type ? assetsByType(args.type as ObjectType)[0] : undefined) ??
+        ASSETS[0];
 
       if (!asset) return fail("추가할 가구를 찾지 못했습니다.");
 
@@ -664,6 +689,33 @@ export function executeCommand(engine: SceneEngine, command: StructuredCommand):
         }
       );
       return toResult(command, result, "방 치수를 반영했습니다.");
+    }
+
+    case "set_underlay": {
+      if (args.remove === true) {
+        return toResult(command, engine.setUnderlay(null), "밑그림을 걷었습니다.");
+      }
+
+      /*
+       * 좌표는 두 숫자로 따로 받는다.
+       *
+       * 도구 인자는 AI 가 채우기도 하는데, 배열 하나로 받으면 [x, y] 대신 숫자를
+       * 하나만 넣거나 문자열로 보내는 일이 잦다. 숫자 두 개면 그럴 여지가 없다.
+       */
+      const origin =
+        typeof args.originXMm === "number" && typeof args.originYMm === "number"
+          ? { originMm: [args.originXMm, args.originYMm] as [number, number] }
+          : {};
+
+      const result = engine.setUnderlay({
+        ...origin,
+        ...(typeof args.mmPerPixel === "number" ? { mmPerPixel: args.mmPerPixel as number } : {}),
+        ...(typeof args.rotation === "number" ? { rotation: args.rotation as number } : {}),
+        ...(typeof args.opacity === "number" ? { opacity: args.opacity as number } : {}),
+        ...(typeof args.visible === "boolean" ? { visible: args.visible as boolean } : {}),
+        ...(typeof args.locked === "boolean" ? { locked: args.locked as boolean } : {}),
+      });
+      return toResult(command, result, "밑그림을 조정했습니다.");
     }
 
     case "calibrate_scale": {

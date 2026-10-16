@@ -19,4 +19,9 @@ tsconfig.tsbuildinfo
 /public/textures/
 
 # public/assets 는 커밋한다 — 빌드마다 재생성하면 비용이 들고 결과가 매번 달라진다
+# 치수를 잰 결과 캐시 (scripts/assets/polypizza.mjs)
+.cache/
+
 .next-check/
+.next-serve.log
+.next-serve.err

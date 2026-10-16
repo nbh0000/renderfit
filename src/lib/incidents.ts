@@ -20,7 +20,9 @@ export type IncidentKind =
   /** AI 잡 실패 (분석·렌더·생성) */
   | "job_failed"
   /** 프로젝트 저장 실패 */
-  | "save_failed";
+  | "save_failed"
+  /** 관리자가 손으로 고친 것 — 크레딧 가감, 요금제 변경, 환불 */
+  | "admin_action";
 
 export interface Incident {
   kind: IncidentKind;
@@ -38,6 +40,7 @@ const DEFAULT_SEVERITY: Record<IncidentKind, AlertLevel> = {
   credit_failed: "error",
   job_failed: "warn",
   save_failed: "warn",
+  admin_action: "info",
 };
 
 /** 알림까지 보낼 만큼 심한가 */
@@ -57,6 +60,8 @@ function titleOf(kind: IncidentKind): string {
       return "AI 작업 실패";
     case "save_failed":
       return "저장 실패";
+    case "admin_action":
+      return "관리자 조치";
   }
 }
 

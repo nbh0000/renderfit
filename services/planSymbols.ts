@@ -203,8 +203,32 @@ function tv(): Symbol {
   return { detail: line(0.05, 0.5, 0.95, 0.5) };
 }
 
+/**
+ * 계단 — 디딤판과 올라가는 방향.
+ *
+ * 계단실을 빈 사각형으로 두면 도면에서 그 방이 무엇인지 읽히지 않는다. 원본 도면에는
+ * 반드시 디딤판이 그어져 있고 UP/DN 이 적혀 있다 — 그게 없으면 복층인지 창고인지
+ * 알 수 없다.
+ */
+function stairs(steps = 9): Symbol {
+  const parts: string[] = [];
+
+  /* 디딤판 — 짧은 쪽을 가로질러 긋는다 */
+  for (let i = 1; i < steps; i += 1) parts.push(line(0.04, i / steps, 0.96, i / steps));
+
+  /* 올라가는 방향 (도면 관행: 화살표 머리가 위층 쪽) */
+  parts.push(
+    line(0.5, 0.94, 0.5, 0.08),
+    line(0.5, 0.08, 0.4, 0.2),
+    line(0.5, 0.08, 0.6, 0.2)
+  );
+
+  return { detail: parts.join("") };
+}
+
 /** 이름에서 더 정확한 기호를 고른다 — 도면의 글자가 종류보다 구체적일 때가 많다 */
 const BY_NAME: { match: RegExp; symbol: () => Symbol }[] = [
+  { match: /계단|stair/i, symbol: () => stairs() },
   { match: /변기|양변기/, symbol: toilet },
   { match: /세면대|세면기/, symbol: basin },
   { match: /욕조/, symbol: bathtub },

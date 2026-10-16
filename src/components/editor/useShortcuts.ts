@@ -44,6 +44,15 @@ export function useShortcuts() {
         return;
       }
 
+      /*
+       * 걷는 중에는 단일 키 단축키를 통째로 막는다.
+       *
+       * WASD 로 걷는데 D 가 "복제", S 가 "크기 도구", R 이 "회전 도구"로 먹으면
+       * 걸을 때마다 장면이 고쳐진다. 위의 Cmd/Ctrl 조합(되돌리기·복사·붙여넣기)은
+       * 걷는 중에도 쓸 수 있어야 하므로 그보다 아래에 둔다.
+       */
+      if (store.viewMode === "walk") return;
+
       switch (event.key.toLowerCase()) {
         case "v":
           store.setTool("select");
@@ -60,6 +69,15 @@ export function useShortcuts() {
         case "g":
           store.toggleGrid();
           break;
+        /*
+         * 원본 도면 밑그림.
+         *
+         * 도면과 우리 결과를 번갈아 보며 맞추는 작업이라 켰다 껐다를 수없이 한다.
+         * b 는 다른 데서 쓰지 않는 키였다.
+         */
+        case "b":
+          await store.toggleUnderlay();
+          break;
         case "1":
           store.setViewMode("image");
           break;
@@ -68,6 +86,9 @@ export function useShortcuts() {
           break;
         case "3":
           store.setViewMode("3d");
+          break;
+        case "4":
+          store.setViewMode("walk");
           break;
         case "delete":
         case "backspace":

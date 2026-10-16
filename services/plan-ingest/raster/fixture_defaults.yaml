@@ -1,0 +1,64 @@
+# OCR 로 잡힌 라벨 자리에 놓을 플레이스홀더 크기 (mm).
+#
+# ── 왜 기본값을 쓰나 ──
+#
+# 도면의 기호 자체를 인식하려 들지 않는다. 심볼 인식은 벡터화 모델도 잘 못하고,
+# 틀리면 없는 가구가 생긴다. 대신 **글자가 있는 자리에 그 종류의 표준 크기**로
+# 자리만 잡아 둔다. 사용자가 검수 화면에서 옮기거나 지우면 된다.
+#
+# 크기는 국내 유통 규격이다. 도면에서 잰 값이 아니므로 confidence 를 낮게 둔다.
+
+defaults:
+  width: 600
+  depth: 600
+
+items:
+  # 주방
+  냉장고: { width: 900, depth: 700, kind: refrigerator }
+  김치냉장고: { width: 700, depth: 700, kind: refrigerator }
+  싱크: { width: 1200, depth: 600, kind: sink }
+  싱크대: { width: 1800, depth: 600, kind: sink }
+  개수대: { width: 1200, depth: 600, kind: sink }
+  작업대: { width: 1500, depth: 700, kind: worktable }
+  가스레인지: { width: 900, depth: 600, kind: range }
+  레인지: { width: 900, depth: 600, kind: range }
+  튀김기: { width: 600, depth: 600, kind: fryer }
+  후드: { width: 1500, depth: 900, kind: hood }
+  제빙기: { width: 600, depth: 600, kind: ice-maker }
+  식기세척기: { width: 600, depth: 600, kind: dishwasher }
+
+  # 위생
+  변기: { width: 400, depth: 700, kind: toilet }
+  양변기: { width: 400, depth: 700, kind: toilet }
+  세면대: { width: 550, depth: 450, kind: basin }
+  소변기: { width: 400, depth: 350, kind: urinal }
+  욕조: { width: 1700, depth: 800, kind: bathtub }
+  샤워부스: { width: 900, depth: 900, kind: shower }
+
+  # 수납·기타
+  세탁기: { width: 600, depth: 650, kind: washer }
+  신발장: { width: 900, depth: 350, kind: shoe-cabinet }
+  붙박이장: { width: 1800, depth: 600, kind: wardrobe }
+  선반: { width: 1200, depth: 400, kind: shelf }
+  창고: { width: 1200, depth: 900, kind: storage }
+
+  # 홀
+  테이블: { width: 1200, depth: 750, kind: table }
+  카운터: { width: 1800, depth: 600, kind: counter }
+  계산대: { width: 1200, depth: 600, kind: counter }
+  쇼케이스: { width: 1200, depth: 700, kind: showcase }
+
+# 영문 라벨도 같은 것으로 본다
+aliases:
+  refrigerator: 냉장고
+  fridge: 냉장고
+  sink: 싱크대
+  worktable: 작업대
+  range: 가스레인지
+  hood: 후드
+  toilet: 변기
+  basin: 세면대
+  urinal: 소변기
+  washer: 세탁기
+  table: 테이블
+  counter: 카운터

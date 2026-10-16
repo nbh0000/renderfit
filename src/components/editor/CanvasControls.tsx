@@ -13,6 +13,7 @@ export function CanvasControls() {
   const viewMode = useEditorStore((state) => state.viewMode);
   const zoom = useEditorStore((state) => state.zoom);
   const setZoom = useEditorStore((state) => state.setZoom);
+  const fitView = useEditorStore((state) => state.fitView);
 
   // 평면도는 자체 확대(휠·화면에 맞추기)를 쓰고, 3D는 휠·드래그로 조작한다.
   if (viewMode !== "image" && viewMode !== "elevation") return null;
@@ -45,6 +46,23 @@ export function CanvasControls() {
           +
         </button>
       </div>
+
+      {/*
+        화면에 맞추기.
+
+        열 때 자동으로 줄이지 않는 대신 여기 둔다 — 큰 도면을 한눈에 보고 싶을 때
+        한 번 누르면 되고, 무엇보다 지금 보는 배율이 우리가 정한 것이 아니라
+        사용자가 누른 결과라는 것이 분명해진다.
+      */}
+      {fitView && (
+        <button
+          type="button"
+          onClick={fitView}
+          className="pointer-events-auto rounded-lg border border-line bg-surface/95 px-2 py-1 text-[11.5px] text-ink-soft shadow-sm backdrop-blur hover:bg-sunken"
+        >
+          화면에 맞추기
+        </button>
+      )}
     </div>
   );
 }

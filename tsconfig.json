@@ -29,6 +29,9 @@
       "@/scene/*": [
         "./scene/*"
       ],
+      "@renderfit/plan-schema": [
+        "./packages/plan-schema/index.ts"
+      ],
       "@/ai/*": [
         "./ai/*"
       ],

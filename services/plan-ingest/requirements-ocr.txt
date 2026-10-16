@@ -1,0 +1,13 @@
+# 치수 글자를 읽는 OCR. **선택**이다.
+#
+# paddlepaddle 이 수백 MB 라 본체(requirements.txt)에 넣지 않았다. 없으면 배율
+# confidence 가 0 이 되고, 검수 화면이 사용자에게 두 점을 찍게 한다 — 사양이 정한
+# 폴백이다. 조용히 짐작하지는 않는다.
+-r requirements.txt
+
+# RapidOCR — onnxruntime 만 있으면 도는 가벼운 OCR (약 15MB).
+#
+# 처음에는 PaddleOCR 를 적어 두었는데 paddlepaddle 이 수백 MB 라 배포가 무거워진다.
+# 도면에서 읽어야 하는 것은 치수 숫자와 짧은 실명뿐이라 이 정도로 충분하고,
+# Windows 에서도 바로 깔린다.
+rapidocr-onnxruntime==1.4.4

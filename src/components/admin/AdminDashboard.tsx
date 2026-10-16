@@ -47,7 +47,6 @@ const day = (iso: string) => iso.slice(5, 10).replace("-", "/");
 const time = (iso: string) => new Date(iso).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
 
 const ACTIVITY_LABEL: Record<string, string> = {
-  analyze_start: "사진·도면 분석",
   render_start: "렌더",
   generate_asset: "가구 만들기",
   ai_command: "AI 명령",
@@ -61,6 +60,7 @@ const KIND_LABEL: Record<string, string> = {
   credit_failed: "크레딧 실패",
   job_failed: "AI 작업 실패",
   save_failed: "저장 실패",
+  admin_action: "관리자 조치",
 };
 
 export function AdminDashboard() {
@@ -111,28 +111,27 @@ export function AdminDashboard() {
 
   if (error) {
     return (
-      <main className="mx-auto max-w-[900px] px-5 py-16">
+      <div className="py-10">
         <p className="text-[14px] text-danger">{error}</p>
-      </main>
+      </div>
     );
   }
 
   if (!stats || !summary) {
     return (
-      <main className="mx-auto max-w-[900px] px-5 py-16">
+      <div className="py-10">
         <p className="text-[13px] text-muted">불러오는 중…</p>
-      </main>
+      </div>
     );
   }
 
   const open = stats.incidents.filter((item) => !item.resolved_at);
 
   return (
-    <main className="mx-auto max-w-[1080px] px-5 py-10 sm:px-8">
+    <div>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-semibold tracking-tight">관리자</h1>
-          <p className="mt-1 text-[12.5px] text-muted">
+          <p className="text-[12.5px] text-muted">
             회원 {stats.members.total}명 · 무료 {stats.members.byPlan.free ?? 0} · 베이직{" "}
             {stats.members.byPlan.basic ?? 0} · 프로 {stats.members.byPlan.pro ?? 0}
           </p>
@@ -422,12 +421,12 @@ export function AdminDashboard() {
           </ul>
         )}
       </section>
-    </main>
+    </div>
   );
 }
 
 /** 숫자 하나 — 어제와 견줘 늘었는지 줄었는지 함께 보여 준다 */
-function Metric({
+export function Metric({
   label,
   value,
   before,

@@ -1,4 +1,4 @@
-import { searchAssets } from "@/models/assets";
+import { catalogByCategory, searchCatalog } from "@/models/catalog";
 import { createProviders } from "@/ai/providers";
 
 /**
@@ -15,7 +15,15 @@ export async function POST(request: Request) {
   }
 
   const query = (body.query ?? "").trim();
-  const assets = searchAssets(query, Math.min(50, body.limit ?? 12));
+
+  /*
+   * 검색할 때와 그냥 펼칠 때가 다르다.
+   *
+   * 검색은 점수 순으로 잘라도 되지만, 검색어 없이 목록을 펼 때 앞에서부터 자르면
+   * 소파가 한도를 다 먹고 침대·러그가 한 개도 안 보인다. 그때는 분류별로 고르게 담는다.
+   */
+  const limit = Math.min(1000, body.limit ?? 12);
+  const assets = query ? searchCatalog(query, limit) : catalogByCategory(60);
 
   // TODO(pgvector): embedding 검색으로 교체. 지금은 결과 재정렬에 쓰지 않고 계산만 준비해 둔다.
   if (query) {

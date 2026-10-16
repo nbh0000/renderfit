@@ -9,7 +9,6 @@
  */
 
 export type JobType =
-  | "ANALYZE_IMAGE"
   | "SEGMENT_IMAGE"
   | "ESTIMATE_DEPTH"
   | "GENERATE_INTERIOR"
@@ -50,7 +49,6 @@ const globalRef = globalThis as unknown as { __jobQueue?: Map<string, Job> };
 const jobs: Map<string, Job> = globalRef.__jobQueue ?? (globalRef.__jobQueue = new Map());
 
 const JOB_MESSAGES: Record<JobType, string> = {
-  ANALYZE_IMAGE: "공간을 분석하고 있습니다...",
   SEGMENT_IMAGE: "객체를 분리하고 있습니다...",
   ESTIMATE_DEPTH: "깊이를 추정하고 있습니다...",
   GENERATE_INTERIOR: "디자인을 생성하고 있습니다...",

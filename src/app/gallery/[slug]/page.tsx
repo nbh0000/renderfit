@@ -8,12 +8,15 @@ import { bumpViewCount, getPublicResult, memoryGetGallery, type GalleryItem } fr
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { GalleryDeleteButton } from "@/components/gallery/GalleryDeleteButton";
 import { LikeButton } from "@/components/gallery/LikeButton";
+import { CommentSection } from "@/components/gallery/CommentSection";
+import { listComments, memoryListComments, type Comment } from "@/lib/community";
 import { PromptDetails } from "@/components/PromptDetails";
 import { extractUserRequest } from "@/lib/prompt";
 import { ROOM_MAP } from "@/config/rooms";
 import { STYLE_MAP } from "@/config/styles";
 import { BRAND } from "@/config/brand";
 import { getViewerId } from "@/lib/auth";
+import { JsonLd, breadcrumbLd, galleryImageLd } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +30,13 @@ async function loadItem(slug: string, viewerId?: string | null): Promise<Gallery
   return memoryGetGallery(decoded) ?? null;
 }
 
+/** 검색 결과 요약과 구조화 데이터에 같은 문장을 쓴다 */
+function describeItem(item: GalleryItem): string {
+  return `${item.roomLabel || ROOM_MAP[item.roomId]?.label} 공간을 ${
+    item.styleLabel || STYLE_MAP[item.styleId]?.label
+  } 스타일로 만든 인테리어 시안입니다. 구조는 그대로 두고 가구와 마감만 바꿔 만든 참고용 이미지입니다.`;
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -36,9 +46,7 @@ export async function generateMetadata({
   const item = await loadItem(slug);
   if (!item) return { title: "찾을 수 없는 페이지" };
 
-  const description = `${item.roomLabel || ROOM_MAP[item.roomId]?.label} 공간을 ${
-    item.styleLabel || STYLE_MAP[item.styleId]?.label
-  } 스타일로 만든 인테리어 시안입니다. 구조는 그대로 두고 가구와 마감만 바꿔 만든 참고용 이미지입니다.`;
+  const description = describeItem(item);
 
   return {
     title: item.title,
@@ -49,7 +57,14 @@ export async function generateMetadata({
       description,
       type: "article",
       images: item.imageUrl.startsWith("http")
-        ? [{ url: item.imageUrl, width: item.width, height: item.height, alt: item.title }]
+        ? [
+            {
+              url: item.imageUrl,
+              width: item.width,
+              height: item.height,
+              alt: item.title,
+            },
+          ]
         : undefined,
     },
     twitter: {
@@ -60,11 +75,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function GalleryDetailPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function GalleryDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   // 좋아요 표시에 필요한 것은 id 하나다
   const viewerId = await getViewerId();
@@ -72,9 +83,15 @@ export default async function GalleryDetailPage({
   if (!item) notFound();
 
   // 페이지를 연 만큼 조회수를 올린다. 실패해도 화면은 그대로 보여 준다.
+  let comments: Comment[] = memoryListComments(decodeURIComponent(slug));
   if (isSupabaseConfigured()) {
     const supabase = await createServerSupabase();
-    if (supabase) await bumpViewCount(supabase, decodeURIComponent(slug));
+    if (supabase) {
+      [comments] = await Promise.all([
+        listComments(supabase, decodeURIComponent(slug), viewerId),
+        bumpViewCount(supabase, decodeURIComponent(slug)),
+      ]);
+    }
   }
 
   const roomLabel = item.roomLabel || ROOM_MAP[item.roomId]?.label || "공간";
@@ -82,7 +99,27 @@ export default async function GalleryDetailPage({
 
   return (
     <AppShell active="gallery" authed={Boolean(viewerId)}>
-
+      <JsonLd
+        graph={[
+          galleryImageLd({
+            slug: item.slug,
+            title: item.title,
+            description: describeItem(item),
+            imageUrl: item.imageUrl,
+            width: item.width,
+            height: item.height,
+            authorName: item.authorName,
+            createdAt: item.createdAt,
+            roomLabel,
+            styleLabel,
+          }),
+          breadcrumbLd([
+            { name: BRAND.name, path: "/" },
+            { name: "갤러리", path: "/gallery" },
+            { name: item.title, path: `/gallery/${encodeURIComponent(item.slug)}` },
+          ]),
+        ]}
+      />
       <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-6">
         <Link href="/gallery" className="text-[12.5px] text-muted hover:text-ink">
           ← 갤러리
@@ -133,9 +170,9 @@ export default async function GalleryDetailPage({
         />
 
         <p className="mt-5 text-[14px] leading-relaxed text-ink-soft">
-          {roomLabel} 공간을 {styleLabel} 스타일로 바꾼 시안입니다. 벽·창문·문의 위치와 카메라 앵글은
-          원본 그대로 두고, 가구와 마감재만 새로 구성했습니다. 같은 방식으로 내 공간 사진이나 도면을
-          올리면 몇 분 안에 시안을 받아볼 수 있습니다.
+          {roomLabel} 공간을 {styleLabel} 스타일로 바꾼 시안입니다. 벽·창문·문의 위치와 카메라
+          앵글은 원본 그대로 두고, 가구와 마감재만 새로 구성했습니다. 같은 방식으로 내 공간 사진이나
+          도면을 올리면 몇 분 안에 시안을 받아볼 수 있습니다.
         </p>
 
         <div className="mt-6 flex flex-wrap gap-2">
@@ -153,8 +190,15 @@ export default async function GalleryDetailPage({
           </Link>
         </div>
 
+        <CommentSection
+          slug={item.slug}
+          initial={comments}
+          authed={Boolean(viewerId) || !isSupabaseConfigured()}
+        />
+
         <p className="mt-8 text-[12px] leading-relaxed text-muted">
-          AI가 생성한 참고용 시안입니다. 실제 시공 도면이 아니며, 치수와 마감은 현장 실측을 따라야 합니다.
+          AI가 생성한 참고용 시안입니다. 실제 시공 도면이 아니며, 치수와 마감은 현장 실측을 따라야
+          합니다.
         </p>
       </main>
     </AppShell>

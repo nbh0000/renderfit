@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getViewer } from "@/lib/auth";
 import { hasAdmins, isAdminEmail } from "@/lib/admin";
-import { AdminDashboard } from "@/components/admin/AdminDashboard";
+import { Suspense } from "react";
+import { AdminPanel } from "@/components/admin/AdminPanel";
 
 export const metadata: Metadata = {
   title: "관리자",
@@ -23,5 +24,10 @@ export default async function AdminPage() {
   const viewer = await getViewer();
   if (!isAdminEmail(viewer.authEmail)) notFound();
 
-  return <AdminDashboard />;
+  // useSearchParams 를 쓰는 클라이언트 컴포넌트는 Suspense 안에 있어야 한다
+  return (
+    <Suspense fallback={null}>
+      <AdminPanel />
+    </Suspense>
+  );
 }

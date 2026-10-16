@@ -9,6 +9,9 @@ import { levelsOf } from "@/scene/geometry";
  * 복층이나 다락을 다루려면 "지금 몇 층을 그리고 있는지"가 화면에 늘 보여야 한다.
  * 도면 위쪽에 탭으로 두고, 층을 바꾸면 평면도는 그 층만 진하게 그리고
  * 바로 아래 층을 옅게 비춘다.
+ *
+ * 띠(테두리·배경)는 CanvasTopBar 가 갖는다 — 보기 전환과 같은 줄에 앉아야 해서,
+ * 여기서 또 테두리를 그리면 줄이 두 겹으로 그어진다.
  */
 export function LevelTabs() {
   const scene = useEditorStore((state) => state.scene);
@@ -36,7 +39,7 @@ export function LevelTabs() {
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-0.5 border-b border-line bg-surface px-2 py-1">
+    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
       {levels.map((level) => {
         const selected = level.id === active;
         return (

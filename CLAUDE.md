@@ -8,14 +8,19 @@ Next.js 16 + Supabase + Gemini, Railway에 `main` 푸시로 배포된다.
 ## 어디에 무엇이 있나
 
 ```
+packages/plan-schema/   FloorPlanDoc — 도면이 들어오는 세 경로가 모두 수렴하는 스키마
+services/plan-ingest/   도면 파싱 (Python). ezdxf 파서·벡터화·라벨러가 여기 있다
 scene/            도면·3D의 자료 구조와 계산 (순수 함수 — 여기가 시험 대상이다)
   engine/         SceneEngine — 모든 편집이 지나가는 곳. operation으로 기록돼 되돌리기가 된다
-  planRepair.ts   스캔한 평면을 상식으로 다듬는다 (규격·겹침·치수선)
+  planDoc.ts      FloorPlanDoc ↔ Scene 어댑터
+  planPolygonize.ts  벽 → 방 폴리곤·면적 (파이썬 shapely 와 답이 같아야 한다)
+  planEdit.ts     검수 화면의 편집 도구 (전부 순수 함수)
   placement.ts    좌표 규칙. 평면 좌표 ↔ 3D 좌표 변환이 전부 여기 모여 있다
-ai/providers/     Gemini 호출. vision.ts가 사진·도면을 도면 좌표로 옮긴다
+ai/providers/     Gemini 호출 (이미지 생성·렌더·가구 규격). 도면 좌표는 여기서 나오지 않는다
 ai/tools/         편집 도구 목록. 편집기와 AI 명령이 같은 도구를 쓴다
-services/         프로젝트 불러오기·저장·백그라운드 잡
+services/         프로젝트 불러오기·저장·백그라운드 잡, 도면 들여오기
 src/components/editor/  편집기 화면 (평면도·3D·속성·에셋)
+src/components/plan/    도면 검수 화면 (/plan/[jobId]/review)
 src/lib/          클라이언트 상태(store.ts), 크레딧, 결제
 supabase/         스키마와 마이그레이션 (사람이 SQL Editor에서 실행한다)
 ```
@@ -32,9 +37,12 @@ supabase/         스키마와 마이그레이션 (사람이 SQL Editor에서 �
 **드래그는 손을 뗄 때 한 번만 보낸다.** 예전에 pointermove마다 서버로 보내 되돌리기가
 스무 칸씩 쌓였다. `runTool`의 `{ send: false }`로 끄는 동안은 화면만 바꾼다.
 
-**AI 결과를 그대로 믿지 않는다.** 모델은 같은 입력에도 다르게 답한다. 돌려받은 값은
-`scene/planRepair.ts`에서 표준 규격·방 크기·서로 간의 간격으로 한 번 걸러 앉힌다.
-프롬프트만으로 고치려 들면 끝이 없다.
+**기하는 LLM 이 만들지 않는다.** 그림을 비전 모델에 넣어 좌표 JSON 을 받던 구조는
+폐기했다 — 모델은 좌표를 측정하지 못하고 추측한다. 벽·문·창·방 폴리곤은 DXF 파서와
+전용 벡터화 모델만 만들고, LLM 은 확정된 기하 위에 방 이름과 설비 종류만 붙인다.
+
+**자동 결과는 확정하지 않는다.** 들여온 도면은 `review.status`가 `"confirmed"`가 되기
+전에는 편집기·3D 로 넘어가지 않는다. 사람이 `/plan/[jobId]/review` 를 지나야 한다.
 
 **유료 API를 검증에 쓰지 않는다.** 호출 하나하나가 사용자 돈이다. 후처리는 고정
 자료로 시험하고, 화면 확인은 이미 만들어 둔 프로젝트를 연다.

@@ -88,6 +88,14 @@ export interface PlanData {
   finishes: { floor: string | null; wall: string | null; ceiling: string | null };
   /** 재질 id → 사람이 읽는 이름 (실별 바닥 마감을 풀어 쓰는 데 쓴다) */
   materialNames: Record<string, string>;
+  /**
+   * 통칸(구조) 격자 — 치수선에서 읽어 낸 칸 경계 (mm).
+   *
+   * 실제 건축 평면도는 이 격자를 뼈대로 그린다. 도면 위아래에 Ⓐ Ⓑ Ⓒ, 좌우에 ① ② ③
+   * 부호를 달고 일점쇄선을 그어 두면, 시공자가 "Ⓑ열 ②행" 으로 자리를 말할 수 있다.
+   * 우리는 이미 치수 체인에서 이 격자를 읽어 두고도 도면에 안 그리고 있었다.
+   */
+  grid?: { x: number[]; y: number[] } | null;
   createdAt: string;
 }
 
@@ -153,6 +161,8 @@ export function toPlanData(scene: Scene, projectName: string): PlanData {
     electrical: room.electrical ?? [],
     annotations: room.annotations ?? [],
     areas: room.areas ?? [],
+    // 밑그림에 담아 둔 통칸 격자 (치수 체인에서 읽은 것)
+    grid: room.underlay?.gridMm ?? null,
     createdAt: new Date().toISOString(),
   };
 }
@@ -666,7 +676,11 @@ function doorSymbol(
 
 export function buildPlanSvg(plan: PlanData): string {
   // 사방 치수줄(안쪽 420 · 바깥 900)과 글자가 잘리지 않을 만큼 여백을 둔다.
-  const margin = 1500;
+  /*
+   * 사방 치수줄이 세 단(세부·통칸·전체)이고 그 바깥에 통칸 부호 원이 붙는다.
+   * 여백이 모자라면 부호가 그림 밖으로 잘려 나간다.
+   */
+  const margin = 3000;
   const W = plan.roomWidth;
   const L = plan.roomLength;
 
@@ -677,7 +691,14 @@ export function buildPlanSvg(plan: PlanData): string {
    * 뚫고 나가고 마감재 일람표는 그림 밖으로 잘려 나갔다. 표가 몇 줄인지는 도면마다
    * 다르므로 높이를 세어서 자리를 잡는다.
    */
-  const TABLE_TOP = L + 1000;
+  /*
+   * 일람표는 사방 치수줄과 통칸 부호 **아래**에서 시작해야 한다.
+   *
+   * 예전에는 도면 아래 1000mm 에 붙였는데, 치수줄이 세 단으로 늘고 그 바깥에 통칸
+   * 부호 원이 붙으면서 창호일람표 위로 부호가 겹쳐 찍혔다. 표의 첫 줄이 원에 가려
+   * 읽히지 않았다.
+   */
+  const TABLE_TOP = L + 2700;
   const ROW_H = 190;
   const openingRows = plan.walls.reduce((sum, wall) => sum + (wall.openings?.length ?? 0), 0);
   const finishCount = plan.areas.length || 1;
@@ -922,8 +943,15 @@ ${rows.join("\n")}
    * 안쪽 줄은 벽–개구부–벽으로 끊은 구간 치수, 바깥 줄은 전체 치수다.
    * 시공자가 도면 한 장만 보고 먹매김을 할 수 있어야 하므로 두 단을 함께 그린다.
    */
+  /*
+   * 바깥으로 가면서 세부 → 통칸 → 전체 순이다. 실제 도면과 같은 순서다 —
+   * 가장 안쪽이 문·벽으로 끊은 잔 치수, 가운데가 구조 통칸, 바깥이 전체 길이.
+   */
   const chainGap = 420;
-  const chainOuter = 900;
+  const gridGap = 950;
+  const chainOuter = 1480;
+  /** 통칸 부호 원의 중심까지 */
+  const bubbleGap = 1980;
 
   /** 한 변의 구간 분할점 — 그 변에 붙은 벽의 개구부에서 뽑는다 */
   const splitPoints = (
@@ -1015,14 +1043,64 @@ ${rows.join("\n")}
   const westPoints = splitPoints((wall) => wall.start[0] === 0 && wall.end[0] === 0, 1, L);
   const eastPoints = splitPoints((wall) => wall.start[0] === W && wall.end[0] === W, 1, L);
 
+  /*
+   * 통칸(구조) 격자.
+   *
+   * 치수 체인에서 읽은 칸 경계가 있으면 실제 도면처럼 그린다 — 일점쇄선을 도면 전체에
+   * 긋고, 위·아래에 Ⓐ Ⓑ Ⓒ, 좌·우에 ① ② ③ 부호를 달고, 통칸 치수를 한 단 더 넣는다.
+   * 격자가 없는 도면(치수선 없는 스케치)에서는 아무것도 안 그린다 — 없는 뼈대를
+   * 그려 넣으면 그건 다른 도면이다.
+   */
+  const gridX = (plan.grid?.x ?? []).filter((value) => value >= -1 && value <= W + 1);
+  const gridY = (plan.grid?.y ?? []).filter((value) => value >= -1 && value <= L + 1);
+  const hasGrid = gridX.length >= 2 && gridY.length >= 2;
+
+  /** 통칸 부호 하나 — 원과 글자 */
+  const bubble = (x: number, y: number, label: string): string =>
+    [
+      `    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="240" fill="#ffffff" stroke="#26231f" stroke-width="16"/>`,
+      `    <text x="${x.toFixed(1)}" y="${(y + 66).toFixed(1)}" font-size="180" text-anchor="middle" stroke="none" fill="#26231f">${label}</text>`,
+    ].join("\n");
+
+  /** 열 부호는 알파벳, 행 부호는 숫자 (건축 도면 관행) */
+  const columnLabel = (index: number) => String.fromCharCode(65 + (index % 26));
+  const rowLabel = (index: number) => String(index + 1);
+
+  const gridSvg = hasGrid
+    ? [
+        /* 일점쇄선 — 도면을 가로지르는 구조선 */
+        ...gridX.map(
+          (x) =>
+            `    <line x1="${x}" y1="${(-bubbleGap + 240).toFixed(1)}" x2="${x}" y2="${(L + bubbleGap - 240).toFixed(1)}" stroke="#9aa4b0" stroke-width="8" stroke-dasharray="260 70 50 70"/>`
+        ),
+        ...gridY.map(
+          (y) =>
+            `    <line x1="${(-bubbleGap + 240).toFixed(1)}" y1="${fy(y).toFixed(1)}" x2="${(W + bubbleGap - 240).toFixed(1)}" y2="${fy(y).toFixed(1)}" stroke="#9aa4b0" stroke-width="8" stroke-dasharray="260 70 50 70"/>`
+        ),
+        /* 부호 — 위·아래에 열, 왼쪽·오른쪽에 행 */
+        ...gridX.flatMap((x, index) => [
+          bubble(x, -bubbleGap, columnLabel(index)),
+          bubble(x, L + bubbleGap, columnLabel(index)),
+        ]),
+        ...gridY.flatMap((y, index) => [
+          bubble(-bubbleGap, fy(y), rowLabel(index)),
+          bubble(W + bubbleGap, fy(y), rowLabel(index)),
+        ]),
+      ].join("\n")
+    : "";
+
   const dimensionChain = [
     horizontalChain(southPoints, L + chainGap),
+    hasGrid ? horizontalChain(gridX, L + gridGap) : "",
     horizontalChain([0, W], L + chainOuter),
     horizontalChain(northPoints, -chainGap + 40),
+    hasGrid ? horizontalChain(gridX, -gridGap + 40) : "",
     horizontalChain([0, W], -chainOuter + 40),
     verticalChain(westPoints, -chainGap),
+    hasGrid ? verticalChain(gridY, -gridGap) : "",
     verticalChain([0, L], -chainOuter),
     verticalChain(eastPoints, W + chainGap),
+    hasGrid ? verticalChain(gridY, W + gridGap) : "",
     verticalChain([0, L], W + chainOuter),
   ]
     .filter(Boolean)
@@ -1247,14 +1325,19 @@ ${wholeLabel}
     <text x="${-margin + 300}" y="${-margin + 780}" font-size="110" text-anchor="middle" stroke="none">N</text>
   </g>
   <g stroke="#26231f" stroke-width="12" fill="#26231f" font-family="Pretendard, sans-serif">
-    <line x1="${W - 1000}" y1="${-margin + 500}" x2="${W}" y2="${-margin + 500}"/>
-    <line x1="${W - 1000}" y1="${-margin + 440}" x2="${W - 1000}" y2="${-margin + 560}"/>
-    <line x1="${W - 500}" y1="${-margin + 460}" x2="${W - 500}" y2="${-margin + 540}"/>
-    <line x1="${W}" y1="${-margin + 440}" x2="${W}" y2="${-margin + 560}"/>
-    <text x="${W - 500}" y="${-margin + 700}" font-size="96" text-anchor="middle" stroke="none">1 m</text>
+    <line x1="${W - 1000}" y1="${-margin + 300}" x2="${W}" y2="${-margin + 300}"/>
+    <line x1="${W - 1000}" y1="${-margin + 240}" x2="${W - 1000}" y2="${-margin + 360}"/>
+    <line x1="${W - 500}" y1="${-margin + 260}" x2="${W - 500}" y2="${-margin + 340}"/>
+    <line x1="${W}" y1="${-margin + 240}" x2="${W}" y2="${-margin + 360}"/>
+    <text x="${W - 500}" y="${-margin + 500}" font-size="96" text-anchor="middle" stroke="none">1 m</text>
   </g>
 
-  <!-- 치수 (바깥 둘레) -->
+  <!-- 통칸(구조) 격자 — 일점쇄선과 Ⓐ ① 부호 -->
+  <g font-family="Pretendard, sans-serif">
+${gridSvg}
+  </g>
+
+  <!-- 치수 (바깥 둘레) — 안에서 바깥으로 세부 · 통칸 · 전체 -->
   <g stroke="#8a8a8a" stroke-width="12" fill="#8a8a8a" font-size="110">
 ${dimensionChain}
   </g>

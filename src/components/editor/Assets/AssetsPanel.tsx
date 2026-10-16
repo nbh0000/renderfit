@@ -171,6 +171,26 @@ function AssetsTab() {
   );
 }
 
+/**
+ * 패널이 아는 것을 그대로 실어 보낸다.
+ *
+ * Poly Pizza 모델 2천여 종은 서버 카탈로그에만 있어서 브라우저의 add_object 는 그 id 를
+ * 찾지 못한다. 그런데 목록을 그린 시점에 우리는 이미 모델 URL·치수·저작자 표시를
+ * 들고 있다 — 같이 보내면 조회가 필요 없다.
+ */
+function addArgs(asset: Asset): Record<string, unknown> {
+  return {
+    assetId: asset.id,
+    type: asset.type,
+    name: asset.name,
+    modelUrl: asset.modelUrl ?? undefined,
+    attribution: asset.attribution ?? undefined,
+    widthMm: asset.dimensions.width,
+    heightMm: asset.dimensions.height,
+    depthMm: asset.dimensions.depth,
+  };
+}
+
 function AssetGrid({
   assets,
   onAdd,
@@ -187,13 +207,17 @@ function AssetGrid({
             draggable
             onDragStart={(event) => {
               event.dataTransfer.setData("text/asset-id", asset.id);
+              /* 캔버스에 떨어뜨릴 때도 같은 정보가 필요하다 */
+              event.dataTransfer.setData("application/asset", JSON.stringify(addArgs(asset)));
               event.dataTransfer.effectAllowed = "copy";
             }}
-            onClick={() =>
-              onAdd("add_object", { assetId: asset.id, type: asset.type, name: asset.name })
-            }
+            onClick={() => onAdd("add_object", addArgs(asset))}
             className="group w-full cursor-grab rounded-md border border-line p-1 text-left transition-colors hover:border-line-strong hover:bg-sunken active:cursor-grabbing"
-            title={`${asset.name} — 클릭해서 추가하거나 3D 뷰로 끌어다 놓으세요`}
+            title={
+              asset.attribution
+                ? `${asset.name} — ${asset.attribution}`
+                : `${asset.name} — 클릭해서 추가하거나 3D 뷰로 끌어다 놓으세요`
+            }
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -205,6 +229,7 @@ function AssetGrid({
             <p className="mt-1 truncate text-[11px]">{asset.name}</p>
             <p className="truncate text-[10px] text-muted">
               {asset.dimensions.width}×{asset.dimensions.depth}mm
+              {asset.license ? ` · ${asset.license}` : ""}
             </p>
           </button>
         </li>
@@ -414,12 +439,6 @@ function AIToolsTab() {
 
   const tools = useMemo(
     () => [
-      {
-        label: "공간 다시 분석",
-        description: "사진에서 객체와 깊이를 다시 인식합니다.",
-        disabled: !hasImage,
-        run: () => startJob("/analyze"),
-      },
       {
         label: "현재 스타일로 재생성",
         description: "Scene 구성을 유지한 채 이미지를 다시 만듭니다.",

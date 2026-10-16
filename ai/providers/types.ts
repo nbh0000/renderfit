@@ -16,135 +16,17 @@ export interface ImageRef {
   kind?: "photo" | "floorplan";
 }
 
-/* ── Vision ── */
-
-export interface DetectedObject {
-  type: SceneObject["type"];
-  name: string;
-  /** 0~1 정규화 [x, y, width, height] */
-  bbox: [number, number, number, number];
-  maskUrl: string | null;
-  depth: number;
-  material: string | null;
-  color: string | null;
-  confidence: number;
-  /** mm 추정 치수 */
-  dimensions?: { width: number; height: number; depth: number };
-}
-
-/* ── 사진에서 복원한 평면 ── */
-
-/**
- * 사진 한 장에서 읽어 낸 평면도.
+/*
+ * ── Vision provider 는 없앴다 ──
  *
- * 예전에는 화면 좌표 bbox와 depthRatio 하나만 받아서 우리가 평면으로 되돌렸는데,
- * 그 역투영이 원리적으로 불가능했다 — 카메라에서 멀어지며 늘어선 유리 칸막이벽은
- * 사진 속 폭이 실제 길이와 아무 상관이 없고, 깊이 하나로는 깊게 뻗은 물체를 못 담는다.
- * 그래서 모델에게 처음부터 "도면 좌표(mm)"로 답하게 한다.
+ * 그림을 비전 모델에 넣어 좌표 JSON(RoomAnalysis·RoomPlan)을 받던 구조를 폐기했다.
+ * 비전 LLM 은 기하를 측정하지 못하고 추측한다 — 방이 빠지고, 면적이 뒤바뀌고, 벽이
+ * 끊기고, 설비가 사라졌다.
  *
- * 좌표: 원점은 방의 좌측 하단, x는 오른쪽(+), y는 안쪽(+), 단위는 mm.
+ * 지금은 기하를 DXF 파서와 전용 벡터화 모델만 만들고(services/plan-ingest), 결과는
+ * FloorPlanDoc(packages/plan-schema) 하나로 수렴한다. LLM 은 확정된 기하 위에 실
+ * 이름과 설비 종류만 붙인다.
  */
-export interface PlanPoint {
-  x: number;
-  y: number;
-}
-
-export interface PlanOpening {
-  kind: "door" | "window" | "glass-partition" | "opening";
-  name: string;
-  /** 벽 시작점에서 개구부 왼쪽 끝까지 (mm) */
-  offsetMm: number;
-  widthMm: number;
-  heightMm: number;
-  /** 바닥에서 개구부 아래쪽까지 (mm) */
-  sillMm: number;
-}
-
-/**
- * 벽 한 장.
- *
- * 예전에는 외곽선의 변과 1:1이라 방을 하나밖에 못 그렸다. 아파트를 담으려면
- * 거실과 방 사이를 가르는 내벽이 있어야 하므로, 벽을 외곽선에서 떼어 내
- * 좌표를 직접 갖는 선분으로 둔다.
- */
-export interface PlanWall {
-  name: string;
-  start: PlanPoint;
-  end: PlanPoint;
-  thicknessMm: number;
-  openings: PlanOpening[];
-}
-
-/** 실(방) 하나 — 이름과 경계 폴리곤 */
-export interface PlanRoom {
-  name: string;
-  type: string;
-  polygon: PlanPoint[];
-  /**
-   * 도면에 치수선으로 적혀 있던 안목 폭·깊이 (mm).
-   *
-   * 도면에서 가장 믿을 만한 숫자다. 있으면 이 값이 그림보다 앞선다.
-   * 없으면 null이고, 그때는 그림에서 읽은 폴리곤을 그대로 쓴다.
-   */
-  printedWidthMm?: number | null;
-  printedDepthMm?: number | null;
-}
-
-export interface PlanFurniture {
-  type: SceneObject["type"];
-  name: string;
-  /** 평면상의 중심 (mm) */
-  xMm: number;
-  yMm: number;
-  /** 0도는 정면이 카메라 쪽(y가 작아지는 방향)을 보는 상태 — placement의 ROTATION_BY_SIDE와 같은 규칙 */
-  rotationDeg: number;
-  widthMm: number;
-  depthMm: number;
-  heightMm: number;
-  /** 바닥에서 물체 아래쪽까지 (mm) — 천장등·벽걸이의 높이 */
-  elevationMm: number;
-  mountedOn: "floor" | "wall" | "ceiling";
-  material: string | null;
-  color: string | null;
-  /**
-   * 평면에서 실제로 차지하는 모양 (-0.5~0.5 자기 좌표계).
-   * 네모면 null 이다 — scene/footprint.ts 참고.
-   */
-  footprint?: [number, number][] | null;
-}
-
-export interface RoomPlan {
-  roomType: string;
-  ceilingHeightMm: number;
-  /** 사진에서 읽은 바닥·벽·천장 마감 (한국어 한 마디). 카탈로그 재질로 옮겨 붙인다 */
-  finishes?: { floor: string | null; wall: string | null; ceiling: string | null };
-  /** 사진을 찍은 카메라가 등지고 있는 벽 번호 — 0이어야 도면 방향이 사진과 맞는다 */
-  cameraWallIndex: number;
-  /** 전체 바닥 외곽선 (반시계). 방 여러 개를 통틀어 감싸는 경계다 */
-  outline: PlanPoint[];
-  /** 실 목록. 원룸이면 하나, 아파트면 거실·방·주방·욕실이 각각 들어온다 */
-  rooms: PlanRoom[];
-  /** 외벽과 내벽을 통틀어. 좌표를 직접 갖는 선분이다 */
-  walls: PlanWall[];
-  furniture: PlanFurniture[];
-}
-
-export interface RoomAnalysis {
-  roomType: string;
-  /** mm */
-  roomDimensions: { width: number; length: number; height: number };
-  objects: DetectedObject[];
-  styleGuess: string | null;
-  /** 조명 방향 추정 */
-  lightDirection: [number, number, number];
-  /** 사진에서 복원한 평면. 있으면 이 값으로 방을 세운다 (없으면 objects로 물러난다) */
-  plan?: RoomPlan | null;
-}
-
-export interface VisionProvider {
-  readonly name: string;
-  analyzeRoom(image: ImageRef): Promise<RoomAnalysis>;
-}
 
 /* ── Segmentation ── */
 
@@ -271,7 +153,6 @@ export interface RenderingProvider {
 /* ── Registry ── */
 
 export interface AIProviders {
-  vision: VisionProvider;
   segmentation: SegmentationProvider;
   depth: DepthProvider;
   generation: GenerationProvider;

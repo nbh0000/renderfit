@@ -288,6 +288,48 @@ export interface RoomArea {
   color?: string;
   /** 평면도에 면적을 적을지 */
   showArea?: boolean;
+  /**
+   * 치수 체인 격자에 딱 맞지 않는 실인가.
+   *
+   * 발코니 확장부나 사선으로 잘린 구석처럼 칸 경계와 어긋나는 실이 있다. 좌표가
+   * 근사라서, AI 교정에게 "여기는 크게 고치지 마라"고 알려 주는 데 쓴다 — 안 알려
+   * 주면 맞출 수 없는 자리를 라운드마다 되풀이해서 만진다.
+   */
+  offGrid?: boolean;
+}
+
+/**
+ * 평면 편집기 밑그림 — 원본 도면 이미지를 평면 좌표에 맞춘 변환.
+ *
+ * 우리가 읽어 낸 도면이 틀렸을 때 사용자가 고칠 방법이 있어야 한다. 원본을 뒤에
+ * 반투명으로 깔아 두면, 벽 하나를 끌어 선에 맞추는 것으로 끝난다 — 모든 CAD 가
+ * 스캔 도면을 이렇게 다룬다.
+ *
+ * Scene 에 저장한다. 맞춰 놓은 자리가 새로고침에 날아가면 다시 맞출 사람이 없다.
+ */
+export interface Underlay {
+  /**
+   * 이미지 픽셀 (0,0) 이 놓이는 평면 좌표 (mm).
+   *
+   * 이미지 픽셀은 왼쪽 위가 (0,0) 이고 평면은 아래가 0 이라, 이 값은 이미지의
+   * **왼쪽 위** 모서리다. 계산은 전부 scene/underlay.ts 에 모아 두었다.
+   */
+  originMm: [number, number];
+  /** 픽셀당 mm */
+  mmPerPixel: number;
+  /** 라디안. 스캔이 기울었을 때만 쓴다 */
+  rotation: number;
+  opacity: number;
+  visible: boolean;
+  /** true 면 드래그해도 밑그림이 안 움직인다 — 다 맞춘 뒤 실수로 미는 것을 막는다 */
+  locked: boolean;
+  /**
+   * 도면에 그어진 칸 경계 (mm). 벽 끝점을 끌 때 여기에 붙는다.
+   *
+   * 치수 체인에서 읽어 낸 격자라 도면에 실제로 있는 선이다.
+   * 없으면 스냅하지 않는다 — 없는 선에 붙이는 것은 도면을 고치는 일이다.
+   */
+  gridMm?: { x: number[]; y: number[] } | null;
 }
 
 export interface RoomSpec {
@@ -316,6 +358,8 @@ export interface RoomSpec {
    * 여기에 분명히 적어 둔다.
    */
   finishes?: { floor?: string | null; wall?: string | null; ceiling?: string | null };
+  /** 원본 도면을 평면 뒤에 깔아 둔 밑그림. 없으면 안 깔린 것이다 */
+  underlay?: Underlay | null;
 }
 
 export interface CameraSpec {
@@ -466,6 +510,12 @@ export interface Asset {
   tags: string[];
   /** pgvector 확장 대비. 현재는 키워드 검색 fallback */
   embedding: number[] | null;
+  /** CC-BY 모델의 저작자 표시 문구 — 배치할 때 객체에 함께 저장한다 */
+  attribution?: string | null;
+  /** CC0 / CC-BY 3.0 등 */
+  license?: string | null;
+  /** 원본 페이지 */
+  sourceUrl?: string | null;
 }
 
 /* ─────────────────────────── Project ─────────────────────────── */

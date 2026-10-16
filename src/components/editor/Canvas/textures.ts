@@ -26,8 +26,22 @@ export function onTextureReady(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/*
+ * 도착 알림을 묶는다.
+ *
+ * 사진 마감재는 map·normal·arm 세 장이 거의 동시에 온다. 한 장마다 알리면 화면이
+ * 세 번 다시 계산되고, 절차적 텍스처에서 사진으로 바뀌는 것도 세 번 나눠 보인다.
+ * 마지막 도착 후 잠깐 기다렸다가 한 번만 알린다.
+ */
+const NOTIFY_DEBOUNCE_MS = 50;
+let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+
 function notifyReady(): void {
-  for (const listener of listeners) listener();
+  if (notifyTimer !== null) clearTimeout(notifyTimer);
+  notifyTimer = setTimeout(() => {
+    notifyTimer = null;
+    for (const listener of listeners) listener();
+  }, NOTIFY_DEBOUNCE_MS);
 }
 
 function makeCanvas(size = 512): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
@@ -37,11 +51,27 @@ function makeCanvas(size = 512): { canvas: HTMLCanvasElement; ctx: CanvasRenderi
   return { canvas, ctx: canvas.getContext("2d")! };
 }
 
-function finish(canvas: HTMLCanvasElement, repeat: number): THREE.Texture {
+/**
+ * 반복 수 — 숫자 하나면 가로세로 같게, 배열이면 따로.
+ *
+ * 10×4m 방에 정사각 반복을 주면 타일이 한 방향으로 늘어난다. 면의 실제 비율을
+ * 그대로 주려면 두 축을 따로 받아야 한다.
+ */
+export type Repeat = number | [number, number];
+
+function repeatXY(repeat: Repeat): [number, number] {
+  return typeof repeat === "number" ? [repeat, repeat] : repeat;
+}
+
+/** 스치듯 볼 때의 선명도를 좌우한다 — 걷기 모드에서 바닥을 볼 때가 그렇다 */
+const DEFAULT_ANISOTROPY = 8;
+
+function finish(canvas: HTMLCanvasElement, repeat: Repeat): THREE.Texture {
+  const [rx, ry] = repeatXY(repeat);
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(repeat, repeat);
-  texture.anisotropy = 8;
+  texture.repeat.set(rx, ry);
+  texture.anisotropy = DEFAULT_ANISOTROPY;
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
@@ -53,8 +83,8 @@ function shade(hex: string, amount: number): string {
 }
 
 /** 나뭇결 */
-export function woodTexture(baseColor: string, repeat = 2): THREE.Texture {
-  const key = `wood:${baseColor}:${repeat}`;
+export function woodTexture(baseColor: string, repeat: Repeat = 2): THREE.Texture {
+  const key = `wood:${baseColor}:${repeatXY(repeat).join("x")}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -88,8 +118,8 @@ export function woodTexture(baseColor: string, repeat = 2): THREE.Texture {
 }
 
 /** 패브릭 위브 */
-export function fabricTexture(baseColor: string, repeat = 8): THREE.Texture {
-  const key = `fabric:${baseColor}:${repeat}`;
+export function fabricTexture(baseColor: string, repeat: Repeat = 8): THREE.Texture {
+  const key = `fabric:${baseColor}:${repeatXY(repeat).join("x")}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -116,8 +146,8 @@ export function fabricTexture(baseColor: string, repeat = 8): THREE.Texture {
 }
 
 /** 대리석 / 석재 */
-export function stoneTexture(baseColor: string, repeat = 1): THREE.Texture {
-  const key = `stone:${baseColor}:${repeat}`;
+export function stoneTexture(baseColor: string, repeat: Repeat = 1): THREE.Texture {
+  const key = `stone:${baseColor}:${repeatXY(repeat).join("x")}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -146,8 +176,8 @@ export function stoneTexture(baseColor: string, repeat = 1): THREE.Texture {
 }
 
 /** 벽 도장 (미세 요철) */
-export function paintTexture(baseColor: string, repeat = 3): THREE.Texture {
-  const key = `paint:${baseColor}:${repeat}`;
+export function paintTexture(baseColor: string, repeat: Repeat = 3): THREE.Texture {
+  const key = `paint:${baseColor}:${repeatXY(repeat).join("x")}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -174,14 +204,25 @@ export function paintTexture(baseColor: string, repeat = 3): THREE.Texture {
  */
 const fileCache = new Map<string, THREE.Texture>();
 
+/**
+ * 원본 텍스처 — 파일 하나에 하나뿐이다.
+ *
+ * 전에는 반복 수까지 캐시 키에 넣었다. 그래서 같은 벽지 사진이라도 벽마다 길이가
+ * 달라 반복 수가 달라지면 그 수만큼 새로 내려받았다 — 벽 스무 개짜리 도면이면
+ * 700KB 짜리 사진을 스무 번 받았다.
+ *
+ * 반복은 텍스처 자체의 성질이 아니라 "이 면에 어떻게 붙이느냐"의 문제다. 그래서
+ * 원본은 URL 하나에 하나만 두고, 면마다 다른 반복은 `tiledTexture` 가 사본으로
+ * 만든다. 사본은 GPU 이미지를 원본과 함께 쓰므로 메모리도 늘지 않는다.
+ */
 export function imageTexture(
   url: string,
-  options: { srgb?: boolean; repeat?: number } = {}
+  options: { srgb?: boolean } = {}
 ): THREE.Texture | undefined {
   if (typeof document === "undefined") return undefined;
 
-  const { srgb = true, repeat = 1 } = options;
-  const key = `${url}:${srgb}:${repeat}`;
+  const { srgb = true } = options;
+  const key = `${url}:${srgb}`;
   const hit = fileCache.get(key);
 
   /*
@@ -195,13 +236,73 @@ export function imageTexture(
 
   const texture = new THREE.TextureLoader().load(url, notifyReady);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(repeat, repeat);
-  texture.anisotropy = 8;
+  texture.anisotropy = DEFAULT_ANISOTROPY;
   if (srgb) texture.colorSpace = THREE.SRGBColorSpace;
 
   fileCache.set(key, texture);
   // 방금 만든 것은 아직 이미지가 없다 — 도착할 때까지는 절차적 텍스처에 맡긴다.
   return texture.image ? texture : undefined;
+}
+
+/** 면마다 다른 반복·오프셋으로 만든 사본들 */
+const tileCache = new Map<string, THREE.Texture>();
+
+export interface TileOptions {
+  srgb?: boolean;
+  /** 가로 반복 수 (면 폭 ÷ 텍스처 한 장이 덮는 실제 크기) */
+  repeatX?: number;
+  /** 세로 반복 수 */
+  repeatY?: number;
+  /**
+   * 가로 오프셋.
+   *
+   * 벽이 문으로 잘려 조각이 여러 개가 되면, 조각마다 무늬가 0에서 다시 시작해
+   * 문 양옆의 벽지 줄이 어긋난다. 조각이 벽의 어디서 시작하는지를 넣어 주면 이어진다.
+   */
+  offsetX?: number;
+  offsetY?: number;
+  /** 스치듯 볼 때의 선명도. 3단계에서 gl.capabilities.getMaxAnisotropy() 를 넘길 수 있다 */
+  anisotropy?: number;
+}
+
+/**
+ * 원본 하나에서 이 면에 맞게 반복·오프셋을 준 사본.
+ *
+ * 아직 원본이 안 왔으면 undefined — 부르는 쪽이 절차적 텍스처로 먼저 채운다.
+ * 같은 (URL·반복·오프셋) 조합은 늘 같은 객체를 돌려준다. 머티리얼이 매 프레임
+ * 새 텍스처를 물지 않아야 셰이더가 다시 컴파일되지 않는다.
+ */
+export function tiledTexture(url: string, options: TileOptions = {}): THREE.Texture | undefined {
+  const {
+    srgb = true,
+    repeatX = 1,
+    repeatY = 1,
+    offsetX = 0,
+    offsetY = 0,
+    anisotropy = DEFAULT_ANISOTROPY,
+  } = options;
+
+  // 부르는 것만으로 내려받기가 시작된다. 아직이면 이번에는 없는 셈 친다.
+  const original = imageTexture(url, { srgb });
+  if (!original) return undefined;
+
+  const key = `${url}:${srgb}:${repeatX}:${repeatY}:${offsetX}:${offsetY}:${anisotropy}`;
+  const hit = tileCache.get(key);
+  if (hit) return hit;
+
+  /*
+   * clone 은 `source`(실제 이미지)를 원본과 함께 쓴다. 그래서 사본을 몇 개 만들어도
+   * GPU 에 올라가는 이미지는 하나뿐이고, 달라지는 것은 반복·오프셋 같은 uniform 뿐이다.
+   */
+  const tile = original.clone();
+  tile.wrapS = tile.wrapT = THREE.RepeatWrapping;
+  tile.repeat.set(repeatX, repeatY);
+  tile.offset.set(offsetX, offsetY);
+  tile.anisotropy = anisotropy;
+  tile.needsUpdate = true;
+
+  tileCache.set(key, tile);
+  return tile;
 }
 
 export function textureForMaterial(

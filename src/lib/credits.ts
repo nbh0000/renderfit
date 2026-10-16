@@ -15,25 +15,13 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
  * 한 문장 안에서 잔액을 확인하고 깎는다).
  */
 
-/**
- * 편집기 작업별 크레딧 값.
+/*
+ * 크레딧 표는 config/editorCosts.ts 에 있다.
  *
- * 실제로 나가는 API 비용의 대략적인 비율에 맞춘다. 도면 분석은 vision 두 번,
- * 실사 렌더는 이미지 생성 한 번, 가구 만들기도 이미지 생성 한 번이다.
- * AI 명령은 텍스트라 훨씬 싸지만, 공짜로 두면 무한히 부를 수 있어 1을 매긴다.
+ * 화면도 같은 표를 봐야 "3개 든다"고 물어보고 5개가 빠지는 일이 없다. 이 파일은
+ * Supabase 를 물고 있어 브라우저에서 못 불러오므로, 숫자만 떼어 두고 여기서 다시 내보낸다.
  */
-export const EDITOR_COST = {
-  /** 사진·도면 분석 (vision 2회) */
-  analyze: 1,
-  /** 미리보기 렌더 */
-  renderPreview: 1,
-  /** 최종 실사 렌더 */
-  renderFinal: 2,
-  /** 설명으로 가구 만들기 (이미지 생성) */
-  generateAsset: 1,
-  /** AI 명령 (텍스트) */
-  command: 1,
-} as const;
+export { EDITOR_COST } from "@/config/editorCosts";
 
 export type CreditCharge = {
   /** 걷는 데 성공했으면 되돌려 줄 함수, 실패했으면 그 이유를 담은 응답 */

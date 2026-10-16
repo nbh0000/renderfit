@@ -23,7 +23,9 @@ export function GalleryDeleteButton({ slug }: { slug: string }) {
     }
     setBusy(true);
     try {
-      const res = await fetch(`/api/gallery/${encodeURIComponent(slug)}`, { method: "DELETE" });
+      const res = await fetch(`/api/gallery/${encodeURIComponent(slug)}`, {
+        method: "DELETE",
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "삭제하지 못했습니다.");
       toast("갤러리에서 내렸습니다", "success");

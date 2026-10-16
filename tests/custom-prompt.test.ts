@@ -28,7 +28,7 @@ describe("사용자 추가 요청", () => {
 
   it("구조 보존 원칙은 여전히 맨 앞에 남는다", () => {
     const prompt = buildPrompt(settings("여기는 홀 장사하는 매장이다."));
-    expect(prompt.indexOf("벽·창문·문·천장")).toBeLessThan(prompt.indexOf("사용자 요청:"));
+    expect(prompt.indexOf("벽·창문·문")).toBeLessThan(prompt.indexOf("사용자 요청:"));
   });
 
   it("용도를 바꾸라는 요청이면 기본 방 종류를 대체하라고 지시한다", () => {

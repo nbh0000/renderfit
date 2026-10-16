@@ -15,6 +15,7 @@ export type SidebarKey =
   | "library"
   | "gallery"
   | "pricing"
+  | "contact"
   | "editor";
 
 const SECTIONS: { title?: string; items: { key: SidebarKey; href: string; label: string }[] }[] = [
@@ -37,6 +38,7 @@ const SECTIONS: { title?: string; items: { key: SidebarKey; href: string; label:
     items: [
       { key: "gallery", href: "/gallery", label: "갤러리" },
       { key: "pricing", href: "/pricing", label: "요금제" },
+      { key: "contact", href: "/contact", label: "문의하기" },
     ],
   },
 ];

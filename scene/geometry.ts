@@ -434,11 +434,57 @@ export function levelBelow(levels: Level[], levelId: string): Level | null {
  * 3D는 카메라를 가로막는 벽을 숨겨야 방 안이 보인다. 그런데 그 규칙을 안쪽
  * 칸막이에까지 적용하면 아파트에서 방을 나누는 내벽이 각도에 따라 나타났다 사라진다.
  * 테두리 벽만 숨기고 칸막이는 늘 세워 두기 위해 둘을 가른다.
+ *
+ * **양 끝이 같은 변에 붙어 있어야 테두리다.** 예전에는 중점 하나만 보고 "외곽에서
+ * 400mm 안쪽이면 테두리" 로 쳤는데, 그러면 외벽에서 안쪽으로 뻗어 나온 짧은 칸막이도
+ * (중점이 아직 그 띠 안에 있으므로) 테두리로 잡혔다. 현관 옆 가벽처럼 외벽에 붙은
+ * 내벽들이 각도에 따라 통째로 사라진 원인이 이것이다.
+ *
+ * 한쪽 끝만 외벽에 닿은 벽은 안으로 뻗는 칸막이다 — 테두리가 아니다.
  */
 export function isPerimeterWall(wall: WallSegment, room: RoomSpec): boolean {
   const { width, length } = room.dimensions;
-  const [mx, my] = pointAlongWall(wall, wallLength(wall) / 2);
   const margin = Math.max(400, wall.thickness * 2);
 
-  return mx <= margin || my <= margin || mx >= width - margin || my >= length - margin;
+  const [ax, ay] = wall.start;
+  const [bx, by] = wall.end;
+
+  /* 네 변 각각에 대해, 양 끝이 모두 그 변에 붙어 있는지 본다 */
+  return (
+    (ax <= margin && bx <= margin) ||
+    (ay <= margin && by <= margin) ||
+    (ax >= width - margin && bx >= width - margin) ||
+    (ay >= length - margin && by >= length - margin)
+  );
+}
+
+/**
+ * 벽이 건물 안쪽을 등지고 바깥을 보는 방향 (평면 좌표계의 단위 벡터).
+ *
+ * 벽의 법선 둘 중 방 중심에서 멀어지는 쪽을 고른다. 카메라가 이 벽의 바깥에 있는지
+ * 판정할 때 쓴다 — 예전에는 원점에서 벽 중점으로 향하는 방향을 법선 대신 썼는데,
+ * 그것은 직사각형 평면에서만 맞고 ㄱ자·ㄷ자 평면에서는 엉뚱한 벽을 숨겼다. 중점이
+ * 방 중심 근처인 벽은 길이가 0에 가까워져 판정 자체가 흔들리기도 했다.
+ */
+export function wallOutwardNormal(wall: WallSegment, room: RoomSpec): [number, number] {
+  const [ax, ay] = wall.start;
+  const [bx, by] = wall.end;
+
+  const dx = bx - ax;
+  const dy = by - ay;
+  const length = Math.hypot(dx, dy) || 1;
+
+  /* 벽 방향을 90도 돌린 것이 법선이다 */
+  let nx = -dy / length;
+  let ny = dx / length;
+
+  /* 방 중심에서 벽 중점으로 향하는 쪽과 같은 편을 고른다 */
+  const mx = (ax + bx) / 2 - room.dimensions.width / 2;
+  const my = (ay + by) / 2 - room.dimensions.length / 2;
+  if (nx * mx + ny * my < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+
+  return [nx, ny];
 }

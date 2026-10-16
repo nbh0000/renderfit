@@ -46,10 +46,15 @@ export function LikeButton({ slug, likeCount, liked, compact, className }: Props
     const previous = state;
 
     setBusy(true);
-    setState({ liked: !previous.liked, count: previous.count + (previous.liked ? -1 : 1) });
+    setState({
+      liked: !previous.liked,
+      count: previous.count + (previous.liked ? -1 : 1),
+    });
 
     try {
-      const res = await fetch(`/api/gallery/${encodeURIComponent(slug)}/like`, { method: "POST" });
+      const res = await fetch(`/api/gallery/${encodeURIComponent(slug)}/like`, {
+        method: "POST",
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "좋아요를 반영하지 못했습니다.");
 

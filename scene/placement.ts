@@ -60,6 +60,25 @@ export function worldXZ(center: { cx: number; cy: number }, room: RoomSpec): [nu
   ];
 }
 
+/**
+ * 3D 월드의 x·z (m) → 평면 중심(mm). `worldXZ`의 역함수다.
+ *
+ * 걷기 모드가 매 프레임 쓴다 — 카메라를 3D 에서 움직인 뒤 그 자리가 평면의 어디인지
+ * 알아야 벽·가구와의 충돌을 풀 수 있기 때문이다.
+ *
+ * z 의 부호가 뒤집힌다는 것만 기억하면 된다. 3D 는 방 중심이 원점이고 안쪽(평면에서
+ * y 가 커지는 쪽)이 -z 다. 이 부호를 손으로 다시 쓰다 틀리면 걸을 때 앞뒤가 바뀐다.
+ */
+export function planFromWorld(
+  world: [number, number],
+  room: RoomSpec
+): { cx: number; cy: number } {
+  return {
+    cx: world[0] * 1000 + room.dimensions.width / 2,
+    cy: room.dimensions.length / 2 - world[1] * 1000,
+  };
+}
+
 /** 물체가 바닥·벽·천장 중 어디에 붙는지 */
 export type Mounting = "floor" | "wall" | "ceiling";
 

@@ -3,7 +3,7 @@ import { withPersistGuard } from "@/lib/persist-guard";
 import { getViewer } from "@/lib/auth";
 import { loadProject, persist } from "@/services/projectService";
 import { generateProductImage } from "@/lib/image-api";
-import { estimateFurniture } from "@/ai/providers/vision";
+import { estimateFurniture } from "@/ai/providers/furniture";
 import { getStorage } from "@/lib/storage";
 import { createId } from "@/scene/engine/SceneEngine";
 import { planCenter, worldXZ } from "@/scene/placement";

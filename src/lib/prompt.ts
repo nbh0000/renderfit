@@ -1,4 +1,4 @@
-import { getMode, STRUCTURE_LOCK } from "@/config/modes";
+import { getMode, ROOM_IS_REFERENCE, STRUCTURE_LOCK, STYLE_SCOPE } from "@/config/modes";
 import { getRoom } from "@/config/rooms";
 import { getStyle } from "@/config/styles";
 import { RESOLUTION_MAP } from "@/config/plans";
@@ -38,9 +38,13 @@ export function buildPrompt(settings: GenerationSettings): string {
 
   const filled = mode.promptTemplate
     .replaceAll("{{structureLock}}", STRUCTURE_LOCK)
-    .replaceAll("{{room}}", room.promptFragment)
+    /* 방 종류 뒤에는 "이건 참고값이고 사진이 정답" 이라는 단서가 반드시 따라붙는다 */
+    .replaceAll("{{room}}", `${room.promptFragment}
+${ROOM_IS_REFERENCE}`)
     .replaceAll("{{style}}", style.label)
     .replaceAll("{{styleFragment}}", style.promptFragment)
+    /* 스타일 묘사 바로 뒤 — 떨어뜨려 놓으면 스타일 낱말에 묻힌다 */
+    .replaceAll("{{styleScope}}", STYLE_SCOPE)
     .replaceAll("{{materials}}", buildMaterialsFragment(settings.materials));
 
   const lines = filled
@@ -95,7 +99,7 @@ export function buildPrompt(settings: GenerationSettings): string {
   if (settings.useMask) lines.push(MASK_INSTRUCTION);
 
   // 프롬프트가 길어질수록 앞뒤가 묻힌다. 꼭 지켜야 할 두 가지는 마지막에 한 번 더 못박는다.
-  lines.push(`마지막으로 다시 확인한다. ${STRUCTURE_LOCK} 방의 크기와 형태도 원본 그대로다.`);
+  lines.push(`마지막으로 다시 확인한다. ${STRUCTURE_LOCK}`);
   if (custom) lines.push(`그리고 사용자 요청 "${custom}"이(가) 결과에 분명히 드러나야 한다.`);
   lines.push(`출력 해상도는 긴 변 기준 ${resolution.px}px 이상으로 한다.`);
 

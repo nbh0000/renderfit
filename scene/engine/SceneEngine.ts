@@ -10,6 +10,7 @@ import type {
   SceneObject,
   SceneOperation,
   OperationType,
+  Underlay,
   Vec3,
   WallOpening,
   WallSegment,
@@ -37,6 +38,7 @@ const ANNOTATION_LABEL: Record<string, string> = {
 import { arrangeObjects, placeObject } from "../placement";
 import { isSaneRoomSize, resizeArea as resizeAreaGeometry } from "../resizeArea";
 import { applyOperation, OPERATION_LABEL } from "../operations";
+import { normalizeUnderlay } from "../underlay";
 import { validateOperation, type ValidationResult } from "../validation";
 
 /**
@@ -467,6 +469,59 @@ export class SceneEngine {
     return this.commit(
       this.makeOperation("CHANGE_ROOM", undefined, before, patch as Record<string, unknown>, label)
     );
+  }
+
+  /**
+   * 여러 편집을 되돌리기 한 칸으로 묶는다.
+   *
+   * AI 교정은 문 두 개를 넣고 실 하나를 줄이는 식으로 한 라운드에 여러 번 고친다.
+   * 그것이 되돌리기 열 칸으로 쌓이면, 마음에 안 들 때 사용자가 Cmd+Z 를 열 번 눌러야
+   * 하고 몇 번 눌렀는지 세다가 원래 편집까지 지운다. 라운드 하나가 한 칸이어야 한다.
+   *
+   * 임시 엔진에서 먼저 돌려 보고, 그 결과와 지금 상태의 차이를 operation 하나로
+   * 커밋한다. 임시 엔진에서 실패한 호출은 그냥 반영이 안 될 뿐이라 여기까지 오지 않는다.
+   * RESIZE_ROOM 은 방과 객체를 함께 담는 유일한 operation 이라 그것을 쓴다.
+   */
+  runBatch(label: string, work: (scratch: SceneEngine) => void): CommitResult {
+    const before = { room: this.scene.room, objects: this.scene.objects };
+
+    const scratch = new SceneEngine(this.scene);
+    work(scratch);
+
+    const next = scratch.getScene();
+    if (next === this.scene) return { ok: false, error: "바뀐 것이 없습니다." };
+
+    return this.commit(
+      this.makeOperation(
+        "RESIZE_ROOM",
+        undefined,
+        before,
+        { room: next.room, objects: next.objects },
+        label
+      )
+    );
+  }
+
+  /**
+   * 평면 편집기 밑그림을 세우거나 고친다.
+   *
+   * null 을 주면 걷어 낸다. 부분 수정이므로 투명도만 바꾸는 것도 같은 길로 지난다.
+   *
+   * CHANGE_ROOM 으로 커밋한다 — 밑그림을 맞추다 잘못 밀었을 때 되돌리기 한 번으로
+   * 돌아와야 한다. 맞추는 일은 몇 번이고 다시 하게 되는 작업이라 더 그렇다.
+   */
+  setUnderlay(patch: Partial<Underlay> | null): CommitResult {
+    const room = ensureRoom(this.scene.room);
+
+    if (patch === null) {
+      if (!room.underlay) return { ok: false, error: "깔려 있는 밑그림이 없습니다." };
+      return this.commitRoom({ underlay: null }, "밑그림 걷기");
+    }
+
+    const next = normalizeUnderlay(patch, room.underlay);
+    if (!next) return { ok: false, error: "밑그림 값이 올바르지 않습니다." };
+
+    return this.commitRoom({ underlay: next }, room.underlay ? "밑그림 조정" : "밑그림 깔기");
   }
 
   /**

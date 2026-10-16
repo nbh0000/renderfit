@@ -40,6 +40,13 @@ export interface Style {
 const thumb = (id: StyleId) =>
   id === "custom" ? "/showcase/base-room.jpg" : `/showcase/style-${id}.jpg`;
 
+/*
+ * 스타일 묘사에는 벽·창·문·천장의 **생김새를 처방하는 낱말**을 쓰지 않는다.
+ *
+ * 클래식에 "웨인스코팅 벽면", 프렌치에 "몰딩 벽"이 적혀 있던 동안, 밋밋한 벽이 판넬로
+ * 덮이고 그 결에 맞춰 창이 격자창으로 다시 그려졌다. 구조 보존 지시가 같은 프롬프트
+ * 안에 있어도 처방 쪽이 이긴다. 스타일은 가구·패브릭·색·조명·표면 마감까지만 말한다.
+ */
 export const STYLES: Style[] = [
   {
     id: "modern",
@@ -117,7 +124,7 @@ export const STYLES: Style[] = [
     id: "industrial",
     label: "인더스트리얼",
     promptFragment:
-      "인더스트리얼 스타일: 노출 콘크리트와 벽돌, 블랙 스틸 프레임, 빈티지 가죽 소파, 노출 배관과 에디슨 전구.",
+      "인더스트리얼 스타일: 노출 콘크리트·벽돌 질감의 벽 마감, 블랙 스틸 프레임 가구, 빈티지 가죽 소파, 에디슨 전구 조명.",
     thumbnail: thumb("industrial"),
     tone: "#6B6560",
   },
@@ -125,7 +132,7 @@ export const STYLES: Style[] = [
     id: "french",
     label: "프렌치",
     promptFragment:
-      "프렌치 스타일: 몰딩 벽과 헤링본 마루, 아이보리·세이지 컬러, 곡선 프레임 가구, 크리스탈 또는 황동 조명.",
+      "프렌치 스타일: 헤링본 마루와 아이보리·세이지 컬러, 곡선 프레임 가구, 리넨 패브릭, 크리스탈 또는 황동 조명.",
     thumbnail: thumb("french"),
     tone: "#CFCBB4",
   },
@@ -149,7 +156,7 @@ export const STYLES: Style[] = [
     id: "classic",
     label: "클래식",
     promptFragment:
-      "클래식 스타일: 웨인스코팅 벽면, 다크 우드 가구, 벨벳 패브릭, 대칭 구성과 장식 몰딩.",
+      "클래식 스타일: 다크 월넛 우드 가구, 벨벳 패브릭, 대칭 구성, 금장 프레임 거울과 액자, 차분한 딥 톤의 벽 도장.",
     thumbnail: thumb("classic"),
     tone: "#5B4638",
   },

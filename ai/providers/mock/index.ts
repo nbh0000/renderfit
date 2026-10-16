@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import type {
   DepthProvider,
   DepthResult,
-  DetectedObject,
   EmbeddingProvider,
   GenerationParams,
   GenerationProvider,
@@ -12,7 +11,6 @@ import type {
   LLMProvider,
   RenderResult,
   RenderingProvider,
-  RoomAnalysis,
   SegmentationProvider,
   SegmentationResult,
   StructuredCommand,
@@ -35,106 +33,8 @@ function hash(input: string): number {
   return digest.readUInt32BE(0);
 }
 
-function pseudoRandom(seed: number, index: number): number {
-  const x = Math.sin(seed + index * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
 async function storeSvg(key: string, svg: string): Promise<string> {
   return getStorage().upload(key, svg, "image/svg+xml");
-}
-
-/* ─────────────────────────── Vision ─────────────────────────── */
-
-interface Blueprint {
-  type: DetectedObject["type"];
-  name: string;
-  bbox: [number, number, number, number];
-  depth: number;
-  material: string;
-  color: string;
-  dimensions: [number, number, number];
-}
-
-/** 방 종류별 기본 객체 배치. 실제 vision 모델이 붙기 전까지 이 배치를 사용한다. */
-const ROOM_BLUEPRINTS: Record<string, Blueprint[]> = {
-  living_room: [
-    { type: "window", name: "창문", bbox: [0.05, 0.14, 0.24, 0.36], depth: 0.9, material: "mat_white_paint", color: "#eef2f5", dimensions: [1800, 2000, 120] },
-    { type: "rug", name: "러그", bbox: [0.22, 0.72, 0.5, 0.16], depth: 0.5, material: "mat_beige_fabric", color: "#d8c8b2", dimensions: [2400, 20, 1700] },
-    { type: "sofa", name: "소파", bbox: [0.18, 0.52, 0.36, 0.2], depth: 0.45, material: "mat_beige_fabric", color: "#d8c8b2", dimensions: [2200, 850, 950] },
-    { type: "table", name: "커피 테이블", bbox: [0.42, 0.66, 0.18, 0.1], depth: 0.35, material: "mat_oak", color: "#c9a173", dimensions: [1100, 400, 600] },
-    { type: "cabinet", name: "TV 수납장", bbox: [0.62, 0.6, 0.26, 0.12], depth: 0.7, material: "mat_walnut", color: "#6b4a34", dimensions: [1800, 450, 400] },
-    { type: "tv", name: "TV", bbox: [0.66, 0.42, 0.2, 0.16], depth: 0.75, material: "mat_black_steel", color: "#2f2d2b", dimensions: [1450, 850, 60] },
-    { type: "lamp", name: "플로어 램프", bbox: [0.88, 0.36, 0.06, 0.3], depth: 0.6, material: "mat_black_steel", color: "#2f2d2b", dimensions: [400, 1650, 400] },
-    { type: "plant", name: "화분", bbox: [0.06, 0.55, 0.09, 0.22], depth: 0.55, material: "mat_green_plant", color: "#5c7a52", dimensions: [700, 1600, 700] },
-  ],
-  bedroom: [
-    { type: "window", name: "창문", bbox: [0.06, 0.16, 0.22, 0.32], depth: 0.9, material: "mat_white_paint", color: "#eef2f5", dimensions: [1500, 1800, 120] },
-    { type: "bed", name: "침대", bbox: [0.24, 0.52, 0.42, 0.28], depth: 0.5, material: "mat_linen", color: "#e7e0d3", dimensions: [1600, 1000, 2100] },
-    { type: "table", name: "협탁", bbox: [0.68, 0.58, 0.1, 0.1], depth: 0.55, material: "mat_oak", color: "#c9a173", dimensions: [450, 550, 450] },
-    { type: "lamp", name: "테이블 램프", bbox: [0.7, 0.48, 0.06, 0.1], depth: 0.5, material: "mat_brass", color: "#b08d4e", dimensions: [300, 550, 300] },
-    { type: "cabinet", name: "옷장", bbox: [0.8, 0.28, 0.16, 0.44], depth: 0.8, material: "mat_walnut", color: "#6b4a34", dimensions: [1200, 2200, 600] },
-    { type: "rug", name: "러그", bbox: [0.28, 0.78, 0.4, 0.12], depth: 0.4, material: "mat_beige_fabric", color: "#d8c8b2", dimensions: [2000, 20, 1400] },
-  ],
-  kitchen: [
-    { type: "cabinet", name: "상부장", bbox: [0.1, 0.16, 0.5, 0.16], depth: 0.85, material: "mat_white_paint", color: "#f4f2ef", dimensions: [3000, 700, 350] },
-    { type: "cabinet", name: "하부장", bbox: [0.1, 0.52, 0.5, 0.2], depth: 0.8, material: "mat_light_oak", color: "#dcc19a", dimensions: [3000, 850, 600] },
-    { type: "appliance", name: "냉장고", bbox: [0.66, 0.24, 0.16, 0.48], depth: 0.75, material: "mat_black_steel", color: "#2f2d2b", dimensions: [900, 1900, 750] },
-    { type: "table", name: "아일랜드", bbox: [0.3, 0.66, 0.34, 0.14], depth: 0.4, material: "mat_marble", color: "#eceae6", dimensions: [1800, 900, 900] },
-  ],
-};
-
-export class MockVisionProvider implements VisionProviderShape {
-  readonly name = "mock-vision";
-
-  async analyzeRoom(image: ImageRef): Promise<RoomAnalysis> {
-    await delay(700);
-
-    const seed = hash(image.url);
-    const roomTypes = ["living-room", "bedroom", "kitchen"] as const;
-    // 이미지 URL이 방 종류 힌트를 담고 있으면 우선한다.
-    const hinted = roomTypes.find((type) => image.url.includes(type));
-    const roomType = hinted ?? roomTypes[seed % roomTypes.length];
-    const blueprint = ROOM_BLUEPRINTS[roomType] ?? ROOM_BLUEPRINTS.living_room;
-
-    const objects: DetectedObject[] = blueprint.map((item, index) => {
-      const jitter = (pseudoRandom(seed, index) - 0.5) * 0.02;
-      return {
-        type: item.type,
-        name: item.name,
-        bbox: [
-          clamp01(item.bbox[0] + jitter),
-          clamp01(item.bbox[1] + jitter),
-          item.bbox[2],
-          item.bbox[3],
-        ],
-        maskUrl: null,
-        depth: item.depth,
-        material: item.material,
-        color: item.color,
-        confidence: 0.78 + pseudoRandom(seed, index + 50) * 0.2,
-        dimensions: {
-          width: item.dimensions[0],
-          height: item.dimensions[1],
-          depth: item.dimensions[2],
-        },
-      };
-    });
-
-    return {
-      roomType,
-      roomDimensions: { width: 5000, length: 6000, height: 2700 },
-      objects,
-      styleGuess: ["modern", "scandinavian", "warm"][seed % 3],
-      lightDirection: [0.4, 0.8, 0.3],
-    };
-  }
-}
-
-// 순환 참조를 피하기 위한 최소 형태 선언
-interface VisionProviderShape {
-  readonly name: string;
-  analyzeRoom(image: ImageRef): Promise<RoomAnalysis>;
 }
 
 /* ─────────────────────── Segmentation / Depth ─────────────────────── */
@@ -301,6 +201,3 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}

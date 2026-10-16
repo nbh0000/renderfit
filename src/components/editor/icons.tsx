@@ -28,10 +28,12 @@ export type IconName =
   | "plan"
   | "elevation"
   | "cube"
+  | "walk"
   | "split"
   | "grid"
   | "preview"
-  | "render";
+  | "render"
+  | "check";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   save: (
@@ -147,6 +149,17 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M8 8v6" />
     </>
   ),
+  /* 걷는 사람 — 머리, 몸통, 앞뒤로 벌린 다리, 흔드는 팔 */
+  walk: (
+    <>
+      <circle cx="9" cy="3" r="1.6" />
+      <path d="M9 5.2v4" />
+      <path d="M9 9.2L6.5 14" />
+      <path d="M9 9.2L11.5 14" />
+      <path d="M9 6.4L6 7.6" />
+      <path d="M9 6.4l3 1.6" />
+    </>
+  ),
   split: (
     <>
       <rect x="2" y="2" width="12" height="5" />
@@ -168,6 +181,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <circle cx="8" cy="8" r="3" />
       <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.5 1.5M11 11l1.5 1.5M12.5 3.5L11 5M5 11l-1.5 1.5" />
+    </>
+  ),
+  /* 원본과 대 보고 맞는지 확인한다 — 종이 위의 체크 표시 */
+  check: (
+    <>
+      <path d="M3 2h10v12H3z" />
+      <path d="M5.5 8l2 2 3.5-4" />
     </>
   ),
 };

@@ -1,13 +1,5 @@
-import type {
-  DesignProject,
-  DoorType,
-  Scene,
-  SceneObject,
-  SourceKind,
-  WallOpening,
-  WallSegment,
-} from "@/scene/types";
-import { SceneEngine, createId, createSceneObject } from "@/scene/engine/SceneEngine";
+import type { DesignProject, Scene, SourceKind } from "@/scene/types";
+import { SceneEngine, createId } from "@/scene/engine/SceneEngine";
 import {
   createEmptyScene,
   createVersion,
@@ -18,13 +10,8 @@ import { getProjectRepository } from "@/lib/db";
 import { getQueue, type Job } from "@/lib/queue";
 import { getStorage } from "@/lib/storage";
 import { createProviders } from "@/ai/providers";
-import type { PlanFurniture, PlanOpening, RoomAnalysis, RoomPlan } from "@/ai/providers/types";
 import { executeCommand, type ToolExecutionResult, TOOL_DEFINITIONS } from "@/ai/tools";
-import { MATERIAL_MAP, materialsForSurface, type MaterialSurface } from "@/models/materials";
-import { deriveOpenings } from "@/scene/openings";
-import { rectangleWalls } from "@/scene/geometry";
-import { arrangeObjects, mountHeight, planCenter, worldXZ } from "@/scene/placement";
-import { ROOM_MAP, type RoomId } from "@/config/rooms";
+import { classifyImage, drawingReadability } from "@/scene/imageKind";
 import { STYLE_PRESET_MAP } from "@/models/styles";
 import { renderMaskSvg } from "@/ai/providers/mock/sceneRaster";
 
@@ -121,6 +108,72 @@ export async function attachImage(
   const scene = loaded.engine.getScene();
   loaded.engine.applyGeneration({ generatedImageUrl: null });
 
+  /*
+   * 원본을 한 번 재 둔다 — 크기와 "사진인가 도면인가".
+   *
+   * 크기는 밑그림(원본 도면을 평면 뒤에 까는 기능)이 "픽셀당 몇 mm" 로 축척을 잡는 데
+   * 쓴다. 여기가 버퍼를 손에 쥐고 있는 유일한 자리다 — 나중에 알아내려면 이미지를
+   * 다시 내려받아야 한다.
+   *
+   * 종류는 더 중요하다. 사진과 도면은 분석 경로가 통째로 다른데, 지금까지는 사용자가
+   * 올리기 전에 직접 골라야 했고 기본값이 사진이었다. 실제로 박물관 평면도가 사진으로
+   * 올라가 "실내 사진에서 방을 복원" 하는 경로를 탔고, 방 25개짜리 도면이 4개로 나왔다.
+   * 사용자는 무엇을 잘못 눌렀는지 알 길이 없고 크레딧은 이미 나간 뒤였다.
+   *
+   * sharp 가 없는 환경에서도 업로드 자체는 되어야 하므로, 못 읽으면 예전 값을 둔다.
+   */
+  let size = { width: scene.source.width, height: scene.source.height };
+  let kind: SourceKind = file.kind ?? "photo";
+
+  try {
+    const sharp = (await import("sharp")).default;
+    const meta = await sharp(file.buffer).metadata();
+    if (meta.width && meta.height) size = { width: meta.width, height: meta.height };
+
+    /*
+     * 작은 그림으로 줄여서 센다.
+     *
+     * 원본 그대로 세면 4천만 픽셀을 도는 일이 생긴다. 흰 바탕 비율과 채도는 줄여도
+     * 거의 그대로라, 200px 짜리 축소본이면 충분하다.
+     */
+    const { data, info } = await sharp(file.buffer)
+      .resize(200, 200, { fit: "inside" })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    let nearWhite = 0;
+    let saturation = 0;
+    const pixels = info.width * info.height;
+
+    for (let i = 0; i < data.length; i += info.channels) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      if (r > 235 && g > 235 && b > 235) nearWhite += 1;
+      saturation += Math.max(r, g, b) - Math.min(r, g, b);
+    }
+
+    const verdict = classifyImage(
+      {
+        nearWhiteRatio: pixels > 0 ? nearWhite / pixels : 0,
+        meanSaturation: pixels > 0 ? saturation / pixels : 0,
+        width: size.width,
+        height: size.height,
+      },
+      kind
+    );
+
+    kind = verdict.kind;
+    if (verdict.overrode) console.info(`[project] ${verdict.reason}`);
+
+    const note = drawingReadability(size);
+    if (kind === "floorplan" && note) console.info(`[project] ${note}`);
+  } catch {
+    console.warn("[project] 원본 이미지를 재지 못했습니다 — 고른 종류를 그대로 씁니다.");
+  }
+
   // source.imageUrl은 operation 대상이 아니라 프로젝트 원본이므로 직접 갱신한다.
   const nextScene: Scene = {
     ...loaded.engine.getScene(),
@@ -128,7 +181,9 @@ export async function attachImage(
       ...scene.source,
       imageUrl: url,
       generatedImageUrl: null,
-      kind: file.kind ?? "photo",
+      kind,
+      width: size.width,
+      height: size.height,
     },
   };
 
@@ -140,314 +195,6 @@ export async function attachImage(
   return persist({ project: loaded.project, engine }, { thumbnailUrl: url, status: "draft" });
 }
 
-/* ─────────────────────── AI 분석 파이프라인 ─────────────────────── */
-
-/**
- * 배치 규칙을 적용하고 3D 좌표를 맞춰 넣는다.
- *
- * transform.position은 예전에 방 크기와 무관한 5m×4m 상자를 기준으로 계산돼 있었고,
- * 안쪽 방향도 평면도·3D와 반대였다. 실제로 화면을 그리는 쪽은 screen.x·depth를 보므로
- * 눈에 띄지는 않았지만, Scene을 내보내거나 AI에게 넘길 때는 이 값이 그대로 나간다.
- */
-function withPlacement(room: Scene["room"], objects: SceneObject[]): SceneObject[] {
-  const patches = new Map(
-    arrangeObjects({ room, objects }).map((entry) => [entry.id, entry.patch])
-  );
-
-  return objects.map((object) => {
-    const patch = patches.get(object.id);
-    const screen = patch
-      ? { ...object.screen, x: patch.screen.x, rotation: patch.rotation }
-      : object.screen;
-    const depth = patch ? patch.depth : object.depth;
-
-    const [x, z] = worldXZ(planCenter(screen, depth, room), room);
-    const y = mountHeight({ ...object, screen, depth }, room) / 1000;
-
-    return {
-      ...object,
-      screen,
-      depth,
-      transform: { ...object.transform, position: [x, y, z] as [number, number, number] },
-    };
-  });
-}
-
-/**
- * 사진에서 복원한 평면(RoomPlan)을 Scene으로 옮긴다.
- *
- * 여기서 하는 일은 좌표 변환이 거의 전부다 — 모델이 이미 도면 좌표(mm)로 답했기 때문에
- * 예전처럼 화면 bbox를 평면으로 되돌리는 추측이 필요 없다. 그래서 유리 칸막이벽처럼
- * 카메라에서 멀어지며 뻗은 요소도 제 벽에 제 길이로 앉는다.
- */
-function planToScene(scene: Scene, plan: RoomPlan): Scene {
-  const { outline, ceilingHeightMm: height } = plan;
-  const width = Math.max(...outline.map((point) => point.x));
-  const length = Math.max(...outline.map((point) => point.y));
-  const dimensions = { width, length, height };
-
-  // 외벽과 내벽을 통틀어 그대로 옮긴다 — 내벽이 있어야 아파트가 원룸으로 안 그려진다.
-  const walls: WallSegment[] = plan.walls.map((source) => ({
-    id: createId("wall"),
-    name: source.name,
-    start: [source.start.x, source.start.y] as [number, number],
-    end: [source.end.x, source.end.y] as [number, number],
-    thickness: source.thicknessMm,
-    height,
-    openings: source.openings.map((opening) => toWallOpening(opening, height)),
-  }));
-
-  const objects = plan.furniture.map((item, index) =>
-    createSceneObject(
-      {
-        type: item.type,
-        name: item.name,
-        category: item.type,
-        materialId: item.material,
-        dimensions: { width: item.widthMm, height: item.heightMm, depth: item.depthMm },
-        /*
-         * 화면 좌표는 이제 평면 좌표를 담는 그릇으로만 쓴다.
-         * screen.x·width는 planCenter가 중심을 되돌릴 수 있게, screen.y·height는
-         * 입면 높이를 되돌릴 수 있게 역산해 둔다.
-         */
-        screen: {
-          x: item.xMm / width - item.widthMm / width / 2,
-          y: 1 - (item.elevationMm + item.heightMm) / height,
-          width: item.widthMm / width,
-          height: item.heightMm / height,
-          rotation: item.rotationDeg,
-        },
-        transform: {
-          position: planWorldPosition(item, dimensions),
-          rotation: [0, 0, 0],
-          scale: [1, 1, 1],
-        },
-        depth: Math.min(1, Math.max(0, item.yMm / length)),
-        // 도면에 그려진 모양. 네모면 null 이고, 그리는 쪽이 폭×깊이 사각형으로 돌아간다.
-        footprint: item.footprint ?? null,
-        confidence: 0.8,
-        source: "vision_model",
-        mask: null,
-        metadata: { detectedColor: item.color, mounting: item.mountedOn },
-      },
-      index
-    )
-  );
-
-  const finishes = matchFinishes(plan.finishes);
-  // 마감재와 가구 재질을 Scene에 담는다 — 3D는 scene.materials에서 맵을 찾는다.
-  const have = new Set(scene.materials.map((material) => material.id));
-  const wanted = new Set(
-    [...Object.values(finishes ?? {}), ...objects.map((object) => object.materialId)].filter(
-      (id): id is string => typeof id === "string" && id.length > 0 && !have.has(id)
-    )
-  );
-  const extraMaterials = [...wanted].map((id) => MATERIAL_MAP[id]).filter(Boolean);
-
-  return {
-    ...scene,
-    room: {
-      ...scene.room,
-      type: plan.roomType,
-      dimensions,
-      walls,
-      finishes,
-      // 실마다 이름과 면적이 도면에 찍힌다 (거실 18.4㎡, 안방 11.2㎡ …)
-      areas: plan.rooms.map((item) => ({
-        id: createId("area"),
-        name: item.name,
-        points: item.polygon.map((point) => [point.x, point.y] as [number, number]),
-        showArea: true,
-      })),
-    },
-    objects,
-    materials: [...scene.materials, ...extraMaterials],
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-/**
- * 사진에서 읽은 마감("회색 포세린 타일")을 카탈로그 재질로 옮긴다.
- *
- * 이게 없으면 3D가 Scene의 재질 중 "floor" 태그가 붙은 것을 아무거나 집어 쓴다 —
- * 가구에 딸려 온 오크가 잡혀서, 회색 타일 바닥인 사진이 원목 마루 방으로 그려졌다.
- */
-function matchFinishes(
-  finishes: RoomPlan["finishes"]
-): NonNullable<Scene["room"]["finishes"]> | undefined {
-  if (!finishes) return undefined;
-
-  /*
-   * "벽"·"바닥" 같은 면 이름은 후보 전체가 공통으로 달고 있는 태그라 아무것도 가려 주지 못한다.
-   * 이걸 세면 "노란 도장 벽"이 엉뚱한 대리석에 걸린다 — 실제로 그렇게 잡혔다.
-   */
-  const NOISE = new Set([
-    "바닥", "벽", "천장", "floor", "wall", "ceiling", "마감", "재질", "색", "느낌", "및", "과", "와",
-  ]);
-
-  const pick = (text: string | null, surface: MaterialSurface) => {
-    if (!text) return null;
-
-    const words = text
-      .toLowerCase()
-      .split(/[s·,()/]+/)
-      .map((word) => word.replace(/(으로|입니다|이다)$/, ""))
-      .filter((word) => word.length > 1 && !NOISE.has(word));
-    if (words.length === 0) return null;
-
-    // 같은 면에 바를 수 있는 것 중에서만 고른다 — 벽 마감이 바닥으로 가면 안 된다.
-    let best: { id: string; score: number } | null = null;
-    for (const material of materialsForSurface(surface)) {
-      const tags = material.tags.map((tag) => tag.toLowerCase()).filter((tag) => !NOISE.has(tag));
-      const name = material.name.toLowerCase();
-
-      let score = 0;
-      for (const word of words) {
-        if (name.includes(word)) score += 3;
-        else if (tags.some((tag) => tag === word)) score += 2;
-        // "데코타일"이 "타일"을 품는 경우 — 실제 도면 용어는 대개 이런 합성어다.
-        else if (tags.some((tag) => tag.length > 1 && (tag.includes(word) || word.includes(tag)))) {
-          score += 2;
-        }
-      }
-      if (!best || score > best.score) best = { id: material.id, score };
-    }
-
-    // 스치듯 걸린 것은 버린다 — 엉뚱한 마감을 바르느니 기본값이 낫다.
-    return best && best.score >= 2 ? best.id : null;
-  };
-
-  return {
-    floor: pick(finishes.floor, "floor"),
-    wall: pick(finishes.wall, "wall"),
-    ceiling: pick(finishes.ceiling, "ceiling"),
-  };
-}
-
-/** 평면 좌표(mm) → 3D 월드 좌표(m). 높이는 바닥에서 물체 중심까지. */
-function planWorldPosition(
-  item: PlanFurniture,
-  dimensions: Scene["room"]["dimensions"]
-): [number, number, number] {
-  const [x, z] = worldXZ({ cx: item.xMm, cy: item.yMm }, { dimensions } as Scene["room"]);
-  return [x, (item.elevationMm + item.heightMm / 2) / 1000, z];
-}
-
-/** 평면 개구부 → 벽 개구부. Scene은 문/창 둘만 알아서 유리 칸막이는 큰 창으로 앉힌다. */
-function toWallOpening(opening: PlanOpening, wallHeight: number): WallOpening {
-  const isDoor = opening.kind === "door" || opening.kind === "opening";
-  const height = Math.min(opening.heightMm, Math.max(200, wallHeight - opening.sillMm));
-
-  return {
-    id: `op_auto_${createId("plan")}`,
-    name: opening.name,
-    type: isDoor ? "door" : "window",
-    offset: opening.offsetMm,
-    width: opening.widthMm,
-    height,
-    sillHeight: isDoor ? 0 : opening.sillMm,
-    // 문틀만 있는 통로는 문짝을 그리지 않는다.
-    ...(isDoor
-      ? {
-          doorType: (opening.kind === "opening" ? "opening" : "hinged") as DoorType,
-          hinge: "start" as const,
-          swing: "in" as const,
-        }
-      : {}),
-  };
-}
-
-/** vision 분석 결과를 Scene 객체로 변환한다 */
-export function analysisToScene(scene: Scene, analysis: RoomAnalysis): Scene {
-  // 평면을 복원해 왔으면 그대로 세운다 — 화면 bbox를 되돌리는 추측이 필요 없다.
-  if (analysis.plan) return planToScene(scene, analysis.plan);
-
-  const dimensions = analysis.roomDimensions;
-  const thickness = scene.room.walls?.[0]?.thickness;
-  const walls = rectangleWalls(dimensions, thickness);
-
-  const baseRoom = {
-    ...scene.room,
-    type: analysis.roomType,
-    dimensions,
-    walls,
-  };
-
-  const detected: SceneObject[] = analysis.objects.map((item, index) =>
-    createSceneObject(
-      {
-        type: item.type,
-        name: item.name,
-        category: item.type,
-        materialId: item.material,
-        dimensions: item.dimensions ?? { width: 1000, height: 800, depth: 800 },
-        screen: {
-          x: item.bbox[0],
-          y: item.bbox[1],
-          width: item.bbox[2],
-          height: item.bbox[3],
-          rotation: 0,
-        },
-        transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-        depth: item.depth,
-        confidence: item.confidence,
-        source: "vision_model",
-        mask: item.maskUrl ? { url: item.maskUrl } : null,
-        metadata: { detectedColor: item.color },
-      },
-      index
-    )
-  );
-
-  /*
-   * 분석기는 물체를 사진 안에서만 본다 — 방 밖으로 삐져나가거나, 벽에 붙은 붙박이장이
-   * 방 한가운데 가로로 놓이는 일이 그래서 생긴다. 편집기에 이미 있는 배치 규칙을
-   * 여기서 한 번 돌려, 첫 화면부터 사람이 놓은 것처럼 정리된 평면을 보여 준다.
-   */
-  const objects = withPlacement(baseRoom, detected);
-
-  // 감지 결과가 참조하는 재질을 Scene에 채워 넣는다.
-  const materialIds = new Set(scene.materials.map((m) => m.id));
-  const extraMaterials = objects
-    .map((object) => object.materialId)
-    .filter((id): id is string => Boolean(id) && !materialIds.has(id!))
-    .map((id) => MATERIAL_MAP[id])
-    .filter(Boolean);
-
-  /*
-   * 사진에서 찾은 창·문을 벽의 개구부로 옮긴다.
-   * 이걸 하지 않으면 평면도·측면도·3D가 사진과 무관한 빈 사각형 방을 그린다.
-   */
-  const derived = deriveOpenings(baseRoom, objects);
-
-  // 방 전체를 실 하나로 잡아 둔다 — 실명과 면적이 도면에 바로 나오게 한다.
-  const areas = baseRoom.areas?.length
-    ? baseRoom.areas
-    : [
-        {
-          id: `area_${Math.random().toString(36).slice(2, 10)}`,
-          name: ROOM_MAP[analysis.roomType as RoomId]?.label ?? "실",
-          points: [
-            [0, 0],
-            [dimensions.width, 0],
-            [dimensions.width, dimensions.length],
-            [0, dimensions.length],
-          ] as [number, number][],
-          showArea: true,
-        },
-      ];
-
-  return {
-    ...scene,
-    room: { ...baseRoom, walls: derived.walls, areas },
-    objects,
-    materials: [...scene.materials, ...extraMaterials],
-    styleId: scene.styleId ?? analysis.styleGuess,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-/** 업로드 이미지 → 분석 → Scene 생성 (background job) */
 /**
  * 잡이 실패했을 때 부를 것 — 미리 걷은 크레딧을 돌려주는 데 쓴다.
  *
@@ -456,62 +203,7 @@ export function analysisToScene(scene: Scene, analysis: RoomAnalysis): Scene {
  */
 type OnFailure = () => Promise<void>;
 
-export function enqueueAnalyze(loaded: LoadedProject, onFailure?: OnFailure): Job {
-  const projectId = loaded.project.id;
 
-  return getQueue().enqueue({
-    type: "ANALYZE_IMAGE",
-    projectId,
-    handler: async (update) => {
-      /* 실패하면 미리 걷은 크레딧을 돌려준다 */
-      try {
-        const reloaded = await loadProject(projectId, loaded.project.ownerId);
-        if (!reloaded) throw new Error("프로젝트를 찾을 수 없습니다.");
-
-        const imageUrl = reloaded.engine.getScene().source.imageUrl;
-        if (!imageUrl) throw new Error("먼저 방 사진을 업로드해 주세요.");
-
-        const providers = createProviders({ getScene: () => reloaded.engine.getScene() });
-
-        update(15, "방 종류를 인식하고 있습니다...");
-        const analysis = await providers.vision.analyzeRoom({
-          url: imageUrl,
-          kind: reloaded.engine.getScene().source.kind ?? "photo",
-        });
-
-        /*
-         * 예전에는 여기서 세그먼테이션 맵과 깊이 맵을 만들어 Scene에 붙였다.
-         *
-         * 그런데 그 둘을 읽는 곳이 없다. 실사 렌더 provider(Gemini)는 원본 사진과
-         * 프롬프트만 쓰고, 두 맵을 받아 놓고도 쓰지 않는다. 결국 분석할 때마다 아무도
-         * 열어 보지 않는 SVG 두 장을 만들어 저장소에 쌓고 있었고, "깊이를 추정하고
-         * 있습니다"라는 진행 문구도 실제로는 아무 일도 하지 않았다.
-         *
-         * 그래서 그 단계를 걷어냈다. Scene 타입의 segmentationUrl·depthMapUrl은 예전에
-         * 만든 프로젝트가 들고 있으므로 남겨 두고, 값이 있으면 지금처럼 렌더에 그대로
-         * 넘긴다 — 그 맵을 쓰는 provider가 생기면 그때 다시 만든다.
-         */
-        update(60, "가구를 배치하고 있습니다...");
-        const scene = analysisToScene(reloaded.engine.getScene(), analysis);
-        const engine = new SceneEngine(scene, {
-          operations: reloaded.engine.getOperations(),
-          redo: reloaded.engine.getRedoStack(),
-        });
-
-        update(90, "장면을 구성하고 있습니다...");
-        const saved = await persist(
-          { project: reloaded.project, engine },
-          { status: "ready" }
-        );
-
-        return { objectCount: saved.scene.objects.length, roomType: saved.scene.room.type };
-      } catch (error) {
-        await onFailure?.();
-        throw error;
-      }
-    },
-  });
-}
 
 /**
  * 생성 프롬프트.

@@ -20,6 +20,18 @@ import type { Annotation, RoomArea, SceneObject, WallSegment } from "@/scene/typ
 import { orthogonalize, snapPoint, usePlanViewport } from "./usePlanViewport";
 import { PlanRulers } from "./PlanRulers";
 import {
+  CalibrationMarks,
+  SnapGuides,
+  UnderlayImage,
+  useUnderlayImage,
+} from "./PlanUnderlay";
+import {
+  GRID_SNAP_PX,
+  calibrateUnderlay,
+  insideUnderlay,
+  snapPointToGrid,
+} from "@/scene/underlay";
+import {
   findEnclosingLoop,
   hitTest,
   itemsInMarquee,
@@ -65,6 +77,13 @@ type DragMode =
   | { kind: "endpoint"; id: string; part: "start" | "end" }
   | { kind: "marquee"; from: [number, number]; to: [number, number] }
   /*
+   * 밑그림 끌기.
+   *
+   * 벽·가구보다 우선순위가 낮다 — 벽 위에서는 벽이 잡히고, 아무것도 없는 곳에서만
+   * 밑그림이 잡힌다. 그러지 않으면 도면 위에 깔아 둔 순간부터 아무것도 못 고른다.
+   */
+  | { kind: "underlay"; grab: [number, number]; origin: [number, number] }
+  /*
    * 화면 이동.
    * 오른쪽 버튼으로 시작한 이동은 "제자리에서 놓으면 그리기 취소"를 겸하므로
    * 시작 지점을 들고 있다가 놓을 때 움직인 거리를 본다.
@@ -90,6 +109,9 @@ export function PlanEditor() {
   const setPlanTool = useEditorStore((state) => state.setPlanTool);
   const showGrid = useEditorStore((state) => state.showGrid);
   const snapMm = useEditorStore((state) => state.snapMm);
+  const source = useEditorStore((state) => state.scene?.source);
+  const calibrating = useEditorStore((state) => state.underlayCalibrating);
+  const setCalibrating = useEditorStore((state) => state.setUnderlayCalibrating);
   const activeLevelId = useEditorStore((state) => state.activeLevelId);
 
   const view = usePlanViewport();
@@ -101,6 +123,14 @@ export function PlanEditor() {
   const [hint, setHint] = useState<string | null>(null);
   /** 커서 옆에 붙는 실시간 수치 (길이·각도·크기) */
   const [tip, setTip] = useState<{ x: number; y: number; lines: string[] } | null>(null);
+  /** 밑그림을 끄는 동안의 임시 위치 — 손을 뗄 때 한 번만 커밋한다 */
+  const [underlayShift, setUnderlayShift] = useState<[number, number] | null>(null);
+  /** 축척 맞추기로 찍은 두 점 */
+  const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
+  const [calibMm, setCalibMm] = useState("");
+  const [calibCursor, setCalibCursor] = useState<[number, number] | null>(null);
+  /** 격자선에 붙었을 때 보여 줄 안내선 */
+  const [snapGuide, setSnapGuide] = useState<{ x?: number; y?: number } | null>(null);
 
   const sceneRoom = scene?.room;
   const room = useMemo(() => (sceneRoom ? ensureRoom(sceneRoom) : null), [sceneRoom]);
@@ -139,6 +169,30 @@ export function PlanEditor() {
     () => (below ? onLevel(room?.walls ?? [], below.id, levels) : []),
     [below, room, levels]
   );
+
+  /* ── 원본 도면 밑그림 ── */
+
+  /*
+   * 사진에는 깔지 않는다. 사진을 평면 뒤에 겹쳐 봐야 맞출 선이 없고,
+   * 화면만 어지러워진다.
+   */
+  const underlayUrl = source?.kind === "floorplan" ? (source.imageUrl ?? null) : null;
+  const underlayImage = useUnderlayImage(underlayUrl);
+  const storedUnderlay = room?.underlay ?? null;
+
+  /** 끄는 중에는 임시 위치를 쓴다 — 서버로는 손을 뗄 때 한 번만 보낸다 */
+  const underlay = useMemo(
+    () =>
+      storedUnderlay && underlayShift
+        ? { ...storedUnderlay, originMm: underlayShift }
+        : storedUnderlay,
+    [storedUnderlay, underlayShift]
+  );
+
+  const underlayOn = Boolean(underlay?.visible && underlayUrl && underlayImage);
+
+  /** 벽 끝점 스냅에 쓰는 격자 — 치수 체인에서 읽어 낸 실제 선이다 */
+  const underlayGrid = underlayOn ? (underlay?.gridMm ?? null) : null;
 
   /** 벽 개구부로 옮겨진 창·문은 가구로 또 그리지 않는다 */
   const convertedIds = useMemo(
@@ -224,12 +278,24 @@ export function PlanEditor() {
       if (magnet) {
         const stuck = magnetToEndpoints(raw, walls, 12 / viewport.scale);
         if (stuck) return stuck;
+
+        /*
+         * 도면에 그어진 격자선에 붙인다.
+         *
+         * 벽 끝점 자석 다음, 균일 격자(snapMm) 앞이다. 도면에 실제로 그어진 선이
+         * 우리가 임의로 정한 100mm 격자보다 앞서야 한다 — 도면에 맞추려고 밑그림을
+         * 깐 것이지 100mm 눈금에 맞추려고 깐 것이 아니다.
+         */
+        const onGrid = snapPointToGrid(raw, underlayGrid, GRID_SNAP_PX / viewport.scale);
+        if (onGrid.snappedX || onGrid.snappedY) {
+          return [Math.round(onGrid.point[0]), Math.round(onGrid.point[1])];
+        }
       }
 
       const snapped = snapPoint(raw, snapMm);
       return [Math.round(snapped[0]), Math.round(snapped[1])];
     },
-    [toPlan, snapMm, walls, viewport.scale]
+    [toPlan, snapMm, walls, viewport.scale, underlayGrid]
   );
 
   const showTip = (event: { clientX: number; clientY: number }, lines: string[]) => {
@@ -299,6 +365,58 @@ export function PlanEditor() {
     },
     [runTool, currentLevelId]
   );
+
+  /* ── 밑그림 ── */
+
+  /** 끌어 옮긴 자리를 한 번만 보낸다 */
+  const commitUnderlayOrigin = useCallback(
+    async (origin: [number, number]) => {
+      await runTool("set_underlay", { originXMm: origin[0], originYMm: origin[1] });
+    },
+    [runTool]
+  );
+
+  /**
+   * 두 점 사이의 실제 길이를 받아 축척을 맞춘다.
+   *
+   * 계산은 scene/underlay.ts 가 한다 — 첫 점을 고정축으로 두는 보정까지 거기 있다.
+   * 여기서는 값을 넘기고 결과를 커밋만 한다.
+   */
+  const commitCalibration = useCallback(async () => {
+    const actualMm = Number(calibMm);
+    if (!storedUnderlay || calibPoints.length < 2) return;
+
+    const next = calibrateUnderlay(storedUnderlay, calibPoints[0], calibPoints[1], actualMm);
+    if (!next) {
+      setHint("길이를 10~200000mm 사이로 넣어 주세요");
+      return;
+    }
+
+    await runTool("set_underlay", {
+      originXMm: next.originMm[0],
+      originYMm: next.originMm[1],
+      mmPerPixel: next.mmPerPixel,
+    });
+
+    setCalibPoints([]);
+    setCalibMm("");
+    setCalibrating(false);
+    setHint(`축척을 맞췄습니다 (1px = ${next.mmPerPixel.toFixed(2)}mm)`);
+  }, [calibMm, calibPoints, runTool, setCalibrating, storedUnderlay]);
+
+  /*
+   * 축척 맞추기를 켜고 끌 때마다 찍어 둔 점을 버린다.
+   *
+   * effect 가 아니라 렌더 중 보정이다 — effect 로 하면 점이 남은 화면이 한 프레임
+   * 그려졌다가 지워진다. React 가 권하는 "prop 이 바뀌면 state 를 맞추는" 방식이다.
+   */
+  const [calibSession, setCalibSession] = useState(calibrating);
+  if (calibSession !== calibrating) {
+    setCalibSession(calibrating);
+    setCalibPoints([]);
+    setCalibMm("");
+    setCalibCursor(null);
+  }
 
   /* ────────────────────────── 드래그 시작 ────────────────────────── */
 
@@ -443,10 +561,42 @@ export function PlanEditor() {
 
     const point = pointerPlan(event);
 
+    /*
+     * 축척 맞추기.
+     *
+     * 다른 도구보다 먼저 본다 — 이 모드에서는 두 점을 찍는 것 말고 아무 일도
+     * 일어나면 안 된다. 도면 위에서 찍는 것이라 자석·격자 스냅도 끈다.
+     */
+    if (calibrating && storedUnderlay) {
+      const raw = toPlan(event.clientX, event.clientY);
+      setCalibPoints((current) =>
+        current.length >= 2 ? [[Math.round(raw[0]), Math.round(raw[1])]] : [...current, [Math.round(raw[0]), Math.round(raw[1])]]
+      );
+      return;
+    }
+
     if (planTool === "select") {
       const target = hitTest(pointerPlan(event, false), hitContext);
 
       if (!target) {
+        /*
+         * 아무것도 안 잡혔을 때만 밑그림을 잡는다.
+         *
+         * 잠겨 있으면 잡지 않는다 — 다 맞춰 놓은 밑그림이 빈 곳을 드래그할 때마다
+         * 밀리면 아무것도 선택할 수 없다.
+         */
+        if (
+          underlayOn &&
+          underlay &&
+          underlayImage &&
+          !underlay.locked &&
+          insideUnderlay(underlay, underlayImage, point)
+        ) {
+          if (!event.shiftKey) select([]);
+          setDrag({ kind: "underlay", grab: point, origin: underlay.originMm });
+          return;
+        }
+
         if (!event.shiftKey) select([]);
         setDrag({ kind: "marquee", from: point, to: point });
         return;
@@ -776,8 +926,46 @@ export function PlanEditor() {
       return;
     }
 
+    if (drag?.kind === "underlay") {
+      draggedRef.current = true;
+      const point = pointerPlan(event, false);
+      const dx = point[0] - drag.grab[0];
+      const dy = point[1] - drag.grab[1];
+
+      /* Shift 를 누르면 축을 잠근다 — 가로로만 밀거나 세로로만 민다 */
+      const lockX = event.shiftKey && Math.abs(dx) >= Math.abs(dy);
+      const lockY = event.shiftKey && !lockX;
+
+      setUnderlayShift([
+        Math.round(drag.origin[0] + (lockY ? 0 : dx)),
+        Math.round(drag.origin[1] + (lockX ? 0 : dy)),
+      ]);
+      showTip(event, [`밑그림 ${Math.round(lockY ? 0 : dx)} · ${Math.round(lockX ? 0 : dy)}mm`]);
+      return;
+    }
+
     if (drag) {
       draggedRef.current = true;
+
+      /*
+       * 격자선에 붙었으면 그 선을 보여 준다.
+       *
+       * 붙은 줄 모르면 "왜 내가 놓은 자리에 안 가지"로만 느껴진다. 어디에 붙었는지
+       * 보이면 그때부터 도구가 된다.
+       */
+      if (drag.kind === "endpoint" || drag.kind === "vertex") {
+        const raw = toPlan(event.clientX, event.clientY);
+        const onGrid = snapPointToGrid(raw, underlayGrid, GRID_SNAP_PX / viewport.scale);
+        setSnapGuide(
+          onGrid.snappedX || onGrid.snappedY
+            ? {
+                ...(onGrid.snappedX ? { x: onGrid.point[0] } : {}),
+                ...(onGrid.snappedY ? { y: onGrid.point[1] } : {}),
+              }
+            : null
+        );
+      }
+
       void applyDrag(drag, pointerPlan(event), true).then((lines) => {
         if (lines) showTip(event, lines);
       });
@@ -799,6 +987,13 @@ export function PlanEditor() {
     }
 
     setTip(null);
+
+    /* 축척 맞추기 중에는 첫 점에서 커서까지 선이 따라온다 */
+    if (calibrating) {
+      setCalibCursor(toPlan(event.clientX, event.clientY));
+      return;
+    }
+
     if (planTool === "select") setHover(hitTest(pointerPlan(event, false), hitContext));
   };
 
@@ -823,13 +1018,24 @@ export function PlanEditor() {
      * 끌던 것을 여기서 한 번만 서버에 보낸다.
      * 움직이지 않은 클릭은 보내지 않는다 — 아무것도 안 바뀐 되돌리기 칸이 쌓인다.
      */
-    if (drag && drag.kind !== "pan" && drag.kind !== "marquee" && draggedRef.current) {
+    if (drag?.kind === "underlay" && draggedRef.current && underlayShift) {
+      void commitUnderlayOrigin(underlayShift).then(() => setUnderlayShift(null));
+    }
+
+    if (
+      drag &&
+      drag.kind !== "pan" &&
+      drag.kind !== "marquee" &&
+      drag.kind !== "underlay" &&
+      draggedRef.current
+    ) {
       void applyDrag(drag, pointerPlan(event), false);
     }
     draggedRef.current = false;
 
     setDrag(null);
     setTip(null);
+    setSnapGuide(null);
     (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
   };
 
@@ -983,7 +1189,7 @@ export function PlanEditor() {
         onWheel={(event) =>
           view.zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1.12 : 0.89)
         }
-        style={{ cursor: cursorFor(planTool, hover, drag) }}
+        style={{ cursor: cursorFor(planTool, hover, drag, calibrating) }}
       >
         <svg className="h-full w-full">
           <defs>
@@ -995,7 +1201,25 @@ export function PlanEditor() {
           </defs>
 
           {showGrid && <Grid view={view} />}
+
           <RoomOutline width={roomWidth} length={roomLength} toScreen={toScreen} />
+
+          {/*
+            원본 도면 밑그림.
+
+            방 바닥(흰 폴리곤) 바로 뒤에 그린다. 그보다 앞에 두면 흰 바닥이 통째로
+            덮어 버려 아무것도 안 보이고, 실·벽보다 뒤에 있어야 "밑그림"이다.
+          */}
+          {underlayOn && underlay && underlayImage && underlayUrl && (
+            <UnderlayImage
+              url={underlayUrl}
+              underlay={underlay}
+              image={underlayImage}
+              toScreen={toScreen}
+              scale={viewport.scale}
+              grabbable={!underlay.locked}
+            />
+          )}
 
           {/* 아래층 밑그림 */}
           {ghostWalls.map((wall) => {
@@ -1023,6 +1247,13 @@ export function PlanEditor() {
               toScreen={toScreen}
               selected={selectedIds.includes(area.id)}
               hovered={hover?.id === area.id}
+              /*
+               * 밑그림이 켜져 있으면 실 채움을 걷는다.
+               *
+               * 실은 60% 불투명이라 그대로 두면 밑그림이 그 아래에서 뿌옇게 죽는다.
+               * 원본과 대 보려고 켠 것이므로, 켜 있는 동안은 실을 테두리로만 남긴다.
+               */
+              dimmed={underlayOn}
             />
           ))}
 
@@ -1098,6 +1329,19 @@ export function PlanEditor() {
 
           {draft && <DraftShape draft={draft} tool={planTool} toScreen={toScreen} />}
           {drag?.kind === "marquee" && <Marquee from={drag.from} to={drag.to} toScreen={toScreen} />}
+
+          {snapGuide && (
+            <SnapGuides
+              guide={snapGuide}
+              toScreen={toScreen}
+              width={roomWidth}
+              length={roomLength}
+            />
+          )}
+
+          {calibrating && calibPoints.length > 0 && (
+            <CalibrationMarks points={calibPoints} cursor={calibCursor} toScreen={toScreen} />
+          )}
         </svg>
       </div>
 
@@ -1127,6 +1371,24 @@ export function PlanEditor() {
         )}
       </div>
 
+      {calibrating && (
+        <CalibratePanel
+          points={calibPoints}
+          pixelDistance={
+            storedUnderlay && calibPoints.length === 2
+              ? Math.hypot(
+                  calibPoints[1][0] - calibPoints[0][0],
+                  calibPoints[1][1] - calibPoints[0][1]
+                ) / storedUnderlay.mmPerPixel
+              : null
+          }
+          value={calibMm}
+          onChange={setCalibMm}
+          onSubmit={() => void commitCalibration()}
+          onCancel={() => setCalibrating(false)}
+        />
+      )}
+
       <button
         type="button"
         onClick={() => view.fit(roomWidth, roomLength)}
@@ -1148,8 +1410,15 @@ const TOOL_HINT: Record<string, string> = {
   polyline: "여러 점을 찍고 더블클릭으로 끝냅니다 · 우클릭 취소",
 };
 
-function cursorFor(tool: string, hover: HitTarget | null, drag: DragMode | null): string {
+function cursorFor(
+  tool: string,
+  hover: HitTarget | null,
+  drag: DragMode | null,
+  calibrating = false
+): string {
+  if (calibrating) return "crosshair";
   if (drag?.kind === "pan") return "grabbing";
+  if (drag?.kind === "underlay") return "grabbing";
   if (tool !== "select") return "crosshair";
   if (drag) return "grabbing";
   if (hover?.kind === "object" && hover.part === "rotate") return "grab";
@@ -1174,6 +1443,78 @@ function offsetFromLine(a: [number, number], b: [number, number], point: [number
 }
 
 /* ───────────────────────────── 조각들 ───────────────────────────── */
+
+/**
+ * 축척 맞추기 안내.
+ *
+ * 이미지 뷰의 드래그 안내와 같은 톤으로 둔다 — 화면 아래 가운데, 얇은 카드, 짧은 문장.
+ * 도면 위에서 두 점을 찍는 동안에는 다른 것을 건드릴 일이 없으므로 안내가 커도 된다.
+ */
+function CalibratePanel({
+  points,
+  pixelDistance,
+  value,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  points: [number, number][];
+  /** 찍은 두 점 사이가 원본 이미지에서 몇 픽셀인가 */
+  pixelDistance: number | null;
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const ready = points.length >= 2 && pixelDistance !== null;
+
+  return (
+    <div className="absolute bottom-12 left-1/2 z-20 -translate-x-1/2">
+      <div className="flex items-center gap-2 rounded-[var(--radius-card)] border border-line bg-surface/95 px-3 py-2 shadow-lg backdrop-blur">
+        <span className="text-[11.5px] text-ink-soft">
+          {ready
+            ? `두 점 사이가 ${Math.round(pixelDistance!)}px입니다 — 실제 길이는?`
+            : points.length === 1
+              ? "두 번째 점을 클릭하세요"
+              : "도면에서 치수를 아는 두 점을 클릭하세요"}
+        </span>
+
+        {ready && (
+          <>
+            <input
+              autoFocus
+              value={value}
+              onChange={(event) => onChange(event.target.value.replace(/[^0-9.]/g, ""))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onSubmit();
+                if (event.key === "Escape") onCancel();
+              }}
+              placeholder="3400"
+              inputMode="numeric"
+              className="w-20 rounded border border-line bg-surface px-1.5 py-1 text-right text-[12px] tabular-nums text-ink outline-none focus:border-accent"
+            />
+            <span className="text-[11px] text-muted">mm</span>
+            <button
+              type="button"
+              onClick={onSubmit}
+              className="rounded-md bg-accent px-2 py-1 text-[11.5px] font-medium text-white hover:opacity-90"
+            >
+              맞추기
+            </button>
+          </>
+        )}
+
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-md border border-line px-2 py-1 text-[11.5px] text-ink-soft hover:bg-sunken"
+        >
+          그만
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function RoomOutline({
   width,
@@ -1247,11 +1588,14 @@ function AreaShape({
   toScreen,
   selected,
   hovered,
+  dimmed = false,
 }: {
   area: RoomArea;
   toScreen: (x: number, y: number) => [number, number];
   selected: boolean;
   hovered: boolean;
+  /** 밑그림이 깔려 있어 채움을 걷어야 하는 상태 */
+  dimmed?: boolean;
 }) {
   const screen = area.points.map(([x, y]) => toScreen(x, y));
   const [cx, cy] = toScreen(...polygonCentroid(area.points));
@@ -1262,7 +1606,7 @@ function AreaShape({
       <polygon
         points={screen.map((point) => point.join(",")).join(" ")}
         fill={area.color ?? "#f1efea"}
-        fillOpacity={selected ? 0.95 : hovered ? 0.8 : 0.6}
+        fillOpacity={dimmed ? (selected ? 0.35 : 0.08) : selected ? 0.95 : hovered ? 0.8 : 0.6}
         stroke={selected ? "#2f5d4e" : "#d6d3cc"}
         strokeWidth={selected ? 2 : 1}
       />

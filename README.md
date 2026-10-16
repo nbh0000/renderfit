@@ -1,15 +1,67 @@
 # 렌더핏 (RENDERFIT) — AI Interior Design Studio
 
-사진 한 장을 올리면 AI가 공간을 분석해 **편집 가능한 Scene**을 만들고, 그 위에서 객체를 선택·이동·교체하거나
+도면을 올리면 **편집 가능한 Scene**(평면도·3D·둘러보기)을 만들고, 그 위에서 객체를 선택·이동·교체하거나
 자연어로 명령해 디자인을 완성하는 웹 기반 인테리어 디자인 스튜디오입니다.
 
 > 결과물은 이미지 파일 하나가 아니라
-> `Image + Segmentation + Depth + Objects + Transforms + Materials + Assets + Camera + Lighting`
+> `Walls + Openings + Rooms + Fixtures + Objects + Materials + Camera + Lighting`
 > 을 담은 **Scene Graph**입니다.
 
+## 도면이 들어오는 세 경로
+
+**기하(벽·문·창·방 폴리곤)는 LLM 이 만들지 않는다.** 비전 모델은 좌표를 측정하지 못하고
+추측한다 — 방이 빠지고, 면적이 뒤바뀌고, 벽이 끊긴다. 그래서 좌표는 DXF 파서와 전용
+벡터화 모델만 만들고, LLM 은 **이미 확정된 기하 위에 이름만** 붙인다.
+
+세 경로 모두 하나의 스키마([`FloorPlanDoc`](packages/plan-schema/index.ts))로 수렴하고,
+사람이 검수 화면에서 확인을 누르기 전에는 편집기·3D 로 넘어가지 않는다.
+
 ```
-User Image → AI Vision Analysis → Scene Graph → AI Generation → Editable Scene → Professional Editor → Final Render
+                          POST /api/plan/ingest
+                                    │
+                     매직바이트로 갈래를 정한다
+                       (services/planIngest.ts)
+                                    │
+        ┌───────────────────┬───────┴───────────┬───────────────────┐
+        │                   │                   │                   │
+    ① cad               ② cad-pdf           ③ raster            (알 수 없음)
+    DXF · DWG           벡터 PDF        스캔 · 캡처 이미지          415 거절
+        │                   │                   │
+  DWG 는 ODA 로            (미구현)      사용자가 도면 영역 크롭
+  DXF 를 거친다             501            ↓
+        │                                전처리 (업스케일 · 이진화)
+  ezdxf 로 좌표를                              ↓
+  그대로 읽는다                          벡터화 모델 (RasterScan)
+        │                                      ↓
+        │                                치수 글자 OCR → mm 배율
+        │                                      │
+        └───────────────────────┬──────────────┘
+                                │
+                         FloorPlanDoc
+                  mm · x→오른쪽 · y→위쪽
+                  원점 = 도면 외곽 좌하단
+                                │
+                    LLM 라벨러 (raster/label.py)
+                 방 이름과 설비 종류만. 좌표는 묻지 않는다
+                                │
+                                ▼
+                     /plan/[jobId]/review
+                    ← 사람이 반드시 지나는 곳 →
+        원본 겹쳐 보기 · 벽/방/개구부/설비 수정 · 축척 재지정
+        지적(review.flags)을 전부 해결하거나 무시해야 확인 가능
+                                │
+                   review.status = "confirmed"
+                                ▼
+              Scene — 평면도 · 3D · 둘러보기 · 도면 내보내기
 ```
+
+| | 정확도 | 사람이 할 일 |
+|---|---|---|
+| ① DXF · DWG | 가장 높다 (파일에 좌표가 그대로 있다) | 실 이름 확인 |
+| ② 벡터 PDF | ①과 같아질 예정 | — (아직 501) |
+| ③ 이미지 · PDF 캡처 | 추정이 섞인다 | 크롭 → 검수에서 교정 |
+
+사진(방 사진)은 이 경로에 들어가지 않는다. 시안 이미지를 만드는 바탕으로만 쓴다.
 
 ## 빠르게 실행하기
 
@@ -43,6 +95,9 @@ npm test             # vitest (Scene Engine · AI Router)
 ## 아키텍처
 
 ```
+packages/plan-schema/  FloorPlanDoc — 세 경로가 수렴하는 하나의 도면 문서
+services/plan-ingest/  도면 파싱 마이크로서비스 (Python · ezdxf · shapely · opencv)
+
 scene/                 Scene Engine (React 비의존 순수 모듈)
   types/               Scene · SceneObject · Operation 데이터 모델
   engine/              SceneEngine — 모든 편집의 단일 진입점, undo/redo
@@ -51,13 +106,14 @@ scene/                 Scene Engine (React 비의존 순수 모듈)
   serialization/       Scene 생성 · JSON 직렬화 · 버전 스냅샷
 
 ai/
-  providers/           Vision·Segmentation·Depth·Generation·Embedding·LLM·Rendering 인터페이스
+  providers/           Generation·LLM·Rendering·Embedding 인터페이스 (Vision 은 폐기)
   providers/mock/      API key 없이 전체 흐름을 돌리는 Mock 구현
   router/              자연어 → intent + target 판별 (규칙 기반)
   tools/               Agent tool 정의 + Scene Engine 실행기
 
 models/                에셋 26종 · 재질 17종 · 스타일 9종 카탈로그
-services/              프로젝트 서비스 (저장·AI 파이프라인·AI 커맨드), 데모 시드
+services/              프로젝트 서비스 (저장·AI 커맨드), 도면 들여오기, 데모 시드
+src/components/plan/   도면 검수 화면 (/plan/[jobId]/review)
 lib/                   storage(local/S3) · db(local/Supabase) · queue(job)
 src/components/editor/ Toolbar · Canvas(2.5D/3D) · Layers · Properties · Assets · AICommandBar
 ```
@@ -73,7 +129,8 @@ src/components/editor/ Toolbar · Canvas(2.5D/3D) · Layers · Properties · Ass
 
 | 단계 | Provider | 현재 구현 |
 | --- | --- | --- |
-| 방 분석 · 객체 인식 | `VisionProvider` | Mock (방 종류별 배치 청사진) |
+| 도면 → 기하 | (provider 아님) | `services/plan-ingest` — ezdxf 파서 · 벡터화 모델 |
+| 확정된 기하 → 이름 | (provider 아님) | `services/plan-ingest/raster/label.py` — Gemini, 좌표는 묻지 않는다 |
 | 세그멘테이션 | `SegmentationProvider` | Mock (SVG 맵) |
 | 깊이 추정 | `DepthProvider` | Mock (SVG 맵) |
 | 이미지 생성 · 인페인팅 | `GenerationProvider` | **Gemini 실연동** (키 없으면 Mock) |

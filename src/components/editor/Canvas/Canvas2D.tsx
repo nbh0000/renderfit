@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditorStore } from "@/lib/editor/store";
 import type { SceneObject } from "@/scene/types";
 import { PlanMinimap } from "./PlanMinimap";
@@ -32,8 +32,10 @@ export function Canvas2D() {
   const viewMode = useEditorStore((state) => state.viewMode);
   const zoom = useEditorStore((state) => state.zoom);
   const setZoom = useEditorStore((state) => state.setZoom);
+  const setFitView = useEditorStore((state) => state.setFitView);
 
   const frameRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [draft, setDraft] = useState<{ id: string; screen: SceneObject["screen"] } | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -41,6 +43,45 @@ export function Canvas2D() {
 
   const background =
     scene?.source?.generatedImageUrl ?? scene?.source?.imageUrl ?? null;
+
+  /*
+   * 열 때는 언제나 100% 다.
+   *
+   * 예전에는 열자마자 화면에 들어오는 배율로 줄여 놓았다. 그런데 그러면 처음 뜬 화면이
+   * 34% 처럼 어중간한 값이라, 사용자는 자기가 지금 보는 것이 원본 크기인지 우리가
+   * 줄여 놓은 것인지 알 수 없었다. 시작은 100% 로 두고, 큰 도면을 한눈에 보고 싶으면
+   * 아래 "화면에 맞추기" 를 누른다.
+   */
+  const fit = useCallback(() => {
+    const view = viewRef.current;
+    const frame = frameRef.current;
+    if (!view || !frame) return;
+
+    const area = view.getBoundingClientRect();
+    const box = frame.getBoundingClientRect();
+    if (area.width < 1 || box.width < 1 || box.height < 1) return;
+
+    /* 지금 걸려 있는 배율을 걷어낸 1배 크기 */
+    const current = useEditorStore.getState().zoom || 1;
+    const baseWidth = box.width / current;
+    const baseHeight = box.height / current;
+
+    /** 가장자리에 숨 쉴 자리 */
+    const margin = 64;
+    const toFit = Math.min((area.width - margin) / baseWidth, (area.height - margin) / baseHeight);
+
+    /* 원본 픽셀보다 크게 늘리지 않는다 — 늘린 만큼 그대로 깨진다 */
+    const natural = scene?.source?.width ?? 0;
+    const noUpscale = natural > 0 ? natural / baseWidth : 1;
+
+    setPan({ x: 0, y: 0 });
+    setZoom(Math.min(toFit, noUpscale, 1));
+  }, [scene?.source?.width, setZoom]);
+
+  useEffect(() => {
+    setFitView(fit);
+    return () => setFitView(null);
+  }, [fit, setFitView]);
 
   const objects = (scene?.objects ?? [])
     .filter((object) => object.visibility)
@@ -164,6 +205,7 @@ export function Canvas2D() {
 
   return (
     <div
+      ref={viewRef}
       className="relative h-full w-full overflow-hidden bg-[#0a0a0a]"
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -196,7 +238,15 @@ export function Canvas2D() {
             <img
               src={background}
               alt="장면 배경"
-              className="absolute inset-0 h-full w-full object-cover"
+              /*
+               * contain 이어야 한다.
+               *
+               * cover 는 틀에 꽉 채우려고 넘치는 쪽을 **잘라 낸다.** 틀의 비율은
+               * scene.source 에 적힌 크기로 잡는데 예전에 올린 프로젝트는 그 값이
+               * 기본값(1280×960)이라 실제 그림과 다르다 — 그러면 도면 양옆이 잘린 채
+               * 보이고, 사용자는 우리가 못 읽은 것인지 원래 없는 것인지 알 수 없다.
+               */
+              className="absolute inset-0 h-full w-full object-contain"
               draggable={false}
             />
           ) : (

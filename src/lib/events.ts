@@ -17,7 +17,6 @@ export type EventName =
   /** 편집기를 열었다 */
   | "editor_open"
   /** 사진·도면 분석을 시작했다 */
-  | "analyze_start"
   /** 렌더를 시작했다 */
   | "render_start"
   /** 설명으로 가구를 만들었다 */
@@ -25,7 +24,9 @@ export type EventName =
   /** AI 명령을 실행했다 */
   | "ai_command"
   /** 시안을 갤러리에 공개했다 */
-  | "gallery_publish";
+  | "gallery_publish"
+  /** 원본 도면과 비교해 교정을 돌렸다 */
+  | "plan_review_start";
 
 export interface EventInput {
   name: EventName;
@@ -61,7 +62,6 @@ export async function recordEvent(event: EventInput): Promise<void> {
 const KNOWN: EventName[] = [
   "page_view",
   "editor_open",
-  "analyze_start",
   "render_start",
   "generate_asset",
   "ai_command",

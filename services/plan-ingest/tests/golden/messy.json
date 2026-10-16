@@ -1,0 +1,174 @@
+{
+ "annotations": [
+  {
+   "kind": "label",
+   "position": [
+    3000.0,
+    4000.0
+   ],
+   "text": "사무실"
+  },
+  {
+   "kind": "label",
+   "position": [
+    8000.0,
+    4000.0
+   ],
+   "text": "4,000"
+  }
+ ],
+ "bounds": {
+  "h": 8000.0,
+  "w": 10000.0
+ },
+ "fixtures": [
+  {
+   "bbox": [
+    7800.0,
+    5800.0,
+    400.0,
+    400.0
+   ],
+   "confidence": 0.5,
+   "kind": "a$c0a1b2",
+   "rotation": 0.0,
+   "source": "dxf-block"
+  }
+ ],
+ "openings": [
+  {
+   "confidence": 0.6,
+   "kind": "door",
+   "offset": 3550.0,
+   "width": 900.0
+  }
+ ],
+ "review": {
+  "flags": [
+   {
+    "reason": "no-room-name",
+    "target": "room[1]"
+   },
+   {
+    "reason": "meaningless-block-name",
+    "target": "fx_c079e4dc77"
+   }
+  ],
+  "status": "auto"
+ },
+ "rooms": [
+  {
+   "areaMm2": 48000000.0,
+   "name": "사무실",
+   "nameConfidence": 0.8,
+   "polygon": [
+    [
+     6000.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     8000.0
+    ],
+    [
+     6000.0,
+     8000.0
+    ]
+   ]
+  },
+  {
+   "areaMm2": 32000000.0,
+   "nameConfidence": 0.0,
+   "polygon": [
+    [
+     10000.0,
+     0.0
+    ],
+    [
+     6000.0,
+     0.0
+    ],
+    [
+     6000.0,
+     8000.0
+    ],
+    [
+     10000.0,
+     8000.0
+    ]
+   ]
+  }
+ ],
+ "scale": {
+  "confidence": 1.0,
+  "mmPerUnit": 1.0,
+  "source": "dxf-units"
+ },
+ "sourceType": "cad",
+ "walls": [
+  {
+   "a": [
+    0.0,
+    0.0
+   ],
+   "b": [
+    10000.0,
+    0.0
+   ],
+   "confidence": 1.0,
+   "thickness": 200.0
+  },
+  {
+   "a": [
+    10000.0,
+    8000.0
+   ],
+   "b": [
+    0.0,
+    8000.0
+   ],
+   "confidence": 1.0,
+   "thickness": 200.0
+  },
+  {
+   "a": [
+    10000.0,
+    0.0
+   ],
+   "b": [
+    10000.0,
+    8000.0
+   ],
+   "confidence": 1.0,
+   "thickness": 200.0
+  },
+  {
+   "a": [
+    6000.0,
+    0.0
+   ],
+   "b": [
+    6000.0,
+    8000.0
+   ],
+   "confidence": 1.0,
+   "thickness": 100.0
+  },
+  {
+   "a": [
+    0.0,
+    0.0
+   ],
+   "b": [
+    0.0,
+    7940.0
+   ],
+   "confidence": 1.0,
+   "thickness": 200.0
+  }
+ ]
+}

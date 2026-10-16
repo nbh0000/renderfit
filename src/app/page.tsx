@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { BRAND } from "@/config/brand";
 import { STYLES } from "@/config/styles";
+import { SERVICE_FAQ } from "@/config/faq";
+import { JsonLd, breadcrumbLd, faqPageLd, softwareApplicationLd } from "@/lib/seo";
 import { StartChat } from "@/components/StartChat";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { SiteFooter } from "@/components/legal/SiteFooter";
@@ -13,11 +15,6 @@ import { listPublicResults, memoryListGallery, styleBlurb, type GalleryItem } fr
 
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
-  openGraph: {
-    title: `${BRAND.name} — ${BRAND.headline}`,
-    description: BRAND.description,
-    type: "website",
-  },
 };
 
 /** 메인에서 바로 갈 수 있는 곳 — 링크는 최소한만 둔다 */
@@ -121,6 +118,13 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-dvh bg-canvas text-ink">
+      <JsonLd
+        graph={[
+          softwareApplicationLd(),
+          faqPageLd(SERVICE_FAQ),
+          breadcrumbLd([{ name: BRAND.name, path: "/" }]),
+        ]}
+      />
       <header className="sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-5 sm:px-8">
           <Link
@@ -270,6 +274,29 @@ export default async function HomePage() {
           <p className="mt-4 text-center text-[12px] text-muted">
             가입하면 3장을 무료로 만들어 볼 수 있습니다.
           </p>
+        </div>
+      </section>
+
+      {/* 자주 묻는 질문 — AI 검색이 서비스를 설명할 때 인용하는 본문이다 */}
+      <section className="border-t border-line bg-surface">
+        <div className="mx-auto max-w-[760px] px-5 py-12 sm:px-8">
+          <h2 className="text-[17px] font-semibold tracking-tight">자주 묻는 질문</h2>
+          <div className="mt-4 divide-y divide-line border-y border-line">
+            {SERVICE_FAQ.map((item) => (
+              <details key={item.q} className="group py-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[14.5px] font-medium">
+                  {item.q}
+                  <span
+                    aria-hidden
+                    className="shrink-0 text-muted transition-transform group-open:rotate-45"
+                  >
+                    +
+                  </span>
+                </summary>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-ink-soft">{item.a}</p>
+              </details>
+            ))}
+          </div>
         </div>
       </section>
 

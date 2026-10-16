@@ -1,0 +1,15 @@
+# 도면 파싱 마이크로서비스.
+#
+# ezdxf·shapely·opencv·벡터화 모델이 전부 Python 생태계라 Node 쪽에 억지로 옮기지 않고
+# 따로 세운다. Next.js API 가 내부 호출한다.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+ezdxf==1.3.5
+shapely==2.0.6
+PyYAML==6.0.2
+
+# 래스터 경로(스캔·캡처 도면) 전처리. 화면이 없는 서버라 headless 를 쓴다.
+opencv-python-headless==4.10.0.84
+numpy==2.5.2
+requests==2.32.3

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { BRAND } from "@/config/brand";
 import { ELECTRICAL_SPECS } from "@/config/electrical";
 import type { ElectricalKind } from "@/scene/types";
-import { useEditorStore, type PlanTool, type ViewMode } from "@/lib/editor/store";
+import { useEditorStore, type PlanTool } from "@/lib/editor/store";
 import { Icon, type IconName } from "./icons";
 
 /**
@@ -13,7 +13,11 @@ import { Icon, type IconName } from "./icons";
  *
  * Sweet Home 3D처럼 기능을 묶고 묶음마다 이름을 단다.
  * 도면 편집기는 버튼이 수십 개라, 한 줄로 늘어놓으면 무엇이 어디 있는지 외워야 한다.
- * 파일 / 그리기 / 편집 / 보기 / 주석 / 렌더 여섯 묶음으로 나눈다.
+ * 파일 / 그리기 / 편집 / 주석 / 보조 / 렌더로 나눈다.
+ *
+ * "보기"(이미지·평면도·3D…)는 여기 두지 않는다. 그리기 도구가 아니라 "지금 무엇을
+ * 보고 있는가"이고 가장 자주 누르는 버튼이라, 캔버스 바로 위 띠로 내렸다 —
+ * 도면에서 눈을 떼고 화면 꼭대기까지 올라갔다 오지 않아도 된다. ViewSwitch 참고.
  */
 
 interface Action {
@@ -39,7 +43,6 @@ export function Ribbon() {
   const planTool = useEditorStore((state) => state.planTool);
   const setPlanTool = useEditorStore((state) => state.setPlanTool);
   const viewMode = useEditorStore((state) => state.viewMode);
-  const setViewMode = useEditorStore((state) => state.setViewMode);
 
   const showGrid = useEditorStore((state) => state.showGrid);
   const toggleGrid = useEditorStore((state) => state.toggleGrid);
@@ -51,11 +54,21 @@ export function Ribbon() {
   const startJob = useEditorStore((state) => state.startJob);
   const busy = useEditorStore((state) => state.busy);
 
+  const setImportOpen = useEditorStore((state) => state.setImportOpen);
+
   const [exportOpen, setExportOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   /** 그리기 도구는 평면도가 보이는 모드에서만 의미가 있다 */
   const drawing = viewMode === "plan" || viewMode === "split";
+
+  /*
+   * 걷는 중에는 장면을 고치는 버튼을 전부 잠근다.
+   *
+   * 눈높이에서 돌아다니는 중에 자동 배치가 돌면 발밑이 통째로 바뀐다. 되돌리기는
+   * 남겨 둔다 — 걷기 전에 한 일을 무를 수 있어야 한다.
+   */
+  const walking = viewMode === "walk";
 
   const draw = (id: PlanTool, label: string, icon: IconName, hint: string): Action => ({
     label,
@@ -64,13 +77,6 @@ export function Ribbon() {
     active: drawing && planTool === id,
     disabled: !drawing,
     onClick: () => setPlanTool(id),
-  });
-
-  const view = (id: ViewMode, label: string, icon: IconName): Action => ({
-    label,
-    icon,
-    active: viewMode === id,
-    onClick: () => setViewMode(id),
   });
 
   return (
@@ -106,6 +112,23 @@ export function Ribbon() {
       {!collapsed && (
         <div className="flex items-stretch gap-0 overflow-x-auto px-2 py-1.5">
           <Group title="파일">
+            {/*
+              들여오기는 언제든 열린다.
+
+              예전에는 도면·사진을 넣는 길이 새 프로젝트 시작 화면에만 있었다. 그런데
+              빈 프로젝트에도 기본 벽 넉 장이 서 있어 그 화면이 아예 뜨지 않았고,
+              캔버스는 "방 사진을 업로드하면 여기에 표시됩니다" 라고만 적혀 있을 뿐
+              올릴 방법이 없었다. 이미 만들어 둔 프로젝트에 나중에 사진을 붙이는 일도
+              여기서 한다.
+            */}
+            <Button
+              action={{
+                label: "가져오기",
+                icon: "image",
+                hint: "도면 파일(DXF·DWG·이미지·PDF) 또는 방 사진을 넣습니다",
+                onClick: () => setImportOpen(true),
+              }}
+            />
             <Button
               action={{
                 label: "저장",
@@ -132,6 +155,7 @@ export function Ribbon() {
                 label: "자동 배치",
                 icon: "arrange",
                 hint: "가구를 벽에 맞춰 겹치지 않게 정리합니다",
+                disabled: walking,
                 onClick: () => void runTool("arrange_objects"),
               }}
             />
@@ -165,14 +189,6 @@ export function Ribbon() {
             <Button action={draw("text", "글자", "text", "클릭한 자리에 문구")} />
           </Group>
 
-          <Group title="보기">
-            <Button action={view("image", "이미지", "image")} />
-            <Button action={view("plan", "평면도", "plan")} />
-            <Button action={view("elevation", "측면도", "elevation")} />
-            <Button action={view("3d", "3D", "cube")} />
-            <Button action={view("split", "평면+3D", "split")} />
-          </Group>
-
           <Group title="보조">
             <Button
               action={{ label: "격자", icon: "grid", active: showGrid, onClick: toggleGrid }}
@@ -192,6 +208,8 @@ export function Ribbon() {
               </select>
             </label>
           </Group>
+
+          {drawing && <UnderlayGroup />}
 
           <Group title="렌더" last>
             <Button action={{ label: "미리보기", icon: "preview", onClick: () => void startJob("/render/preview") }} />
@@ -228,6 +246,147 @@ function Group({
   );
 }
 
+/**
+ * 밑그림 묶음 — 도면을 올린 프로젝트에서만 보인다.
+ *
+ * 사진 프로젝트에는 아예 그리지 않는다. 사진을 평면 뒤에 겹쳐 봐야 맞출 선이 없어서,
+ * 버튼만 있고 눌러도 쓸모없는 상태가 된다. 쓸 수 없는 버튼은 없는 편이 낫다.
+ */
+function UnderlayGroup() {
+  const source = useEditorStore((state) => state.scene?.source);
+  const underlay = useEditorStore((state) => state.scene?.room?.underlay ?? null);
+  const toggleUnderlay = useEditorStore((state) => state.toggleUnderlay);
+  const runTool = useEditorStore((state) => state.runTool);
+  const setCalibrating = useEditorStore((state) => state.setUnderlayCalibrating);
+  const [open, setOpen] = useState(false);
+
+  if (source?.kind !== "floorplan" || !source.imageUrl) return null;
+
+  const on = Boolean(underlay?.visible);
+  const patch = (values: Record<string, unknown>) => void runTool("set_underlay", values);
+
+  return (
+    <Group title="밑그림">
+      <div className="relative">
+        <Button
+          action={{
+            label: "밑그림",
+            icon: "image",
+            hint: "원본 도면을 평면 뒤에 깝니다 (B)",
+            active: on,
+            onClick: () => void toggleUnderlay(),
+          }}
+        />
+
+        {on && underlay && (
+          <>
+            <button
+              type="button"
+              onClick={() => setOpen((value) => !value)}
+              className="ml-1 h-7 rounded-md border border-line px-1.5 text-[11px] text-ink-soft hover:bg-sunken"
+              title="밑그림 설정"
+            >
+              ⋯
+            </button>
+
+            {open && (
+              <div
+                className="absolute left-0 top-9 z-30 w-56 rounded-lg border border-line bg-surface p-2.5 shadow-lg"
+                onMouseLeave={() => setOpen(false)}
+              >
+                <label className="block text-[11px] text-muted">
+                  투명도 {Math.round(underlay.opacity * 100)}%
+                  <input
+                    type="range"
+                    min={10}
+                    max={80}
+                    value={Math.round(underlay.opacity * 100)}
+                    onChange={(event) => patch({ opacity: Number(event.target.value) / 100 })}
+                    className="mt-1 w-full accent-[var(--accent)]"
+                  />
+                </label>
+
+                <div className="mt-2 flex flex-wrap gap-1">
+                  <PopButton
+                    label={underlay.locked ? "잠금 해제" : "잠금"}
+                    active={underlay.locked}
+                    onClick={() => patch({ locked: !underlay.locked })}
+                  />
+                  <PopButton
+                    label="축척 맞추기"
+                    onClick={() => {
+                      setCalibrating(true);
+                      setOpen(false);
+                    }}
+                  />
+                  <PopButton
+                    label="위치 맞추기"
+                    onClick={() => {
+                      patch({ locked: false });
+                      setOpen(false);
+                    }}
+                  />
+                </div>
+
+                <div className="mt-2 flex items-center gap-1">
+                  <span className="text-[11px] text-muted">기울기</span>
+                  <PopButton
+                    label="−0.5°"
+                    onClick={() => patch({ rotation: underlay.rotation - Math.PI / 360 })}
+                  />
+                  <PopButton
+                    label="+0.5°"
+                    onClick={() => patch({ rotation: underlay.rotation + Math.PI / 360 })}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    void runTool("set_underlay", { remove: true });
+                    setOpen(false);
+                  }}
+                  className="mt-2 w-full rounded border border-line px-2 py-1 text-[11px] text-ink-soft hover:bg-sunken"
+                >
+                  초기화 (다시 깔기)
+                </button>
+
+                <p className="mt-2 text-[10.5px] leading-relaxed text-muted">
+                  잠금을 풀면 빈 곳을 끌어 밑그림을 옮길 수 있습니다. 벽 위에서는 벽이 잡힙니다.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Group>
+  );
+}
+
+function PopButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded border px-1.5 py-1 text-[11px] transition-colors",
+        active
+          ? "border-accent bg-accent-soft text-accent"
+          : "border-line text-ink-soft hover:bg-sunken",
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
 function Button({ action }: { action: Action }) {
   return (
     <button

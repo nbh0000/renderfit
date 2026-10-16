@@ -10,6 +10,10 @@ export default defineConfig({
     alias: [
       { find: /^@\/config\/(.*)$/, replacement: path.resolve(__dirname, "config/$1") },
       { find: /^@\/scene\/(.*)$/, replacement: path.resolve(__dirname, "scene/$1") },
+      {
+        find: "@renderfit/plan-schema",
+        replacement: path.resolve(__dirname, "packages/plan-schema/index.ts"),
+      },
       { find: /^@\/ai\/(.*)$/, replacement: path.resolve(__dirname, "ai/$1") },
       { find: /^@\/models\/(.*)$/, replacement: path.resolve(__dirname, "models/$1") },
       { find: /^@\/services\/(.*)$/, replacement: path.resolve(__dirname, "services/$1") },

@@ -17,14 +17,12 @@ import {
   MockLLMProvider,
   MockRenderingProvider,
   MockSegmentationProvider,
-  MockVisionProvider,
   generationHash,
 } from "./mock";
 import { getStorage } from "@/lib/storage";
 import { generateImages, isMockMode } from "@/lib/image-api";
 import { TOOL_DEFINITIONS } from "@/ai/tools";
 import { GeminiRenderingProvider } from "./rendering";
-import { GeminiVisionProvider } from "./vision";
 import { routeCommand } from "@/ai/router";
 
 /**
@@ -232,10 +230,12 @@ export function createProviders(context: ProviderContext = {}): AIProviders {
 
   return {
     /*
-     * 공간 분석은 실제 모델을 쓴다 — 사진에서 방 크기와 창·문·가구를 읽어야
-     * 평면도·측면도·3D가 그 사진의 방을 그린다. 키가 없으면 mock으로 물러난다.
+     * 공간 분석 provider 는 없다.
+     *
+     * 그림을 모델에 넣어 좌표 JSON 을 받던 구조를 폐기했다 — 비전 모델은 기하를
+     * 측정하지 못하고 추측한다. 도면의 기하는 이제 DXF 파서와 전용 벡터화 모델만
+     * 만들고(services/plan-ingest), LLM 은 확정된 기하 위에 실 이름만 붙인다.
      */
-    vision: isMockMode() ? new MockVisionProvider() : new GeminiVisionProvider(new MockVisionProvider()),
     segmentation: new MockSegmentationProvider(getScene),
     depth: new MockDepthProvider(getScene),
     generation,
@@ -249,7 +249,6 @@ export function createProviders(context: ProviderContext = {}): AIProviders {
 export function providerStatus(): Record<string, string> {
   const providers = createProviders();
   return {
-    vision: providers.vision.name,
     segmentation: providers.segmentation.name,
     depth: providers.depth.name,
     generation: providers.generation.name,

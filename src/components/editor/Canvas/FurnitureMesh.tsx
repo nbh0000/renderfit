@@ -4,13 +4,8 @@ import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } fro
 import { RoundedBox, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import type { Material, SceneObject } from "@/scene/types";
-import {
-  cutoutShape,
-  cutoutTexture,
-  imageTexture,
-  onTextureReady,
-  textureForMaterial,
-} from "./textures";
+import { cutoutShape, cutoutTexture, onTextureReady } from "./textures";
+import { useStandardMaterial } from "./materials";
 
 /**
  * 가구 지오메트리.
@@ -27,41 +22,14 @@ export interface MeshProps {
   selected: boolean;
 }
 
-/**
- * 재질 → three 머티리얼.
+/*
+ * 재질 → three 머티리얼은 materials.ts 로 옮겼다.
  *
- * 사진 텍스처(CC0 PBR)가 붙어 있으면 그것을 쓰고, 없으면 예전처럼 절차적으로 그린다.
- * ARM 맵은 R=AO, G=거칠기, B=금속감이 한 장에 들어 있는 형식이라 세 채널을 나눠 물린다.
+ * 텍스처가 도착할 때마다 머티리얼을 새로 만들던 구조라, 사진 한 장에 화면의 모든
+ * 머티리얼이 다시 생기고 셰이더가 다시 컴파일됐다. 이제는 캐시된 객체의 맵만
+ * 바꿔 낀다. 바닥·벽도 같은 함수를 쓰므로 한곳에 둔다.
  */
-export function useStandardMaterial(material?: Material) {
-  // 사진이 늦게 도착해도 검게 보이지 않도록, 도착하면 다시 만든다.
-  const [generation, setGeneration] = useState(0);
-  useEffect(() => onTextureReady(() => setGeneration((value) => value + 1)), []);
-
-  return useMemo(() => {
-    const color = material?.baseColor ?? "#b9b2a8";
-    const photo = material?.textureUrl
-      ? imageTexture(material.textureUrl, { repeat: 1 })
-      : undefined;
-
-    const normal = material?.normalMapUrl
-      ? imageTexture(material.normalMapUrl, { srgb: false })
-      : undefined;
-    const arm = material?.armMapUrl ? imageTexture(material.armMapUrl, { srgb: false }) : undefined;
-
-    return new THREE.MeshStandardMaterial({
-      color: photo ? "#ffffff" : color,
-      roughness: material?.roughness ?? 0.75,
-      metalness: material?.metallic ?? 0,
-      map: photo ?? textureForMaterial(color, material?.tags ?? []),
-      normalMap: normal ?? null,
-      aoMap: arm ?? null,
-      roughnessMap: arm ?? null,
-      metalnessMap: arm ?? null,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [material, generation]);
-}
+export { useStandardMaterial } from "./materials";
 
 /**
  * 다리 4개.
@@ -138,9 +106,18 @@ class ModelBoundary extends Component<{ fallback: ReactNode; children: ReactNode
 /**
  * 외부 glTF 모델.
  *
- * 무료 소스(Poly Haven CC0)에서 받은 모델은 크기가 제각각이라, 불러온 뒤
- * 바운딩 박스를 재서 Scene에 적힌 실제 치수(mm)에 맞춰 균일 축소·확대한다.
+ * 무료 소스(Poly Haven·Poly Pizza)에서 받은 모델은 크기가 제각각이라, 불러온 뒤
+ * 바운딩 박스를 재서 Scene에 적힌 실제 치수(mm)에 맞춘다.
  * 이렇게 해야 도면의 치수와 3D의 크기가 어긋나지 않는다.
+ *
+ * 축마다 따로 늘린다. 한때는 세 축 중 가장 빡빡한 비율 하나로 균일 축소·확대해서
+ * 원형을 지켰는데, 그러면 **치수를 키워도 3D에서 커지지 않는다** — 가로만 4000으로
+ * 늘리면 높이·안길이가 비율을 붙잡고 있어 모델은 그대로고 선택 상자만 커졌다.
+ * 사용자가 "에셋들 사이즈 키웠을때 커져야지"라고 잘랐다.
+ *
+ * 기본 치수는 이 모델의 경계 상자를 재서 넣은 값이라 처음에는 비율이 그대로다.
+ * 이후 비율이 달라지는 것은 사용자가 그렇게 고쳤기 때문이고, 그때는 도면에 적힌
+ * 치수가 정답이다 — 3D 가 도면을 따라간다.
  */
 function ExternalModel({
   url,
@@ -160,13 +137,12 @@ function ExternalModel({
     const box = new THREE.Box3().setFromObject(clone);
     const size = box.getSize(new THREE.Vector3());
 
-    // 세 축 중 가장 빡빡한 비율에 맞춰 원형을 유지한 채 넣는다.
-    const factor = Math.min(
-      size.x > 0 ? width / size.x : 1,
-      size.y > 0 ? height / size.y : 1,
-      size.z > 0 ? depth / size.z : 1
-    );
-    clone.scale.setScalar(Number.isFinite(factor) && factor > 0 ? factor : 1);
+    /* 축마다 적힌 치수에 정확히 맞춘다 — 어느 값을 키우든 그 방향으로 커진다 */
+    const ratio = (target: number, actual: number) => {
+      const value = actual > 0 ? target / actual : 1;
+      return Number.isFinite(value) && value > 0 ? value : 1;
+    };
+    clone.scale.set(ratio(width, size.x), ratio(height, size.y), ratio(depth, size.z));
 
     /*
      * 경계 상자의 한가운데를 원점에 맞춘다.

@@ -1,3 +1,4 @@
+import { recordApiCall } from "@/lib/api-usage";
 import { IMAGES_PER_JOB, MODEL_FLASH } from "@/config/plans";
 import { roomSceneSvg } from "./placeholder-svg";
 
@@ -238,6 +239,7 @@ async function generateOne(
 
   for (let step = configSteps.get(model) ?? 0; step < configs.length; step += 1) {
     const config = configs[step];
+    const startedAt = Date.now();
     try {
       response = await ai.models.generateContent({
         model,
@@ -246,9 +248,11 @@ async function generateOne(
       } as never);
       configSteps.set(model, step);
       lastError = null;
+      recordApiCall({ model, kind: "image_generate", images: 1, ok: true, durationMs: Date.now() - startedAt });
       break;
     } catch (error) {
       lastError = error;
+      recordApiCall({ model, kind: "image_generate", images: 1, ok: false, durationMs: Date.now() - startedAt });
       // 설정을 몰라서 난 오류일 때만 한 단계 낮춘다. 나머지는 낮춰 봐야 똑같이 실패한다.
       if (!isArgumentError(error)) break;
     }
@@ -449,12 +453,14 @@ export async function generateProductImage(description: string, size = 1024): Pr
   const model = imageModel();
 
   for (const config of configs) {
+    const startedAt = Date.now();
     try {
       const response = await ai.models.generateContent({
         model,
         contents: [{ role: "user", parts }],
         config,
       });
+      recordApiCall({ model, kind: "product_image", images: 1, ok: true, durationMs: Date.now() - startedAt });
 
       const inline = response.candidates
         ?.flatMap((candidate) => candidate.content?.parts ?? [])
@@ -472,6 +478,7 @@ export async function generateProductImage(description: string, size = 1024): Pr
         height: size,
       };
     } catch (error) {
+      recordApiCall({ model, kind: "product_image", images: 1, ok: false, durationMs: Date.now() - startedAt });
       lastError = error instanceof Error ? error.message.slice(0, 160) : lastError;
       // 위와 같은 이유로, 설정 문제가 아니면 단계를 낮춰 봐야 같은 실패만 늘어난다.
       if (!isArgumentError(error)) break;

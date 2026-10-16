@@ -30,7 +30,10 @@ export async function POST(_request: Request, ctx: { params: Promise<{ slug: str
 
   const result = await toggleLike(supabase, decoded);
   if ("error" in result) {
-    return Response.json({ error: result.error }, { status: result.error.includes("로그인") ? 401 : 400 });
+    return Response.json(
+      { error: result.error },
+      { status: result.error.includes("로그인") ? 401 : 400 }
+    );
   }
 
   return Response.json(result);

@@ -19,6 +19,10 @@ Railway는 상시 실행 서버라 이 앱의 백그라운드 잡(분석·생성
 
 이미 운영 중인 DB라면 `schema.sql`을 다시 돌리는 대신 변경분만 적용합니다.
 - `supabase/migrations-gallery.sql` — 갤러리 작성자·조회수·전후 비교용 컬럼과 조회수 함수
+- `supabase/migrations-gallery-community.sql` — 갤러리 댓글·실시간 대화·필터 위반 기록·차단
+  (실시간 대화는 `gallery_chat_messages` 를 Realtime 발행 목록에 넣는다 — 파일 안에서 처리)
+- `supabase/migrations-admin-cs.sql` — API 호출 기록·문의·정산/고객 집계 함수
+  (`migrations-admin.sql`, `migrations-admin-usage.sql`, `migrations-billing.sql` 다음에)
 
 > 이 마이그레이션 전에도 갤러리는 동작합니다(작성자·조회수·비교 슬라이더만 비어 보입니다).
 
@@ -78,7 +82,8 @@ Railway → New Project → Deploy from GitHub repo → 이 레포 선택.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon public 키 |
 | `SUPABASE_SERVICE_ROLE_KEY` | service_role 키 (필수 — Storage 저장·크레딧 환불에 사용) |
 | `GEMINI_API_KEY` | Gemini API 키 |
-| `POLY_PIZZA_API_KEY` | (선택) 무료 3D 모델 검색 — poly.pizza/api 에서 무료 발급 |
+| `PLAN_INGEST_URL` | 도면 파싱 서비스 주소 (아래 3-5). **없으면 도면 기능이 통째로 죽습니다** |
+| `POLY_PIZZA_API_KEY` | (선택) 편집기의 무료 모델 검색 — poly.pizza/api 에서 무료 발급. 카탈로그(`models/polypizza.generated.ts`)는 이미 구워 커밋돼 있어 배포에는 없어도 된다 |
 | `GEMINI_VISION_MODEL` | (선택) 공간 분석 모델 (기본 gemini-3.1-flash) |
 | `NEXT_PUBLIC_SITE_URL` | `https://<railway-도메인>` |
 | `NODE_ENV` | `production` |
@@ -90,6 +95,45 @@ Railway → New Project → Deploy from GitHub repo → 이 레포 선택.
 ### 3-4. 도메인
 Settings → Networking → Generate Domain (또는 커스텀 도메인 연결) →
 그 도메인을 `NEXT_PUBLIC_SITE_URL`과 Supabase Redirect URLs에 반영하고 재배포합니다.
+
+### 3-5. 도면 파싱 서비스 (두 번째 서비스)
+
+도면(DXF·DWG·스캔 이미지)을 읽는 일은 Python 마이크로서비스가 맡습니다 —
+ezdxf·shapely·opencv 가 전부 Python 생태계라 Next.js 와 한 이미지에 합치지 않았습니다.
+
+**이 서비스를 올리지 않으면 배포본에서 도면 기능이 통째로 죽습니다.** Next.js 는
+`PLAN_INGEST_URL` 이 없으면 `127.0.0.1:8001` 로 붙으러 가는데, 컨테이너 안에는 아무것도
+없어서 DXF 조차 읽히지 않습니다.
+
+1. Railway → **New Service** → 같은 GitHub 저장소 선택
+2. Settings
+   - **Root Directory**: `services/plan-ingest`
+   - **Builder**: Dockerfile / **Dockerfile Path**: `Dockerfile`
+3. 이 서비스에는 환경변수를 넣지 않아도 됩니다 (외부 API 를 쓰지 않습니다).
+4. Next.js 서비스의 변수에 이 서비스 주소를 넣습니다.
+   같은 프로젝트 안이면 내부 주소를 씁니다 — 공개 도메인을 열 필요가 없습니다.
+
+   ```
+   PLAN_INGEST_URL=http://plan-ingest.railway.internal:8001
+   ```
+
+   (서비스 이름이 `plan-ingest` 가 아니면 그 이름으로 바꿉니다.)
+5. 확인
+
+   ```bash
+   curl https://<도면서비스도메인>/health
+   # {"ok":true,"raster":true,"rasterBackend":"opencv","rasterOcr":true,"dwgConverter":false}
+   ```
+
+   `raster: false` 면 이미지 도면이 501 로 떨어집니다. `dwgConverter: false` 는 DWG 만
+   못 받는다는 뜻이고, DXF·이미지는 정상입니다 (아래 3-6).
+
+### 3-6. DWG (선택)
+
+ezdxf 는 DWG 를 못 읽습니다. 받으려면 [ODA File Converter](https://www.opendesign.com/guestfiles/oda_file_converter)(무료)를
+이미지에 넣고 `ODA_FILE_CONVERTER` 에 실행 파일 경로를 지정해야 합니다. 없으면
+`/parse/dwg` 가 501 과 함께 무엇이 없는지 알려 줍니다 — 사용자에게는 "DXF 로 내보내
+올려 주세요" 로 안내됩니다.
 
 ---
 

@@ -1,0 +1,311 @@
+{
+ "annotations": [
+  {
+   "kind": "label",
+   "position": [
+    6000.0,
+    6000.0
+   ],
+   "text": "홀"
+  },
+  {
+   "kind": "label",
+   "position": [
+    18000.0,
+    10000.0
+   ],
+   "text": "사무실1"
+  },
+  {
+   "kind": "label",
+   "position": [
+    18000.0,
+    6000.0
+   ],
+   "text": "사무실2"
+  },
+  {
+   "kind": "label",
+   "position": [
+    18000.0,
+    2000.0
+   ],
+   "text": "사무실3"
+  }
+ ],
+ "bounds": {
+  "h": 12000.0,
+  "w": 24000.0
+ },
+ "fixtures": [
+  {
+   "bbox": [
+    14000.0,
+    10000.0,
+    1400.0,
+    700.0
+   ],
+   "confidence": 0.9,
+   "kind": "desk-1400",
+   "label": "DESK-1400",
+   "rotation": 0.0,
+   "source": "dxf-block"
+  },
+  {
+   "bbox": [
+    17000.0,
+    10000.0,
+    1400.0,
+    700.0
+   ],
+   "confidence": 0.9,
+   "kind": "desk-1400",
+   "label": "DESK-1400",
+   "rotation": 0.0,
+   "source": "dxf-block"
+  },
+  {
+   "bbox": [
+    20000.0,
+    10000.0,
+    1400.0,
+    700.0
+   ],
+   "confidence": 0.9,
+   "kind": "desk-1400",
+   "label": "DESK-1400",
+   "rotation": 0.0,
+   "source": "dxf-block"
+  }
+ ],
+ "openings": [
+  {
+   "confidence": 0.6,
+   "kind": "door",
+   "offset": 1550.0,
+   "width": 900.0
+  },
+  {
+   "confidence": 0.6,
+   "kind": "door",
+   "offset": 5550.0,
+   "width": 900.0
+  },
+  {
+   "confidence": 0.6,
+   "kind": "door",
+   "offset": 9550.0,
+   "width": 900.0
+  },
+  {
+   "confidence": 0.6,
+   "kind": "window",
+   "offset": 2550.0,
+   "width": 900.0
+  },
+  {
+   "confidence": 0.6,
+   "kind": "window",
+   "offset": 7550.0,
+   "width": 900.0
+  }
+ ],
+ "review": {
+  "flags": [],
+  "status": "auto"
+ },
+ "rooms": [
+  {
+   "areaMm2": 144000000.0,
+   "name": "홀",
+   "nameConfidence": 0.8,
+   "polygon": [
+    [
+     12000.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     12000.0
+    ],
+    [
+     12000.0,
+     12000.0
+    ],
+    [
+     12000.0,
+     8000.0
+    ],
+    [
+     12000.0,
+     4000.0
+    ]
+   ]
+  },
+  {
+   "areaMm2": 48000000.0,
+   "name": "사무실3",
+   "nameConfidence": 0.8,
+   "polygon": [
+    [
+     24000.0,
+     0.0
+    ],
+    [
+     12000.0,
+     0.0
+    ],
+    [
+     12000.0,
+     4000.0
+    ],
+    [
+     24000.0,
+     4000.0
+    ]
+   ]
+  },
+  {
+   "areaMm2": 48000000.0,
+   "name": "사무실1",
+   "nameConfidence": 0.8,
+   "polygon": [
+    [
+     12000.0,
+     12000.0
+    ],
+    [
+     24000.0,
+     12000.0
+    ],
+    [
+     24000.0,
+     8000.0
+    ],
+    [
+     12000.0,
+     8000.0
+    ]
+   ]
+  },
+  {
+   "areaMm2": 48000000.0,
+   "name": "사무실2",
+   "nameConfidence": 0.8,
+   "polygon": [
+    [
+     24000.0,
+     8000.0
+    ],
+    [
+     24000.0,
+     4000.0
+    ],
+    [
+     12000.0,
+     4000.0
+    ],
+    [
+     12000.0,
+     8000.0
+    ]
+   ]
+  }
+ ],
+ "scale": {
+  "confidence": 1.0,
+  "mmPerUnit": 1.0,
+  "source": "dxf-units"
+ },
+ "sourceType": "cad",
+ "walls": [
+  {
+   "a": [
+    0.0,
+    0.0
+   ],
+   "b": [
+    24000.0,
+    0.0
+   ],
+   "confidence": 1.0,
+   "thickness": 300.0
+  },
+  {
+   "a": [
+    24000.0,
+    12000.0
+   ],
+   "b": [
+    0.0,
+    12000.0
+   ],
+   "confidence": 1.0,
+   "thickness": 300.0
+  },
+  {
+   "a": [
+    24000.0,
+    0.0
+   ],
+   "b": [
+    24000.0,
+    12000.0
+   ],
+   "confidence": 1.0,
+   "thickness": 300.0
+  },
+  {
+   "a": [
+    0.0,
+    12000.0
+   ],
+   "b": [
+    0.0,
+    0.0
+   ],
+   "confidence": 1.0,
+   "thickness": 300.0
+  },
+  {
+   "a": [
+    12000.0,
+    0.0
+   ],
+   "b": [
+    12000.0,
+    12000.0
+   ],
+   "confidence": 1.0,
+   "thickness": 200.0
+  },
+  {
+   "a": [
+    12000.0,
+    4000.0
+   ],
+   "b": [
+    24000.0,
+    4000.0
+   ],
+   "confidence": 1.0,
+   "thickness": 100.0
+  },
+  {
+   "a": [
+    12000.0,
+    8000.0
+   ],
+   "b": [
+    24000.0,
+    8000.0
+   ],
+   "confidence": 1.0,
+   "thickness": 100.0
+  }
+ ]
+}

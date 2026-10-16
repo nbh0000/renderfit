@@ -4,7 +4,21 @@ import typescript from "eslint-config-next/typescript";
 /** Next 16는 flat config를 기본으로 쓴다 (next lint는 제거됨 → eslint 직접 실행) */
 const config = [
   // .next-check 는 확인용 빌드 결과물이다 (npm run build:check)
-  { ignores: [".next/**", ".next-check/**", "node_modules/**", ".data/**", "out/**", "next-env.d.ts"] },
+  {
+    ignores: [
+      ".next/**",
+      ".next-check/**",
+      "node_modules/**",
+      ".data/**",
+      "out/**",
+      "next-env.d.ts",
+      /*
+       * 파이썬 가상환경. matplotlib 같은 패키지가 .js 를 함께 들고 있어서,
+       * 빼 두지 않으면 남의 코드를 우리 규칙으로 검사하고 빨간불이 뜬다.
+       */
+      "services/plan-ingest/.venv/**",
+    ],
+  },
   ...coreWebVitals,
   ...typescript,
   {
